@@ -134,6 +134,7 @@ mod tests {
     fn item(title: &str, date: &str, author: &str) -> FeedItem {
         FeedItem {
             id: String::new(),
+            source_id: String::new(),
             title: title.to_string(),
             date: Some(
                 NaiveDate::parse_from_str(date, "%Y-%m-%d")
@@ -224,6 +225,7 @@ mod tests {
     fn test_format_date_without_date() {
         let i = FeedItem {
             id: String::new(),
+            source_id: String::new(),
             title: "Post".to_string(),
             date: None,
             author: "Alice".to_string(),
