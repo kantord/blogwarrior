@@ -24,11 +24,6 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
         .collect()
 }
 
-pub fn fetch(url: &str) -> Vec<FeedItem> {
-    let response = reqwest::blocking::get(url).expect("failed to fetch feed");
-    parse(response)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

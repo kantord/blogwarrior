@@ -1,0 +1,2 @@
+https://drewdevault.com/blog/index.xml
+https://michael.stapelberg.ch/feed.xml

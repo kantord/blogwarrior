@@ -1,6 +1,7 @@
 mod feed;
 
 use std::fmt::Write;
+use std::fs;
 
 use clap::Parser;
 use itertools::Itertools;
@@ -120,13 +121,10 @@ fn main() {
         }
     };
 
-    let mut items: Vec<FeedItem> = vec![
-        feed::rss::fetch("https://drewdevault.com/blog/index.xml"),
-        feed::atom::fetch("https://michael.stapelberg.ch/feed.xml"),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let content = fs::read_to_string("feeds.txt").expect("failed to read feeds.txt");
+    let urls: Vec<&str> = content.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+
+    let mut items: Vec<FeedItem> = urls.iter().flat_map(|url| feed::fetch(url)).collect();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
 
