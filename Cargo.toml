@@ -1,6 +1,9 @@
 [package]
-name = "rss"
+name = "rss-reader"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+atom_syndication = "0.12"
+reqwest = { version = "0.12", features = ["blocking"] }
+rss = "2"
