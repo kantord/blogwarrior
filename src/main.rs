@@ -1,11 +1,19 @@
 mod feed;
 
-use std::env;
 use std::fmt::Write;
 
+use clap::Parser;
 use itertools::Itertools;
 
 use feed::FeedItem;
+
+/// A simple RSS/Atom feed reader
+#[derive(Parser)]
+struct Args {
+    /// Grouping mode: d (date), a (author), or combinations like da, ad
+    #[arg(short, long, default_value = "")]
+    group: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GroupKey {
@@ -102,12 +110,12 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
 }
 
 fn main() {
-    let grouping_arg = env::args().nth(1).unwrap_or_default();
+    let args = Args::parse();
 
-    let keys = match parse_grouping(&grouping_arg) {
+    let keys = match parse_grouping(&args.group) {
         Some(keys) => keys,
         None => {
-            eprintln!("Unknown grouping: {grouping_arg}. Use: d, a, da, ad");
+            eprintln!("Unknown grouping: {}. Use: d, a, da, ad", args.group);
             return;
         }
     };

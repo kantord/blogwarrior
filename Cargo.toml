@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 atom_syndication = "0.12"
+clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 reqwest = { version = "0.12", features = ["blocking"] }
 itertools = "0.14"
