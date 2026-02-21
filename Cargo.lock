@@ -1106,6 +1106,8 @@ dependencies = [
  "itertools",
  "reqwest",
  "rss",
+ "serde",
+ "serde_json",
  "url",
 ]
 

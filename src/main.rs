@@ -2,11 +2,18 @@ mod feed;
 
 use std::fmt::Write;
 use std::fs;
+use std::io::BufRead;
 
 use clap::Parser;
 use itertools::Itertools;
+use serde::Deserialize;
 
 use feed::FeedItem;
+
+#[derive(Deserialize)]
+struct FeedSource {
+    url: String,
+}
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
@@ -121,10 +128,15 @@ fn main() {
         }
     };
 
-    let content = fs::read_to_string("feeds.txt").expect("failed to read feeds.txt");
-    let urls: Vec<&str> = content.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let file = fs::File::open("feeds.jsonl").expect("failed to open feeds.jsonl");
+    let sources: Vec<FeedSource> = std::io::BufReader::new(file)
+        .lines()
+        .map(|l| l.expect("failed to read line"))
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(&l).expect("failed to parse feed entry"))
+        .collect();
 
-    let mut items: Vec<FeedItem> = urls.iter().flat_map(|url| feed::fetch(url)).collect();
+    let mut items: Vec<FeedItem> = sources.iter().flat_map(|s| feed::fetch(&s.url)).collect();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
 
