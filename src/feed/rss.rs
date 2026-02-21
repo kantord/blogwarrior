@@ -2,8 +2,16 @@ use std::io::{BufReader, Read};
 
 use chrono::{DateTime, FixedOffset};
 use rss::Channel;
+use url::Url;
 
 use super::FeedItem;
+
+fn normalize_url(raw: &str) -> String {
+    match Url::parse(raw) {
+        Ok(url) => url.to_string(),
+        Err(_) => raw.to_string(),
+    }
+}
 
 pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
     let channel = Channel::read_from(BufReader::new(reader)).expect("failed to parse RSS feed");
@@ -16,7 +24,7 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
             id: item
                 .guid()
                 .map(|g| g.value().to_string())
-                .or_else(|| item.link().map(|l| l.to_string()))
+                .or_else(|| item.link().map(|l| normalize_url(l)))
                 .unwrap_or_default(),
             title: item.title().unwrap_or("untitled").to_string(),
             date: item
@@ -167,6 +175,24 @@ mod tests {
             <item>
               <title>Post</title>
               <link>https://example.com/post/1</link>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let items = parse(xml.as_bytes());
+
+        assert_eq!(items[0].id, "https://example.com/post/1");
+    }
+
+    #[test]
+    fn test_id_link_is_normalized() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Post</title>
+              <link>HTTPS://EXAMPLE.COM/post/1</link>
             </item>
           </channel>
         </rss>"#;
