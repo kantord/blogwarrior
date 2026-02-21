@@ -13,6 +13,11 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
         .items()
         .iter()
         .map(|item| FeedItem {
+            id: item
+                .guid()
+                .map(|g| g.value().to_string())
+                .or_else(|| item.link().map(|l| l.to_string()))
+                .unwrap_or_default(),
             title: item.title().unwrap_or("untitled").to_string(),
             date: item
                 .pub_date()
@@ -53,6 +58,7 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
+        assert_eq!(items[0].id, "");
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
@@ -132,5 +138,77 @@ mod tests {
         let items = parse(xml.as_bytes());
 
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_id_from_guid() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Post</title>
+              <guid>https://example.com/post/1</guid>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let items = parse(xml.as_bytes());
+
+        assert_eq!(items[0].id, "https://example.com/post/1");
+    }
+
+    #[test]
+    fn test_id_falls_back_to_link() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Post</title>
+              <link>https://example.com/post/1</link>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let items = parse(xml.as_bytes());
+
+        assert_eq!(items[0].id, "https://example.com/post/1");
+    }
+
+    #[test]
+    fn test_id_empty_when_no_guid_or_link() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Post</title>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let items = parse(xml.as_bytes());
+
+        assert_eq!(items[0].id, "");
+    }
+
+    #[test]
+    fn test_id_prefers_guid_over_link() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Post</title>
+              <guid>urn:uuid:123</guid>
+              <link>https://example.com/post/1</link>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let items = parse(xml.as_bytes());
+
+        assert_eq!(items[0].id, "urn:uuid:123");
     }
 }
