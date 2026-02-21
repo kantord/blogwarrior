@@ -7,4 +7,5 @@ use chrono::{DateTime, Utc};
 pub struct FeedItem {
     pub title: String,
     pub date: Option<DateTime<Utc>>,
+    pub author: String,
 }

@@ -7,6 +7,7 @@ use super::FeedItem;
 
 pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
     let channel = Channel::read_from(BufReader::new(reader)).expect("failed to parse RSS feed");
+    let author = channel.title().to_string();
 
     channel
         .items()
@@ -17,6 +18,7 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
                 .pub_date()
                 .and_then(|d| DateTime::<FixedOffset>::parse_from_rfc2822(d).ok())
                 .map(|d| d.to_utc()),
+            author: author.clone(),
         })
         .collect()
 }
@@ -55,11 +57,13 @@ mod tests {
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
         );
+        assert_eq!(items[0].author, "Test Blog");
         assert_eq!(items[1].title, "Second Post");
         assert_eq!(
             items[1].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-02"
         );
+        assert_eq!(items[1].author, "Test Blog");
     }
 
     #[test]
