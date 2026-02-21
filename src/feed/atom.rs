@@ -14,8 +14,7 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
             date: entry
                 .published()
                 .or(Some(entry.updated()))
-                .map(|d| d.format("%Y-%m-%d").to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
+                .map(|d| d.to_utc()),
         })
         .collect()
 }
@@ -54,9 +53,37 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
-        assert_eq!(items[0].date, "2024-01-01");
+        assert_eq!(
+            items[0].date.unwrap().format("%Y-%m-%d").to_string(),
+            "2024-01-01"
+        );
         assert_eq!(items[1].title, "Second Post");
-        assert_eq!(items[1].date, "2024-01-02");
+        assert_eq!(
+            items[1].date.unwrap().format("%Y-%m-%d").to_string(),
+            "2024-01-02"
+        );
+    }
+
+    #[test]
+    fn test_timezone_is_normalized_to_utc() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>Test</title>
+          <id>urn:test</id>
+          <updated>2024-01-02T04:00:00Z</updated>
+          <entry>
+            <title>Late Night Post</title>
+            <id>urn:post:1</id>
+            <updated>2024-01-01T23:00:00-05:00</updated>
+            <published>2024-01-01T23:00:00-05:00</published>
+          </entry>
+        </feed>"#;
+
+        let items = parse(xml.as_bytes());
+        let date = items[0].date.unwrap();
+
+        assert_eq!(date.format("%Y-%m-%d").to_string(), "2024-01-02");
+        assert_eq!(date.format("%H:%M").to_string(), "04:00");
     }
 
     #[test]
@@ -75,7 +102,10 @@ mod tests {
 
         let items = parse(xml.as_bytes());
 
-        assert_eq!(items[0].date, "2024-06-15");
+        assert_eq!(
+            items[0].date.unwrap().format("%Y-%m-%d").to_string(),
+            "2024-06-15"
+        );
     }
 
     #[test]

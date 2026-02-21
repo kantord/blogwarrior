@@ -17,7 +17,11 @@ fn main() {
     for (name, items) in &feeds {
         println!("=== {name} ===\n");
         for item in items {
-            println!("{}  {}", item.date, item.title);
+            let date = item
+                .date
+                .map(|d| d.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            println!("{date}  {}", item.title);
         }
         println!();
     }

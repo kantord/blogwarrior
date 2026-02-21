@@ -1,5 +1,6 @@
 use std::io::{BufReader, Read};
 
+use chrono::{DateTime, FixedOffset};
 use rss::Channel;
 
 use super::FeedItem;
@@ -12,7 +13,10 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
         .iter()
         .map(|item| FeedItem {
             title: item.title().unwrap_or("untitled").to_string(),
-            date: item.pub_date().unwrap_or("unknown").to_string(),
+            date: item
+                .pub_date()
+                .and_then(|d| DateTime::<FixedOffset>::parse_from_rfc2822(d).ok())
+                .map(|d| d.to_utc()),
         })
         .collect()
 }
@@ -47,9 +51,35 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
-        assert_eq!(items[0].date, "Mon, 01 Jan 2024 00:00:00 +0000");
+        assert_eq!(
+            items[0].date.unwrap().format("%Y-%m-%d").to_string(),
+            "2024-01-01"
+        );
         assert_eq!(items[1].title, "Second Post");
-        assert_eq!(items[1].date, "Tue, 02 Jan 2024 00:00:00 +0000");
+        assert_eq!(
+            items[1].date.unwrap().format("%Y-%m-%d").to_string(),
+            "2024-01-02"
+        );
+    }
+
+    #[test]
+    fn test_timezone_is_normalized_to_utc() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Late Night Post</title>
+              <pubDate>Mon, 01 Jan 2024 23:00:00 -0500</pubDate>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let items = parse(xml.as_bytes());
+        let date = items[0].date.unwrap();
+
+        assert_eq!(date.format("%Y-%m-%d").to_string(), "2024-01-02");
+        assert_eq!(date.format("%H:%M").to_string(), "04:00");
     }
 
     #[test]
@@ -83,7 +113,7 @@ mod tests {
 
         let items = parse(xml.as_bytes());
 
-        assert_eq!(items[0].date, "unknown");
+        assert_eq!(items[0].date, None);
     }
 
     #[test]
