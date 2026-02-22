@@ -2,14 +2,30 @@ use std::io::{BufReader, Read};
 
 use atom_syndication::Feed;
 
-use super::FeedItem;
+use super::{FeedItem, FeedMeta};
 
-pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
+pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
     let feed = Feed::read_from(BufReader::new(reader)).expect("failed to parse Atom feed");
     let author = feed.title().as_str().to_string();
     let source_id = feed.id().to_string();
 
-    feed.entries()
+    let meta = FeedMeta {
+        title: feed.title().as_str().to_string(),
+        site_url: feed
+            .links()
+            .iter()
+            .find(|l| l.rel() == "alternate")
+            .or_else(|| feed.links().first())
+            .map(|l| l.href().to_string())
+            .unwrap_or_default(),
+        description: feed
+            .subtitle()
+            .map(|s| s.as_str().to_string())
+            .unwrap_or_default(),
+    };
+
+    let items = feed
+        .entries()
         .iter()
         .map(|entry| FeedItem {
             id: entry.id().to_string(),
@@ -21,7 +37,9 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
                 .map(|d| d.to_utc()),
             author: author.clone(),
         })
-        .collect()
+        .collect();
+
+    (meta, items)
 }
 
 #[cfg(test)]
@@ -49,7 +67,7 @@ mod tests {
           </entry>
         </feed>"#;
 
-        let items = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes());
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
@@ -84,7 +102,7 @@ mod tests {
           </entry>
         </feed>"#;
 
-        let items = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes());
         let date = items[0].date.unwrap();
 
         assert_eq!(date.format("%Y-%m-%d").to_string(), "2024-01-02");
@@ -105,7 +123,7 @@ mod tests {
           </entry>
         </feed>"#;
 
-        let items = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes());
 
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
@@ -122,7 +140,7 @@ mod tests {
           <updated>2024-01-01T00:00:00Z</updated>
         </feed>"#;
 
-        let items = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes());
 
         assert!(items.is_empty());
     }

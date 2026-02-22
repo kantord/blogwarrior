@@ -6,6 +6,12 @@ use crate::table::TableRow;
 pub struct FeedSource {
     pub id: String,
     pub url: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub site_url: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 impl TableRow for FeedSource {

@@ -4,6 +4,13 @@ pub mod rss;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeedMeta {
+    pub title: String,
+    pub site_url: String,
+    pub description: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedItem {
     pub id: String,
@@ -22,7 +29,7 @@ impl crate::table::TableRow for FeedItem {
     }
 }
 
-pub fn fetch(url: &str) -> Vec<FeedItem> {
+pub fn fetch(url: &str) -> (FeedMeta, Vec<FeedItem>) {
     let response = reqwest::blocking::get(url).expect("failed to fetch feed");
     let bytes = response.bytes().expect("failed to read response body");
     let text = String::from_utf8_lossy(&bytes);

@@ -140,20 +140,30 @@ fn cmd_add(store: &Path, url: &str) {
     table.upsert(FeedSource {
         id: url.to_string(),
         url: url.to_string(),
+        title: String::new(),
+        site_url: String::new(),
+        description: String::new(),
     });
     table.save();
 }
 
 fn cmd_pull(store: &Path) {
-    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let sources = feeds_table.items();
     let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
     for source in &sources {
-        for item in feed::fetch(&source.url) {
+        let (meta, items) = feed::fetch(&source.url);
+        for item in items {
             table.upsert(item);
         }
+        let mut updated = source.clone();
+        updated.title = meta.title;
+        updated.site_url = meta.site_url;
+        updated.description = meta.description;
+        feeds_table.update(updated);
     }
     table.save();
+    feeds_table.save();
 }
 
 fn cmd_show(store: &Path, group: &str) {

@@ -72,6 +72,10 @@ impl<T: TableRow> Table<T> {
         self.items.insert(item.id().to_string(), item);
     }
 
+    pub fn update(&mut self, item: T) {
+        self.items.insert(item.id().to_string(), item);
+    }
+
     fn shard_key(&self, id: &str) -> String {
         let end = self.shard_characters.min(id.len());
         id[..end].to_string()
