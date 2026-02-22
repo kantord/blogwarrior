@@ -30,7 +30,7 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn st
             raw_id: item
                 .guid()
                 .map(|g| g.value().to_string())
-                .or_else(|| item.link().map(|l| normalize_url(l)))
+                .or_else(|| item.link().map(normalize_url))
                 .or_else(|| item.title().map(|t| t.to_string()))
                 .unwrap_or_default(),
             title: item.title().unwrap_or("untitled").to_string(),

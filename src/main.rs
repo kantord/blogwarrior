@@ -195,10 +195,10 @@ fn cmd_show(store: &Path, group: &str) {
     let mut items = table.items();
 
     for item in &mut items {
-        if let Some(title) = feed_titles.get(&item.feed) {
-            if !title.is_empty() {
-                item.feed = title.clone();
-            }
+        if let Some(title) = feed_titles.get(&item.feed)
+            && !title.is_empty()
+        {
+            item.feed = title.clone();
         }
     }
 

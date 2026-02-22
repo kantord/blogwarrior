@@ -48,19 +48,18 @@ impl<T: TableRow> Table<T> {
         if let Ok(entries) = fs::read_dir(&table.dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
-                        if let Ok(file) = fs::File::open(&path) {
-                            for line in std::io::BufReader::new(file).lines() {
-                                let line = line.expect("failed to read line");
-                                if line.trim().is_empty() {
-                                    continue;
-                                }
-                                let item: T = serde_json::from_str(&line)
-                                    .expect("failed to parse entry");
-                                table.items.insert(item.id().to_string(), item);
-                            }
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str())
+                    && fname.starts_with("items_") && fname.ends_with(".jsonl")
+                    && let Ok(file) = fs::File::open(&path)
+                {
+                    for line in std::io::BufReader::new(file).lines() {
+                        let line = line.expect("failed to read line");
+                        if line.trim().is_empty() {
+                            continue;
                         }
+                        let item: T = serde_json::from_str(&line)
+                            .expect("failed to parse entry");
+                        table.items.insert(item.id().to_string(), item);
                     }
                 }
             }
@@ -85,10 +84,10 @@ impl<T: TableRow> Table<T> {
         if let Ok(entries) = fs::read_dir(&self.dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
-                        fs::remove_file(&path).expect("failed to remove old shard file");
-                    }
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str())
+                    && fname.starts_with("items_") && fname.ends_with(".jsonl")
+                {
+                    fs::remove_file(&path).expect("failed to remove old shard file");
                 }
             }
         }
