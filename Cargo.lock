@@ -383,6 +383,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "blogtato"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "atom_syndication",
+ "chrono",
+ "clap",
+ "httpmock",
+ "itertools 0.14.0",
+ "reqwest",
+ "rss",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "bstr"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1885,25 +1904,6 @@ dependencies = [
  "derive_builder",
  "never",
  "quick-xml",
-]
-
-[[package]]
-name = "rss-reader"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "atom_syndication",
- "chrono",
- "clap",
- "httpmock",
- "itertools 0.14.0",
- "reqwest",
- "rss",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "url",
 ]
 
 [[package]]

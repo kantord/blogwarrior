@@ -63,7 +63,7 @@ impl TestContext {
 
     fn run(&self, args: &[&str]) -> assert_cmd::assert::Assert {
         #[allow(deprecated)]
-        Command::cargo_bin("rss-reader")
+        Command::cargo_bin("blog")
             .unwrap()
             .args(args)
             .env("RSS_STORE", self.dir.path())

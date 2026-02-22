@@ -1,7 +1,11 @@
 [package]
-name = "rss-reader"
+name = "blogtato"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "blog"
+path = "src/main.rs"
 
 [dependencies]
 atom_syndication = "0.12"
