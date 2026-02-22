@@ -438,6 +438,20 @@ mod tests {
         assert!(!table_dir.join("items_zz.jsonl").exists());
     }
 
+    #[test]
+    fn test_upsert_same_id_overwrites() {
+        // Two items with the same raw ID should produce the same hash,
+        // so the second upsert overwrites the first. This is correct
+        // table behavior — it's the caller's job to provide distinct IDs.
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("same", "First"));
+        table.upsert(make_item("same", "Second"));
+        let items = table.items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Second");
+    }
+
     /// Helper to create a TestItem with a pre-set id (no hashing).
     fn make_item_with_id(id: &str, title: &str) -> TestItem {
         TestItem {
