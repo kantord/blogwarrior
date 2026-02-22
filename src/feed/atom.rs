@@ -33,6 +33,13 @@ pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
                 .or(Some(entry.updated()))
                 .map(|d| d.to_utc()),
             feed: String::new(),
+            link: entry
+                .links()
+                .iter()
+                .find(|l| l.rel() == "alternate")
+                .or_else(|| entry.links().first())
+                .map(|l| l.href().to_string())
+                .unwrap_or_default(),
         })
         .collect();
 

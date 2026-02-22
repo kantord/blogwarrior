@@ -37,6 +37,7 @@ pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
                 .and_then(|d| DateTime::<FixedOffset>::parse_from_rfc2822(d).ok())
                 .map(|d| d.to_utc()),
             feed: String::new(),
+            link: item.link().unwrap_or_default().to_string(),
         })
         .collect();
 

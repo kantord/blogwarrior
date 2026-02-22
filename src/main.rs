@@ -230,6 +230,7 @@ mod tests {
                     .and_utc(),
             ),
             feed: feed.to_string(),
+            link: String::new(),
         }
     }
 
@@ -314,6 +315,7 @@ mod tests {
             title: "Post".to_string(),
             date: None,
             feed: "Alice".to_string(),
+            link: String::new(),
         };
         assert_eq!(format_date(&i), "unknown");
     }

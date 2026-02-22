@@ -17,6 +17,8 @@ pub struct FeedItem {
     pub title: String,
     pub date: Option<DateTime<Utc>>,
     pub feed: String,
+    #[serde(default)]
+    pub link: String,
 }
 
 impl crate::table::TableRow for FeedItem {
@@ -58,6 +60,7 @@ mod tests {
                     .and_utc(),
             ),
             feed: "abc123".to_string(),
+            link: String::new(),
         };
 
         let json = serde_json::to_string(&item).unwrap();
@@ -72,6 +75,7 @@ mod tests {
             title: "No Date Post".to_string(),
             date: None,
             feed: "def456".to_string(),
+            link: String::new(),
         };
 
         let json = serde_json::to_string(&item).unwrap();
