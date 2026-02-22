@@ -52,8 +52,10 @@ impl Table {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).expect("failed to create table directory");
         }
+        let mut sorted: Vec<&FeedItem> = self.items.values().collect();
+        sorted.sort_by(|a, b| a.id.cmp(&b.id));
         let mut out = String::new();
-        for item in self.items.values() {
+        for item in sorted {
             out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
             out.push('\n');
         }
@@ -123,5 +125,97 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let table = Table::load(dir.path(), "nonexistent");
         assert_eq!(table.items().len(), 0);
+    }
+
+    fn read_lines(dir: &TempDir, name: &str) -> Vec<String> {
+        let path = dir.path().join(name).join("items.jsonl");
+        fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect()
+    }
+
+    fn ids_from_lines(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|l| {
+                let v: serde_json::Value = serde_json::from_str(l).unwrap();
+                v["id"].as_str().unwrap().to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_save_sorts_items_by_id() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t");
+        table.upsert(make_item("zzz", "Last"));
+        table.upsert(make_item("aaa", "First"));
+        table.upsert(make_item("mmm", "Middle"));
+        table.save();
+
+        let ids = ids_from_lines(&read_lines(&dir, "t"));
+        let mut sorted = ids.clone();
+        sorted.sort();
+        assert_eq!(ids, sorted);
+    }
+
+    #[test]
+    fn test_save_sort_order_is_stable_across_roundtrips() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t");
+        table.upsert(make_item("c", "C"));
+        table.upsert(make_item("a", "A"));
+        table.upsert(make_item("b", "B"));
+        table.save();
+
+        let ids1 = ids_from_lines(&read_lines(&dir, "t"));
+
+        let loaded = Table::load(dir.path(), "t");
+        loaded.save();
+
+        let ids2 = ids_from_lines(&read_lines(&dir, "t"));
+        assert_eq!(ids1, ids2);
+    }
+
+    #[test]
+    fn test_save_sort_order_preserved_after_upsert() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t");
+        table.upsert(make_item("b", "B"));
+        table.upsert(make_item("a", "A"));
+        table.save();
+
+        let mut table = Table::load(dir.path(), "t");
+        table.upsert(make_item("c", "C"));
+        table.save();
+
+        let ids = ids_from_lines(&read_lines(&dir, "t"));
+        let mut sorted = ids.clone();
+        sorted.sort();
+        assert_eq!(ids, sorted);
+    }
+
+    #[test]
+    fn test_save_single_item_sorted() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t");
+        table.upsert(make_item("only", "Only"));
+        table.save();
+
+        let ids = ids_from_lines(&read_lines(&dir, "t"));
+        assert_eq!(ids.len(), 1);
+    }
+
+    #[test]
+    fn test_save_empty_table() {
+        let dir = TempDir::new().unwrap();
+        let table = Table::load(dir.path(), "t");
+        table.save();
+
+        let lines = read_lines(&dir, "t");
+        assert!(lines.is_empty());
     }
 }
