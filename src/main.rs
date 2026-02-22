@@ -44,9 +44,9 @@ enum FeedCommand {
         /// The feed URL to subscribe to
         url: String,
     },
-    /// Unsubscribe from a feed by URL
-    Remove {
-        /// The feed URL to unsubscribe from
+    /// Unsubscribe from a feed by URL or @shorthand
+    Rm {
+        /// The feed URL or @shorthand to unsubscribe from
         url: String,
     },
     /// List subscribed feeds
@@ -376,7 +376,7 @@ fn main() {
         Some(Command::Pull) => cmd_pull(&store),
         Some(Command::Show { ref group }) => cmd_show(&store, group),
         Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
-        Some(Command::Feed { command: FeedCommand::Remove { ref url } }) => cmd_remove(&store, url),
+        Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => cmd_remove(&store, url),
         Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),
         None => cmd_show(&store, ""),
     }

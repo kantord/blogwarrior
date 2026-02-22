@@ -454,7 +454,7 @@ fn test_remove_feed() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("Blog to Remove"));
 
-    ctx.run(&["feed", "remove", &url]).success();
+    ctx.run(&["feed", "rm", &url]).success();
 
     // Pull should no longer fetch the removed feed
     ctx.run(&["pull"]).success();
@@ -489,7 +489,7 @@ fn test_remove_feed_deletes_its_posts() {
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
 
-    ctx.run(&["feed", "remove", &remove_url]).success();
+    ctx.run(&["feed", "rm", &remove_url]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
@@ -572,7 +572,7 @@ fn test_feed_remove_by_shorthand() {
         .expect("should find remove_url in feed ls output");
 
     // Remove using the shorthand
-    ctx.run(&["feed", "remove", &shorthand]).success();
+    ctx.run(&["feed", "rm", &shorthand]).success();
 
     let feeds = ctx.read_feeds();
     assert_eq!(feeds.len(), 1);
@@ -604,7 +604,7 @@ fn test_remove_then_readd_feed() {
     let url = ctx.server.url("/returning.xml");
     ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["pull"]).success();
-    ctx.run(&["feed", "remove", &url]).success();
+    ctx.run(&["feed", "rm", &url]).success();
 
     // Re-add and pull again
     ctx.run(&["feed", "add", &url]).success();
