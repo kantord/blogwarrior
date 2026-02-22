@@ -148,14 +148,13 @@ fn load_sources(store: &Path) -> Vec<FeedSource> {
 
 fn cmd_pull(store: &Path) {
     let sources = load_sources(store);
-    let posts_path = store.join("posts.jsonl");
-    let mut table = table::Table::load(&posts_path);
+    let mut table = table::Table::load(store, "posts");
     for source in &sources {
         for item in feed::fetch(&source.url) {
             table.upsert(item);
         }
     }
-    table.save(&posts_path);
+    table.save();
 }
 
 fn cmd_show(store: &Path, group: &str) {
@@ -167,7 +166,7 @@ fn cmd_show(store: &Path, group: &str) {
         }
     };
 
-    let table = table::Table::load(&store.join("posts.jsonl"));
+    let table = table::Table::load(store, "posts");
     let mut items = table.items();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));

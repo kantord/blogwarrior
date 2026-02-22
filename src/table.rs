@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::BufRead;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -15,18 +15,21 @@ pub fn hash_id(raw: &str) -> String {
 
 pub struct Table {
     items: HashMap<String, FeedItem>,
+    path: PathBuf,
 }
 
 impl Table {
-    pub fn new() -> Self {
+    fn new(path: PathBuf) -> Self {
         Self {
             items: HashMap::new(),
+            path,
         }
     }
 
-    pub fn load(path: &Path) -> Self {
-        let mut table = Self::new();
-        if let Ok(file) = fs::File::open(path) {
+    pub fn load(store: &Path, name: &str) -> Self {
+        let path = store.join(name).join("items.jsonl");
+        let mut table = Self::new(path);
+        if let Ok(file) = fs::File::open(&table.path) {
             for line in std::io::BufReader::new(file).lines() {
                 let line = line.expect("failed to read line");
                 if line.trim().is_empty() {
@@ -45,13 +48,16 @@ impl Table {
         self.items.insert(item.id.clone(), item);
     }
 
-    pub fn save(&self, path: &Path) {
+    pub fn save(&self) {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).expect("failed to create table directory");
+        }
         let mut out = String::new();
         for item in self.items.values() {
             out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
             out.push('\n');
         }
-        fs::write(path, out).expect("failed to write posts file");
+        fs::write(&self.path, out).expect("failed to write posts file");
     }
 
     pub fn items(&self) -> Vec<FeedItem> {
@@ -76,7 +82,8 @@ mod tests {
 
     #[test]
     fn test_upsert_hashes_id() {
-        let mut table = Table::new();
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "test_table");
         table.upsert(make_item("raw-id", "Post"));
         let items = table.items();
         assert_eq!(items.len(), 1);
@@ -85,7 +92,8 @@ mod tests {
 
     #[test]
     fn test_upsert_overwrites_existing() {
-        let mut table = Table::new();
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "test_table");
         table.upsert(make_item("same-id", "Original"));
         table.upsert(make_item("same-id", "Updated"));
         let items = table.items();
@@ -96,14 +104,13 @@ mod tests {
     #[test]
     fn test_load_save_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("posts.jsonl");
 
-        let mut table = Table::new();
+        let mut table = Table::load(dir.path(), "test_table");
         table.upsert(make_item("id-1", "First"));
         table.upsert(make_item("id-2", "Second"));
-        table.save(&path);
+        table.save();
 
-        let loaded = Table::load(&path);
+        let loaded = Table::load(dir.path(), "test_table");
         assert_eq!(loaded.items().len(), 2);
 
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
@@ -114,8 +121,7 @@ mod tests {
     #[test]
     fn test_load_nonexistent_file() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("nonexistent.jsonl");
-        let table = Table::load(&path);
+        let table = Table::load(dir.path(), "nonexistent");
         assert_eq!(table.items().len(), 0);
     }
 }

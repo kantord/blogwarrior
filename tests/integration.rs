@@ -27,7 +27,7 @@ impl TestContext {
     }
 
     fn read_posts(&self) -> Vec<serde_json::Value> {
-        let file = fs::File::open(self.dir.path().join("posts.jsonl")).unwrap();
+        let file = fs::File::open(self.dir.path().join("posts").join("items.jsonl")).unwrap();
         std::io::BufReader::new(file)
             .lines()
             .map(|l| l.unwrap())
@@ -193,7 +193,8 @@ fn test_show_displays_posts() {
 
     let posts = r#"{"id":"1","source_id":"src","title":"Hello World","date":"2024-01-15T00:00:00Z","author":"Alice"}
 {"id":"2","source_id":"src","title":"Second Post","date":"2024-01-14T00:00:00Z","author":"Bob"}"#;
-    fs::write(ctx.dir.path().join("posts.jsonl"), posts).unwrap();
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -211,7 +212,8 @@ fn test_show_with_grouping() {
     let posts = r#"{"id":"1","source_id":"src","title":"Post A","date":"2024-01-15T00:00:00Z","author":"Alice"}
 {"id":"2","source_id":"src","title":"Post B","date":"2024-01-15T00:00:00Z","author":"Bob"}
 {"id":"3","source_id":"src","title":"Post C","date":"2024-01-14T00:00:00Z","author":"Alice"}"#;
-    fs::write(ctx.dir.path().join("posts.jsonl"), posts).unwrap();
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show", "-g", "d"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -229,7 +231,8 @@ fn test_show_default_no_subcommand() {
 
     let posts =
         r#"{"id":"1","source_id":"src","title":"Default Show","date":"2024-01-15T00:00:00Z","author":"Alice"}"#;
-    fs::write(ctx.dir.path().join("posts.jsonl"), posts).unwrap();
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), posts).unwrap();
 
     let output = ctx.run(&[]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -285,7 +288,7 @@ fn test_serde_roundtrip() {
         out.push_str(&serde_json::to_string(post).unwrap());
         out.push('\n');
     }
-    fs::write(ctx.dir.path().join("posts.jsonl"), &out).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), &out).unwrap();
 
     let posts2 = ctx.read_posts();
     assert_eq!(posts, posts2);
