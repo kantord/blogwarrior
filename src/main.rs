@@ -25,7 +25,7 @@ enum Command {
     Pull,
     /// Display items from posts.jsonl
     Show {
-        /// Grouping mode: d (date), a (author), or combinations like da, ad
+        /// Grouping mode: d (date), f (feed), or combinations like df, fd
         #[arg(short, long, default_value = "")]
         group: String,
     },
@@ -39,21 +39,21 @@ enum Command {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GroupKey {
     Date,
-    Author,
+    Feed,
 }
 
 impl GroupKey {
     fn extract(&self, item: &FeedItem) -> String {
         match self {
             GroupKey::Date => format_date(item),
-            GroupKey::Author => item.feed.clone(),
+            GroupKey::Feed => item.feed.clone(),
         }
     }
 
     fn compare(&self, a: &FeedItem, b: &FeedItem) -> std::cmp::Ordering {
         match self {
             GroupKey::Date => format_date(b).cmp(&format_date(a)),
-            GroupKey::Author => a.feed.cmp(&b.feed),
+            GroupKey::Feed => a.feed.cmp(&b.feed),
         }
     }
 }
@@ -66,8 +66,8 @@ fn format_date(item: &FeedItem) -> String {
 
 fn format_item(item: &FeedItem, grouped_keys: &[GroupKey]) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
-    let show_author = !grouped_keys.contains(&GroupKey::Author);
-    match (show_date, show_author) {
+    let show_feed = !grouped_keys.contains(&GroupKey::Feed);
+    match (show_date, show_feed) {
         (true, true) => format!("{}  {} ({})", format_date(item), item.title, item.feed),
         (true, false) => format!("{}  {}", format_date(item), item.title),
         (false, true) => format!("{} ({})", item.title, item.feed),
@@ -124,7 +124,7 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
     arg.chars()
         .map(|c| match c {
             'd' => Some(GroupKey::Date),
-            'a' => Some(GroupKey::Author),
+            'f' => Some(GroupKey::Feed),
             _ => None,
         })
         .collect()
@@ -179,7 +179,7 @@ fn cmd_show(store: &Path, group: &str) {
     let keys = match parse_grouping(group) {
         Some(keys) => keys,
         None => {
-            eprintln!("Unknown grouping: {}. Use: d, a, da, ad", group);
+            eprintln!("Unknown grouping: {}. Use: d, f, df, fd", group);
             return;
         }
     };
@@ -253,23 +253,23 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_grouping_author() {
-        assert_eq!(parse_grouping("a"), Some(vec![GroupKey::Author]));
+    fn test_parse_grouping_feed() {
+        assert_eq!(parse_grouping("f"), Some(vec![GroupKey::Feed]));
     }
 
     #[test]
-    fn test_parse_grouping_date_author() {
+    fn test_parse_grouping_date_feed() {
         assert_eq!(
-            parse_grouping("da"),
-            Some(vec![GroupKey::Date, GroupKey::Author])
+            parse_grouping("df"),
+            Some(vec![GroupKey::Date, GroupKey::Feed])
         );
     }
 
     #[test]
-    fn test_parse_grouping_author_date() {
+    fn test_parse_grouping_feed_date() {
         assert_eq!(
-            parse_grouping("ad"),
-            Some(vec![GroupKey::Author, GroupKey::Date])
+            parse_grouping("fd"),
+            Some(vec![GroupKey::Feed, GroupKey::Date])
         );
     }
 
@@ -296,16 +296,16 @@ mod tests {
     }
 
     #[test]
-    fn test_format_item_grouped_by_author() {
+    fn test_format_item_grouped_by_feed() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Author]), "2024-01-15  Post");
+        assert_eq!(format_item(&i, &[GroupKey::Feed]), "2024-01-15  Post");
     }
 
     #[test]
     fn test_format_item_grouped_by_both() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Date, GroupKey::Author]),
+            format_item(&i, &[GroupKey::Date, GroupKey::Feed]),
             "Post"
         );
     }
@@ -371,13 +371,13 @@ mod tests {
     }
 
     #[test]
-    fn test_render_grouped_by_author() {
+    fn test_render_grouped_by_feed() {
         let items = vec![
             item("Post A", "2024-01-02", "Bob"),
             item("Post B", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Author]);
+        let output = render_grouped(&refs, &[GroupKey::Feed]);
         assert_eq!(
             output,
             "\
@@ -396,14 +396,14 @@ mod tests {
     }
 
     #[test]
-    fn test_render_grouped_by_date_then_author() {
+    fn test_render_grouped_by_date_then_feed() {
         let items = vec![
             item("Post A", "2024-01-02", "Bob"),
             item("Post B", "2024-01-02", "Alice"),
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Author]);
+        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Feed]);
         assert_eq!(
             output,
             "\
@@ -429,14 +429,14 @@ mod tests {
     }
 
     #[test]
-    fn test_render_grouped_by_author_then_date() {
+    fn test_render_grouped_by_feed_then_date() {
         let items = vec![
             item("Post A", "2024-01-02", "Bob"),
             item("Post B", "2024-01-02", "Alice"),
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Author, GroupKey::Date]);
+        let output = render_grouped(&refs, &[GroupKey::Feed, GroupKey::Date]);
         assert_eq!(
             output,
             "\
@@ -484,14 +484,14 @@ mod tests {
     }
 
     #[test]
-    fn test_author_ordering_is_ascending() {
+    fn test_feed_ordering_is_ascending() {
         let items = vec![
             item("Post", "2024-01-01", "Charlie"),
             item("Post", "2024-01-02", "Alice"),
             item("Post", "2024-01-03", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Author]);
+        let output = render_grouped(&refs, &[GroupKey::Feed]);
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
