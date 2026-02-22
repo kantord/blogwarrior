@@ -509,6 +509,70 @@ fn test_feed_ls() {
 
     assert!(stdout.contains("https://example.com/feed1.xml"));
     assert!(stdout.contains("https://example.com/feed2.xml"));
+
+    // Each line should start with a shorthand consisting only of home-row characters
+    let home_row_chars: &[char] = &['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
+    for line in stdout.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let first_word: String = line.chars().take_while(|c| *c != ' ').collect();
+        assert!(first_word.starts_with('@'), "line should start with @shorthand: {}", line);
+        let shorthand = &first_word[1..];
+        assert!(!shorthand.is_empty(), "shorthand should not be empty: {}", line);
+        assert!(
+            shorthand.chars().all(|c| home_row_chars.contains(&c)),
+            "shorthand '{}' contains non-home-row characters in line: {}",
+            shorthand,
+            line,
+        );
+    }
+}
+
+#[test]
+fn test_feed_remove_by_shorthand() {
+    let ctx = TestContext::new();
+
+    let xml1 = rss_xml_with_guids(
+        "Keep Blog",
+        &[("Keep Post", "Mon, 01 Jan 2024 00:00:00 +0000", "guid-keep")],
+    );
+    ctx.mock_rss_feed("/keep.xml", &xml1);
+
+    let xml2 = rss_xml_with_guids(
+        "Remove Blog",
+        &[("Remove Post", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-remove")],
+    );
+    ctx.mock_rss_feed("/remove.xml", &xml2);
+
+    let keep_url = ctx.server.url("/keep.xml");
+    let remove_url = ctx.server.url("/remove.xml");
+    ctx.write_feeds(&[&keep_url, &remove_url]);
+    ctx.run(&["pull"]).success();
+
+    // Run feed ls and parse the shorthand for the remove_url
+    let output = ctx.run(&["feed", "ls"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    let shorthand = stdout
+        .lines()
+        .find(|line| line.contains(&remove_url))
+        .map(|line| {
+            let first_word: String = line.chars().take_while(|c| *c != ' ').collect();
+            first_word // includes the '@' prefix
+        })
+        .expect("should find remove_url in feed ls output");
+
+    // Remove using the shorthand
+    ctx.run(&["feed", "remove", &shorthand]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), keep_url);
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["title"].as_str().unwrap(), "Keep Post");
 }
 
 #[test]

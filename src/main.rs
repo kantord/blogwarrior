@@ -147,6 +147,86 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
         .collect()
 }
 
+const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
+
+fn hex_to_base9(hex: &str) -> String {
+    if hex.is_empty() {
+        return String::from("a");
+    }
+    // Parse hex string into a vector of digit values
+    let mut digits: Vec<u8> = hex
+        .chars()
+        .map(|c| c.to_digit(16).unwrap_or(0) as u8)
+        .collect();
+
+    let mut remainders = Vec::new();
+
+    // Long division: divide the base-16 number by 9 repeatedly
+    loop {
+        let mut remainder: u16 = 0;
+        let mut quotient = Vec::new();
+        for &d in &digits {
+            let current = remainder * 16 + d as u16;
+            quotient.push((current / 9) as u8);
+            remainder = current % 9;
+        }
+        remainders.push(remainder as u8);
+        // Strip leading zeros from quotient
+        digits = quotient.into_iter().skip_while(|&d| d == 0).collect();
+        if digits.is_empty() {
+            break;
+        }
+    }
+
+    // Remainders are in reverse order
+    remainders
+        .into_iter()
+        .rev()
+        .map(|d| HOME_ROW[d as usize])
+        .collect()
+}
+
+fn compute_shorthands(ids: &[String]) -> Vec<String> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
+
+    let base9s: Vec<String> = ids.iter().map(|id| hex_to_base9(id)).collect();
+
+    if base9s.len() == 1 {
+        return vec![base9s[0].chars().next().unwrap().to_string()];
+    }
+
+    // Find the shortest prefix length where all are unique
+    let max_len = base9s.iter().map(|s| s.len()).max().unwrap_or(1);
+    for len in 1..=max_len {
+        let prefixes: Vec<String> = base9s
+            .iter()
+            .map(|s| s.chars().take(len).collect::<String>())
+            .collect();
+        let unique: std::collections::HashSet<&String> = prefixes.iter().collect();
+        if unique.len() == prefixes.len() {
+            return prefixes;
+        }
+    }
+
+    // Fallback: return full strings
+    base9s
+}
+
+fn resolve_shorthand(feeds_table: &table::Table<FeedSource>, shorthand: &str) -> Option<String> {
+    let mut feeds = feeds_table.items();
+    feeds.sort_by(|a, b| a.url.cmp(&b.url));
+    let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
+    let shorthands = compute_shorthands(&ids);
+    for (feed, sh) in feeds.iter().zip(shorthands.iter()) {
+        if sh == shorthand {
+            return Some(feed.url.clone());
+        }
+    }
+    None
+}
+
 fn store_dir() -> PathBuf {
     std::env::var("RSS_STORE")
         .map(PathBuf::from)
@@ -156,6 +236,22 @@ fn store_dir() -> PathBuf {
 fn cmd_remove(store: &Path, url: &str) {
     let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let mut posts_table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
+
+    let resolved_url;
+    let url = if let Some(shorthand) = url.strip_prefix('@') {
+        match resolve_shorthand(&feeds_table, shorthand) {
+            Some(u) => {
+                resolved_url = u;
+                &resolved_url
+            }
+            None => {
+                eprintln!("Unknown shorthand: @{}", shorthand);
+                return;
+            }
+        }
+    } else {
+        url
+    };
 
     feeds_table.on_delete(url, |feed_id| {
         let post_keys: Vec<String> = posts_table
@@ -188,11 +284,13 @@ fn cmd_feed_ls(store: &Path) {
     let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let mut feeds = feeds_table.items();
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
-    for feed in &feeds {
+    let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
+    let shorthands = compute_shorthands(&ids);
+    for (feed, shorthand) in feeds.iter().zip(shorthands.iter()) {
         if feed.title.is_empty() {
-            println!("{}", feed.url);
+            println!("@{} {}", shorthand, feed.url);
         } else {
-            println!("{} ({})", feed.url, feed.title);
+            println!("@{} {} ({})", shorthand, feed.url, feed.title);
         }
     }
 }
@@ -548,5 +646,52 @@ mod tests {
             headers,
             vec!["=== Alice ===", "=== Bob ===", "=== Charlie ==="]
         );
+    }
+
+    #[test]
+    fn test_hex_to_base9() {
+        // "0" in hex = 0 in decimal = 0 in base9 = "a"
+        assert_eq!(hex_to_base9("0"), "a");
+        // "9" in hex = 9 in decimal = 10 in base9 = "sa"
+        assert_eq!(hex_to_base9("9"), "sa");
+        // "ff" in hex = 255 in decimal = 313 in base9 = "fsf"
+        assert_eq!(hex_to_base9("ff"), "fsf");
+        // "1" in hex = 1 in decimal = 1 in base9 = "s"
+        assert_eq!(hex_to_base9("1"), "s");
+        // "a" in hex = 10 in decimal = 11 in base9 = "ss"
+        assert_eq!(hex_to_base9("a"), "ss");
+    }
+
+    #[test]
+    fn test_compute_shorthands_unique_prefixes() {
+        // Two IDs that differ at the first base9 digit should get 1-char shorthands
+        let ids = vec!["00".to_string(), "ff".to_string()];
+        let shorthands = compute_shorthands(&ids);
+        assert_eq!(shorthands.len(), 2);
+        assert!(shorthands.iter().all(|s| s.len() == 1));
+        assert_ne!(shorthands[0], shorthands[1]);
+
+        // Two IDs that share a base9 prefix should get longer shorthands
+        let ids2 = vec!["aa".to_string(), "ab".to_string()];
+        let shorthands2 = compute_shorthands(&ids2);
+        assert_eq!(shorthands2.len(), 2);
+        assert_ne!(shorthands2[0], shorthands2[1]);
+        // They should be longer than 1 since they share a prefix in base9
+        assert!(shorthands2[0].len() > 1 || shorthands2[1].len() > 1 || shorthands2[0] != shorthands2[1]);
+    }
+
+    #[test]
+    fn test_compute_shorthands_single() {
+        let ids = vec!["abcdef".to_string()];
+        let shorthands = compute_shorthands(&ids);
+        assert_eq!(shorthands.len(), 1);
+        assert_eq!(shorthands[0].len(), 1);
+    }
+
+    #[test]
+    fn test_compute_shorthands_empty() {
+        let ids: Vec<String> = vec![];
+        let shorthands = compute_shorthands(&ids);
+        assert!(shorthands.is_empty());
     }
 }
