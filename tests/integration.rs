@@ -27,13 +27,25 @@ impl TestContext {
     }
 
     fn read_posts(&self) -> Vec<serde_json::Value> {
-        let file = fs::File::open(self.dir.path().join("posts").join("items.jsonl")).unwrap();
-        std::io::BufReader::new(file)
-            .lines()
-            .map(|l| l.unwrap())
-            .filter(|l| !l.trim().is_empty())
-            .map(|l| serde_json::from_str(&l).unwrap())
-            .collect()
+        let posts_dir = self.dir.path().join("posts");
+        let mut items = Vec::new();
+        if let Ok(entries) = fs::read_dir(&posts_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                        let file = fs::File::open(&path).unwrap();
+                        for line in std::io::BufReader::new(file).lines() {
+                            let line = line.unwrap();
+                            if !line.trim().is_empty() {
+                                items.push(serde_json::from_str(&line).unwrap());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        items
     }
 
     fn run(&self, args: &[&str]) -> assert_cmd::assert::Assert {
@@ -194,7 +206,7 @@ fn test_show_displays_posts() {
     let posts = r#"{"id":"1","source_id":"src","title":"Hello World","date":"2024-01-15T00:00:00Z","author":"Alice"}
 {"id":"2","source_id":"src","title":"Second Post","date":"2024-01-14T00:00:00Z","author":"Bob"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
-    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), posts).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -213,7 +225,7 @@ fn test_show_with_grouping() {
 {"id":"2","source_id":"src","title":"Post B","date":"2024-01-15T00:00:00Z","author":"Bob"}
 {"id":"3","source_id":"src","title":"Post C","date":"2024-01-14T00:00:00Z","author":"Alice"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
-    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), posts).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show", "-g", "d"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -232,7 +244,7 @@ fn test_show_default_no_subcommand() {
     let posts =
         r#"{"id":"1","source_id":"src","title":"Default Show","date":"2024-01-15T00:00:00Z","author":"Alice"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
-    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), posts).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&[]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -288,7 +300,18 @@ fn test_serde_roundtrip() {
         out.push_str(&serde_json::to_string(post).unwrap());
         out.push('\n');
     }
-    fs::write(ctx.dir.path().join("posts").join("items.jsonl"), &out).unwrap();
+    // Remove existing shard files and write all to a single shard
+    if let Ok(entries) = fs::read_dir(ctx.dir.path().join("posts")) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                    fs::remove_file(&path).unwrap();
+                }
+            }
+        }
+    }
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), &out).unwrap();
 
     let posts2 = ctx.read_posts();
     assert_eq!(posts, posts2);

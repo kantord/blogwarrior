@@ -15,29 +15,36 @@ pub fn hash_id(raw: &str) -> String {
 
 pub struct Table {
     items: HashMap<String, FeedItem>,
-    path: PathBuf,
+    dir: PathBuf,
+    shard_characters: usize,
 }
 
 impl Table {
-    fn new(path: PathBuf) -> Self {
-        Self {
+    pub fn load(store: &Path, name: &str, shard_characters: usize) -> Self {
+        let dir = store.join(name);
+        let mut table = Self {
             items: HashMap::new(),
-            path,
-        }
-    }
-
-    pub fn load(store: &Path, name: &str) -> Self {
-        let path = store.join(name).join("items.jsonl");
-        let mut table = Self::new(path);
-        if let Ok(file) = fs::File::open(&table.path) {
-            for line in std::io::BufReader::new(file).lines() {
-                let line = line.expect("failed to read line");
-                if line.trim().is_empty() {
-                    continue;
+            dir,
+            shard_characters,
+        };
+        if let Ok(entries) = fs::read_dir(&table.dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                        if let Ok(file) = fs::File::open(&path) {
+                            for line in std::io::BufReader::new(file).lines() {
+                                let line = line.expect("failed to read line");
+                                if line.trim().is_empty() {
+                                    continue;
+                                }
+                                let item: FeedItem = serde_json::from_str(&line)
+                                    .expect("failed to parse post entry");
+                                table.items.insert(item.id.clone(), item);
+                            }
+                        }
+                    }
                 }
-                let item: FeedItem =
-                    serde_json::from_str(&line).expect("failed to parse post entry");
-                table.items.insert(item.id.clone(), item);
             }
         }
         table
@@ -48,18 +55,44 @@ impl Table {
         self.items.insert(item.id.clone(), item);
     }
 
+    fn shard_key(&self, id: &str) -> String {
+        let end = self.shard_characters.min(id.len());
+        id[..end].to_string()
+    }
+
     pub fn save(&self) {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent).expect("failed to create table directory");
+        fs::create_dir_all(&self.dir).expect("failed to create table directory");
+
+        // Remove all existing shard files
+        if let Ok(entries) = fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                        fs::remove_file(&path).expect("failed to remove old shard file");
+                    }
+                }
+            }
         }
-        let mut sorted: Vec<&FeedItem> = self.items.values().collect();
-        sorted.sort_by(|a, b| a.id.cmp(&b.id));
-        let mut out = String::new();
-        for item in sorted {
-            out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
-            out.push('\n');
+
+        // Group items by shard key
+        let mut shards: HashMap<String, Vec<&FeedItem>> = HashMap::new();
+        for item in self.items.values() {
+            let key = self.shard_key(&item.id);
+            shards.entry(key).or_default().push(item);
         }
-        fs::write(&self.path, out).expect("failed to write posts file");
+
+        // Write each shard
+        for (prefix, mut items) in shards {
+            items.sort_by(|a, b| a.id.cmp(&b.id));
+            let mut out = String::new();
+            for item in items {
+                out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
+                out.push('\n');
+            }
+            let path = self.dir.join(format!("items_{}.jsonl", prefix));
+            fs::write(&path, out).expect("failed to write shard file");
+        }
     }
 
     pub fn items(&self) -> Vec<FeedItem> {
@@ -85,7 +118,7 @@ mod tests {
     #[test]
     fn test_upsert_hashes_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "test_table");
+        let mut table = Table::load(dir.path(), "test_table", 2);
         table.upsert(make_item("raw-id", "Post"));
         let items = table.items();
         assert_eq!(items.len(), 1);
@@ -95,7 +128,7 @@ mod tests {
     #[test]
     fn test_upsert_overwrites_existing() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "test_table");
+        let mut table = Table::load(dir.path(), "test_table", 2);
         table.upsert(make_item("same-id", "Original"));
         table.upsert(make_item("same-id", "Updated"));
         let items = table.items();
@@ -107,12 +140,12 @@ mod tests {
     fn test_load_save_roundtrip() {
         let dir = TempDir::new().unwrap();
 
-        let mut table = Table::load(dir.path(), "test_table");
+        let mut table = Table::load(dir.path(), "test_table", 2);
         table.upsert(make_item("id-1", "First"));
         table.upsert(make_item("id-2", "Second"));
         table.save();
 
-        let loaded = Table::load(dir.path(), "test_table");
+        let loaded = Table::load(dir.path(), "test_table", 2);
         assert_eq!(loaded.items().len(), 2);
 
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
@@ -123,18 +156,36 @@ mod tests {
     #[test]
     fn test_load_nonexistent_file() {
         let dir = TempDir::new().unwrap();
-        let table = Table::load(dir.path(), "nonexistent");
+        let table = Table::load(dir.path(), "nonexistent", 2);
         assert_eq!(table.items().len(), 0);
     }
 
+    /// Read all lines from all shard files in the table directory.
     fn read_lines(dir: &TempDir, name: &str) -> Vec<String> {
-        let path = dir.path().join(name).join("items.jsonl");
-        fs::read_to_string(path)
-            .unwrap()
-            .lines()
-            .filter(|l| !l.is_empty())
-            .map(String::from)
-            .collect()
+        let table_dir = dir.path().join(name);
+        let mut lines = Vec::new();
+        if let Ok(entries) = fs::read_dir(&table_dir) {
+            let mut paths: Vec<_> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|f| f.to_str())
+                        .is_some_and(|f| f.starts_with("items_") && f.ends_with(".jsonl"))
+                })
+                .collect();
+            paths.sort();
+            for path in paths {
+                for line in fs::read_to_string(&path)
+                    .unwrap()
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                {
+                    lines.push(line.to_string());
+                }
+            }
+        }
+        lines
     }
 
     fn ids_from_lines(lines: &[String]) -> Vec<String> {
@@ -147,10 +198,29 @@ mod tests {
             .collect()
     }
 
+    /// List shard file names in a table directory.
+    fn shard_files(dir: &TempDir, name: &str) -> Vec<String> {
+        let table_dir = dir.path().join(name);
+        let mut names: Vec<String> = fs::read_dir(&table_dir)
+            .unwrap()
+            .flatten()
+            .filter_map(|e| {
+                let fname = e.file_name().to_str()?.to_string();
+                if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                    Some(fname)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
     #[test]
     fn test_save_sorts_items_by_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t");
+        let mut table = Table::load(dir.path(), "t", 2);
         table.upsert(make_item("zzz", "Last"));
         table.upsert(make_item("aaa", "First"));
         table.upsert(make_item("mmm", "Middle"));
@@ -165,7 +235,7 @@ mod tests {
     #[test]
     fn test_save_sort_order_is_stable_across_roundtrips() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t");
+        let mut table = Table::load(dir.path(), "t", 2);
         table.upsert(make_item("c", "C"));
         table.upsert(make_item("a", "A"));
         table.upsert(make_item("b", "B"));
@@ -173,7 +243,7 @@ mod tests {
 
         let ids1 = ids_from_lines(&read_lines(&dir, "t"));
 
-        let loaded = Table::load(dir.path(), "t");
+        let loaded = Table::load(dir.path(), "t", 2);
         loaded.save();
 
         let ids2 = ids_from_lines(&read_lines(&dir, "t"));
@@ -183,12 +253,12 @@ mod tests {
     #[test]
     fn test_save_sort_order_preserved_after_upsert() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t");
+        let mut table = Table::load(dir.path(), "t", 2);
         table.upsert(make_item("b", "B"));
         table.upsert(make_item("a", "A"));
         table.save();
 
-        let mut table = Table::load(dir.path(), "t");
+        let mut table = Table::load(dir.path(), "t", 2);
         table.upsert(make_item("c", "C"));
         table.save();
 
@@ -201,7 +271,7 @@ mod tests {
     #[test]
     fn test_save_single_item_sorted() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t");
+        let mut table = Table::load(dir.path(), "t", 2);
         table.upsert(make_item("only", "Only"));
         table.save();
 
@@ -212,10 +282,136 @@ mod tests {
     #[test]
     fn test_save_empty_table() {
         let dir = TempDir::new().unwrap();
-        let table = Table::load(dir.path(), "t");
+        let table = Table::load(dir.path(), "t", 2);
         table.save();
 
         let lines = read_lines(&dir, "t");
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn test_items_land_in_correct_shard_files() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t", 2);
+        // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
+        table.items.insert(
+            "aabb11".to_string(),
+            make_item_with_id("aabb11", "Item AA"),
+        );
+        table.items.insert(
+            "aabb22".to_string(),
+            make_item_with_id("aabb22", "Item AA2"),
+        );
+        table.items.insert(
+            "ccdd33".to_string(),
+            make_item_with_id("ccdd33", "Item CC"),
+        );
+        table.save();
+
+        let files = shard_files(&dir, "t");
+        assert_eq!(files, vec!["items_aa.jsonl", "items_cc.jsonl"]);
+
+        // Check items_aa.jsonl has 2 items
+        let aa_content = fs::read_to_string(dir.path().join("t").join("items_aa.jsonl")).unwrap();
+        let aa_lines: Vec<&str> = aa_content.lines().filter(|l| !l.is_empty()).collect();
+        assert_eq!(aa_lines.len(), 2);
+
+        // Check items_cc.jsonl has 1 item
+        let cc_content = fs::read_to_string(dir.path().join("t").join("items_cc.jsonl")).unwrap();
+        let cc_lines: Vec<&str> = cc_content.lines().filter(|l| !l.is_empty()).collect();
+        assert_eq!(cc_lines.len(), 1);
+    }
+
+    #[test]
+    fn test_load_reads_from_multiple_shard_files() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        // Write two separate shard files
+        let item1 = r#"{"id":"aa1111","source_id":"test","title":"From AA","date":null,"author":"Author"}"#;
+        let item2 = r#"{"id":"bb2222","source_id":"test","title":"From BB","date":null,"author":"Author"}"#;
+        fs::write(table_dir.join("items_aa.jsonl"), format!("{}\n", item1)).unwrap();
+        fs::write(table_dir.join("items_bb.jsonl"), format!("{}\n", item2)).unwrap();
+
+        let table = Table::load(dir.path(), "t", 2);
+        assert_eq!(table.items().len(), 2);
+        let titles: Vec<String> = table.items().iter().map(|i| i.title.clone()).collect();
+        assert!(titles.contains(&"From AA".to_string()));
+        assert!(titles.contains(&"From BB".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_with_sharding_preserves_all_items() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t", 2);
+        table.upsert(make_item("alpha", "Alpha"));
+        table.upsert(make_item("beta", "Beta"));
+        table.upsert(make_item("gamma", "Gamma"));
+        table.save();
+
+        let loaded = Table::load(dir.path(), "t", 2);
+        assert_eq!(loaded.items().len(), 3);
+        let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
+        assert!(titles.contains(&"Alpha".to_string()));
+        assert!(titles.contains(&"Beta".to_string()));
+        assert!(titles.contains(&"Gamma".to_string()));
+    }
+
+    #[test]
+    fn test_shard_characters_zero_puts_everything_in_items_empty() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::load(dir.path(), "t", 0);
+        table.items.insert(
+            "aabb11".to_string(),
+            make_item_with_id("aabb11", "Item 1"),
+        );
+        table.items.insert(
+            "ccdd22".to_string(),
+            make_item_with_id("ccdd22", "Item 2"),
+        );
+        table.save();
+
+        let files = shard_files(&dir, "t");
+        assert_eq!(files, vec!["items_.jsonl"]);
+
+        let content = fs::read_to_string(dir.path().join("t").join("items_.jsonl")).unwrap();
+        let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn test_save_cleans_up_old_shard_files() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        // Create an old shard file with valid data that won't be needed after re-shard
+        let old_item = r#"{"id":"zz9999","source_id":"test","title":"Old","date":null,"author":"Author"}"#;
+        fs::write(table_dir.join("items_zz.jsonl"), format!("{}\n", old_item)).unwrap();
+
+        // Load picks up the old item, then we replace all items with a new one
+        let mut table = Table::load(dir.path(), "t", 2);
+        table.items.clear();
+        table.items.insert(
+            "aabb11".to_string(),
+            make_item_with_id("aabb11", "Item AA"),
+        );
+        table.save();
+
+        let files = shard_files(&dir, "t");
+        assert_eq!(files, vec!["items_aa.jsonl"]);
+        assert!(!table_dir.join("items_zz.jsonl").exists());
+    }
+
+    /// Helper to create a FeedItem with a pre-set id (no hashing).
+    fn make_item_with_id(id: &str, title: &str) -> FeedItem {
+        FeedItem {
+            id: id.to_string(),
+            source_id: "test".to_string(),
+            title: title.to_string(),
+            date: None,
+            author: "Author".to_string(),
+        }
     }
 }

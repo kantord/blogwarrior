@@ -148,7 +148,7 @@ fn load_sources(store: &Path) -> Vec<FeedSource> {
 
 fn cmd_pull(store: &Path) {
     let sources = load_sources(store);
-    let mut table = table::Table::load(store, "posts");
+    let mut table = table::Table::load(store, "posts", 1);
     for source in &sources {
         for item in feed::fetch(&source.url) {
             table.upsert(item);
@@ -166,7 +166,7 @@ fn cmd_show(store: &Path, group: &str) {
         }
     };
 
-    let table = table::Table::load(store, "posts");
+    let table = table::Table::load(store, "posts", 1);
     let mut items = table.items();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
