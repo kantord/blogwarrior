@@ -3,14 +3,23 @@ use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub trait TableRow: Clone + Serialize + DeserializeOwned {
+pub trait TableRow: Clone + PartialEq + Serialize + DeserializeOwned {
     fn id(&self) -> &str;
     fn set_id(&mut self, id: String);
     fn raw_id(&self) -> &str;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Row<T> {
+    #[serde(flatten)]
+    pub inner: T,
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 pub fn hash_id(raw: &str, id_length: usize) -> String {
@@ -29,7 +38,7 @@ pub fn id_length_for_capacity(expected_items: usize) -> usize {
 }
 
 pub struct Table<T: TableRow> {
-    items: HashMap<String, T>,
+    items: HashMap<String, Row<T>>,
     dir: PathBuf,
     shard_characters: usize,
     id_length: usize,
@@ -57,9 +66,9 @@ impl<T: TableRow> Table<T> {
                         if line.trim().is_empty() {
                             continue;
                         }
-                        let item: T = serde_json::from_str(&line)
+                        let row: Row<T> = serde_json::from_str(&line)
                             .expect("failed to parse entry");
-                        table.items.insert(item.id().to_string(), item);
+                        table.items.insert(row.inner.id().to_string(), row);
                     }
                 }
             }
@@ -68,8 +77,16 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn upsert(&mut self, mut item: T) {
-        item.set_id(hash_id(item.raw_id(), self.id_length));
-        self.items.insert(item.id().to_string(), item);
+        let id = hash_id(item.raw_id(), self.id_length);
+        item.set_id(id.clone());
+
+        if let Some(existing) = self.items.get(&id)
+            && item == existing.inner
+        {
+            return;
+        }
+
+        self.items.insert(id, Row { inner: item, updated_at: Some(Utc::now()) });
     }
 
     fn shard_key(&self, id: &str) -> String {
@@ -93,18 +110,18 @@ impl<T: TableRow> Table<T> {
         }
 
         // Group items by shard key
-        let mut shards: HashMap<String, Vec<&T>> = HashMap::new();
-        for item in self.items.values() {
-            let key = self.shard_key(item.id());
-            shards.entry(key).or_default().push(item);
+        let mut shards: HashMap<String, Vec<&Row<T>>> = HashMap::new();
+        for row in self.items.values() {
+            let key = self.shard_key(row.inner.id());
+            shards.entry(key).or_default().push(row);
         }
 
         // Write each shard
-        for (prefix, mut items) in shards {
-            items.sort_by(|a, b| a.id().cmp(b.id()));
+        for (prefix, mut rows) in shards {
+            rows.sort_by(|a, b| a.inner.id().cmp(b.inner.id()));
             let mut out = String::new();
-            for item in items {
-                out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
+            for row in rows {
+                out.push_str(&serde_json::to_string(row).expect("failed to serialize item"));
                 out.push('\n');
             }
             let path = self.dir.join(format!("items_{}.jsonl", prefix));
@@ -113,7 +130,7 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn items(&self) -> Vec<T> {
-        self.items.values().cloned().collect()
+        self.items.values().map(|r| r.inner.clone()).collect()
     }
 }
 
@@ -454,12 +471,81 @@ mod tests {
         assert_eq!(items[0].title, "Second");
     }
 
-    /// Helper to create a TestItem with a pre-set id (no hashing).
-    fn make_item_with_id(id: &str, title: &str) -> TestItem {
-        TestItem {
-            id: id.to_string(),
-            raw_id: String::new(),
-            title: title.to_string(),
+    fn get_updated_at(table: &Table<TestItem>) -> Option<DateTime<Utc>> {
+        table.items.values().next().unwrap().updated_at
+    }
+
+    #[test]
+    fn test_upsert_sets_updated_at_on_new_item() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("new", "New Item"));
+        assert!(get_updated_at(&table).is_some());
+    }
+
+    #[test]
+    fn test_upsert_preserves_updated_at_when_unchanged() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Same"));
+        let ts1 = get_updated_at(&table);
+
+        // Upsert identical content — updated_at should not change
+        table.upsert(make_item("x", "Same"));
+        let ts2 = get_updated_at(&table);
+        assert_eq!(ts1, ts2);
+    }
+
+    #[test]
+    fn test_upsert_updates_updated_at_when_content_changes() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Original"));
+        let ts1 = get_updated_at(&table);
+
+        table.upsert(make_item("x", "Changed"));
+        let ts2 = get_updated_at(&table);
+        assert_ne!(ts1, ts2);
+        assert!(ts2 > ts1);
+    }
+
+    #[test]
+    fn test_updated_at_survives_save_load_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Item"));
+        let ts = get_updated_at(&table);
+        table.save();
+
+        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        assert_eq!(get_updated_at(&loaded), ts);
+    }
+
+    #[test]
+    fn test_upsert_unchanged_after_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Item"));
+        table.save();
+
+        let mut loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let ts_before = get_updated_at(&loaded);
+
+        // Re-upsert same content after loading from disk
+        loaded.upsert(make_item("x", "Item"));
+        let ts_after = get_updated_at(&loaded);
+        assert_eq!(ts_before, ts_after);
+    }
+
+    /// Helper to create a Row with a pre-set id (no hashing).
+    fn make_item_with_id(id: &str, title: &str) -> Row<TestItem> {
+        Row {
+            inner: TestItem {
+                id: id.to_string(),
+                raw_id: String::new(),
+                title: title.to_string(),
+            },
+            updated_at: None,
         }
     }
 }

@@ -40,6 +40,7 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn st
                 .map(|d| d.to_utc()),
             feed: String::new(),
             link: item.link().unwrap_or_default().to_string(),
+
         })
         .collect();
 

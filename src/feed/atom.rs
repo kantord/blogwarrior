@@ -41,6 +41,7 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn st
                 .or_else(|| entry.links().first())
                 .map(|l| l.href().to_string())
                 .unwrap_or_default(),
+
         })
         .collect();
 

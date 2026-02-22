@@ -67,6 +67,7 @@ mod tests {
             feed: "abc123".to_string(),
             link: String::new(),
             raw_id: String::new(),
+
         };
 
         let json = serde_json::to_string(&item).unwrap();
@@ -83,6 +84,7 @@ mod tests {
             feed: "def456".to_string(),
             link: String::new(),
             raw_id: String::new(),
+
         };
 
         let json = serde_json::to_string(&item).unwrap();

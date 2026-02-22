@@ -239,6 +239,7 @@ mod tests {
             feed: feed.to_string(),
             link: String::new(),
             raw_id: String::new(),
+
         }
     }
 
@@ -325,6 +326,7 @@ mod tests {
             feed: "Alice".to_string(),
             link: String::new(),
             raw_id: String::new(),
+
         };
         assert_eq!(format_date(&i), "unknown");
     }
