@@ -12,25 +12,37 @@ pub trait TableRow: Clone + Serialize + DeserializeOwned {
     fn set_id(&mut self, id: String);
 }
 
-pub fn hash_id(raw: &str) -> String {
+pub fn hash_id(raw: &str, id_length: usize) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw.as_bytes());
-    format!("{:x}", hasher.finalize())[..14].to_string()
+    format!("{:x}", hasher.finalize())[..id_length].to_string()
+}
+
+pub fn id_length_for_capacity(expected_items: usize) -> usize {
+    if expected_items <= 1 {
+        return 4;
+    }
+    let k = expected_items as f64;
+    let n = (500.0 * k * k).ln() / 16_f64.ln();
+    (n.ceil() as usize).max(4)
 }
 
 pub struct Table<T: TableRow> {
     items: HashMap<String, T>,
     dir: PathBuf,
     shard_characters: usize,
+    id_length: usize,
 }
 
 impl<T: TableRow> Table<T> {
-    pub fn load(store: &Path, name: &str, shard_characters: usize) -> Self {
+    pub fn load(store: &Path, name: &str, shard_characters: usize, expected_items: usize) -> Self {
         let dir = store.join(name);
+        let id_length = id_length_for_capacity(expected_items);
         let mut table = Self {
             items: HashMap::new(),
             dir,
             shard_characters,
+            id_length,
         };
         if let Ok(entries) = fs::read_dir(&table.dir) {
             for entry in entries.flatten() {
@@ -56,7 +68,7 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn upsert(&mut self, mut item: T) {
-        item.set_id(hash_id(item.id()));
+        item.set_id(hash_id(item.id(), self.id_length));
         self.items.insert(item.id().to_string(), item);
     }
 
@@ -136,17 +148,17 @@ mod tests {
     #[test]
     fn test_upsert_hashes_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
         table.upsert(make_item("raw-id", "Post"));
         let items = table.items();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].id, hash_id("raw-id"));
+        assert_eq!(items[0].id, hash_id("raw-id", id_length_for_capacity(1000)));
     }
 
     #[test]
     fn test_upsert_overwrites_existing() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
         table.upsert(make_item("same-id", "Original"));
         table.upsert(make_item("same-id", "Updated"));
         let items = table.items();
@@ -158,12 +170,12 @@ mod tests {
     fn test_load_save_roundtrip() {
         let dir = TempDir::new().unwrap();
 
-        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
         table.upsert(make_item("id-1", "First"));
         table.upsert(make_item("id-2", "Second"));
         table.save();
 
-        let loaded = Table::<TestItem>::load(dir.path(), "test_table", 2);
+        let loaded = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
         assert_eq!(loaded.items().len(), 2);
 
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
@@ -174,7 +186,7 @@ mod tests {
     #[test]
     fn test_load_nonexistent_file() {
         let dir = TempDir::new().unwrap();
-        let table = Table::<TestItem>::load(dir.path(), "nonexistent", 2);
+        let table = Table::<TestItem>::load(dir.path(), "nonexistent", 2, 1000);
         assert_eq!(table.items().len(), 0);
     }
 
@@ -238,7 +250,7 @@ mod tests {
     #[test]
     fn test_save_sorts_items_by_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("zzz", "Last"));
         table.upsert(make_item("aaa", "First"));
         table.upsert(make_item("mmm", "Middle"));
@@ -253,7 +265,7 @@ mod tests {
     #[test]
     fn test_save_sort_order_is_stable_across_roundtrips() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("c", "C"));
         table.upsert(make_item("a", "A"));
         table.upsert(make_item("b", "B"));
@@ -261,7 +273,7 @@ mod tests {
 
         let ids1 = ids_from_lines(&read_lines(&dir, "t"));
 
-        let loaded = Table::<TestItem>::load(dir.path(), "t", 2);
+        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         loaded.save();
 
         let ids2 = ids_from_lines(&read_lines(&dir, "t"));
@@ -271,12 +283,12 @@ mod tests {
     #[test]
     fn test_save_sort_order_preserved_after_upsert() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("b", "B"));
         table.upsert(make_item("a", "A"));
         table.save();
 
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("c", "C"));
         table.save();
 
@@ -289,7 +301,7 @@ mod tests {
     #[test]
     fn test_save_single_item_sorted() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("only", "Only"));
         table.save();
 
@@ -300,7 +312,7 @@ mod tests {
     #[test]
     fn test_save_empty_table() {
         let dir = TempDir::new().unwrap();
-        let table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.save();
 
         let lines = read_lines(&dir, "t");
@@ -310,7 +322,7 @@ mod tests {
     #[test]
     fn test_items_land_in_correct_shard_files() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
         table.items.insert(
             "aabb11".to_string(),
@@ -352,7 +364,7 @@ mod tests {
         fs::write(table_dir.join("items_aa.jsonl"), format!("{}\n", item1)).unwrap();
         fs::write(table_dir.join("items_bb.jsonl"), format!("{}\n", item2)).unwrap();
 
-        let table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         assert_eq!(table.items().len(), 2);
         let titles: Vec<String> = table.items().iter().map(|i| i.title.clone()).collect();
         assert!(titles.contains(&"From AA".to_string()));
@@ -362,13 +374,13 @@ mod tests {
     #[test]
     fn test_roundtrip_with_sharding_preserves_all_items() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("alpha", "Alpha"));
         table.upsert(make_item("beta", "Beta"));
         table.upsert(make_item("gamma", "Gamma"));
         table.save();
 
-        let loaded = Table::<TestItem>::load(dir.path(), "t", 2);
+        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         assert_eq!(loaded.items().len(), 3);
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
         assert!(titles.contains(&"Alpha".to_string()));
@@ -379,7 +391,7 @@ mod tests {
     #[test]
     fn test_shard_characters_zero_puts_everything_in_items_empty() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 0);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 0, 1000);
         table.items.insert(
             "aabb11".to_string(),
             make_item_with_id("aabb11", "Item 1"),
@@ -409,7 +421,7 @@ mod tests {
         fs::write(table_dir.join("items_zz.jsonl"), format!("{}\n", old_item)).unwrap();
 
         // Load picks up the old item, then we replace all items with a new one
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.items.clear();
         table.items.insert(
             "aabb11".to_string(),

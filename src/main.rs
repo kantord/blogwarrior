@@ -136,7 +136,7 @@ fn store_dir() -> PathBuf {
 }
 
 fn cmd_add(store: &Path, url: &str) {
-    let mut table = table::Table::<FeedSource>::load(store, "feeds", 0);
+    let mut table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     table.upsert(FeedSource {
         id: url.to_string(),
         url: url.to_string(),
@@ -145,9 +145,9 @@ fn cmd_add(store: &Path, url: &str) {
 }
 
 fn cmd_pull(store: &Path) {
-    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0);
+    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let sources = feeds_table.items();
-    let mut table = table::Table::<FeedItem>::load(store, "posts", 1);
+    let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
     for source in &sources {
         for item in feed::fetch(&source.url) {
             table.upsert(item);
@@ -165,7 +165,7 @@ fn cmd_show(store: &Path, group: &str) {
         }
     };
 
-    let table = table::Table::<FeedItem>::load(store, "posts", 1);
+    let table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
     let mut items = table.items();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
