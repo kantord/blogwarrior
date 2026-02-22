@@ -1,9 +1,31 @@
 use std::fs;
 use std::io::BufRead;
+use std::path::Path;
 
 use assert_cmd::Command;
 use httpmock::prelude::*;
 use tempfile::TempDir;
+
+fn read_table(dir: &Path) -> Vec<serde_json::Value> {
+    let mut items = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                    let file = fs::File::open(&path).unwrap();
+                    for line in std::io::BufReader::new(file).lines() {
+                        let line = line.unwrap();
+                        if !line.trim().is_empty() {
+                            items.push(serde_json::from_str(&line).unwrap());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    items
+}
 
 struct TestContext {
     dir: TempDir,
@@ -29,25 +51,11 @@ impl TestContext {
     }
 
     fn read_posts(&self) -> Vec<serde_json::Value> {
-        let posts_dir = self.dir.path().join("posts");
-        let mut items = Vec::new();
-        if let Ok(entries) = fs::read_dir(&posts_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
-                        let file = fs::File::open(&path).unwrap();
-                        for line in std::io::BufReader::new(file).lines() {
-                            let line = line.unwrap();
-                            if !line.trim().is_empty() {
-                                items.push(serde_json::from_str(&line).unwrap());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        items
+        read_table(&self.dir.path().join("posts"))
+    }
+
+    fn read_feeds(&self) -> Vec<serde_json::Value> {
+        read_table(&self.dir.path().join("feeds"))
     }
 
     fn run(&self, args: &[&str]) -> assert_cmd::assert::Assert {
@@ -75,30 +83,6 @@ impl TestContext {
                 .header("Content-Type", "application/atom+xml")
                 .body(xml);
         });
-    }
-}
-
-impl TestContext {
-    fn read_feeds(&self) -> Vec<serde_json::Value> {
-        let feeds_dir = self.dir.path().join("feeds");
-        let mut items = Vec::new();
-        if let Ok(entries) = fs::read_dir(&feeds_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
-                        let file = fs::File::open(&path).unwrap();
-                        for line in std::io::BufReader::new(file).lines() {
-                            let line = line.unwrap();
-                            if !line.trim().is_empty() {
-                                items.push(serde_json::from_str(&line).unwrap());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        items
     }
 }
 
