@@ -1,4 +1,5 @@
 mod feed;
+mod table;
 
 use std::fmt::Write;
 use std::fs;
@@ -147,14 +148,14 @@ fn load_sources(store: &Path) -> Vec<FeedSource> {
 
 fn cmd_pull(store: &Path) {
     let sources = load_sources(store);
-    let items: Vec<FeedItem> = sources.iter().flat_map(|s| feed::fetch(&s.url)).collect();
-
-    let mut out = String::new();
-    for item in &items {
-        out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
-        out.push('\n');
+    let posts_path = store.join("posts.jsonl");
+    let mut table = table::Table::load(&posts_path);
+    for source in &sources {
+        for item in feed::fetch(&source.url) {
+            table.upsert(item);
+        }
     }
-    fs::write(store.join("posts.jsonl"), out).expect("failed to write posts.jsonl");
+    table.save(&posts_path);
 }
 
 fn cmd_show(store: &Path, group: &str) {
@@ -166,13 +167,8 @@ fn cmd_show(store: &Path, group: &str) {
         }
     };
 
-    let file = fs::File::open(store.join("posts.jsonl")).expect("failed to open posts.jsonl");
-    let mut items: Vec<FeedItem> = std::io::BufReader::new(file)
-        .lines()
-        .map(|l| l.expect("failed to read line"))
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(&l).expect("failed to parse post entry"))
-        .collect();
+    let table = table::Table::load(&store.join("posts.jsonl"));
+    let mut items = table.items();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
 

@@ -12,7 +12,7 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
     feed.entries()
         .iter()
         .map(|entry| FeedItem {
-            id: super::hash_id(entry.id()),
+            id: entry.id().to_string(),
             source_id: source_id.clone(),
             title: entry.title().as_str().to_string(),
             date: entry
@@ -26,7 +26,6 @@ pub fn parse<R: Read>(reader: R) -> Vec<FeedItem> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::hash_id;
     use super::*;
 
     #[test]
@@ -54,7 +53,7 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
-        assert_eq!(items[0].id, hash_id("urn:post:1"));
+        assert_eq!(items[0].id, "urn:post:1");
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
@@ -62,7 +61,7 @@ mod tests {
         assert_eq!(items[0].author, "Test Blog");
         assert_eq!(items[0].source_id, "urn:test");
         assert_eq!(items[1].title, "Second Post");
-        assert_eq!(items[1].id, hash_id("urn:post:2"));
+        assert_eq!(items[1].id, "urn:post:2");
         assert_eq!(
             items[1].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-02"

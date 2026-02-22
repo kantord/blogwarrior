@@ -22,13 +22,11 @@ pub fn parse<R: Read>(reader: R, source_id: &str) -> Vec<FeedItem> {
         .items()
         .iter()
         .map(|item| FeedItem {
-            id: super::hash_id(
-                &item
-                    .guid()
-                    .map(|g| g.value().to_string())
-                    .or_else(|| item.link().map(|l| normalize_url(l)))
-                    .unwrap_or_default(),
-            ),
+            id: item
+                .guid()
+                .map(|g| g.value().to_string())
+                .or_else(|| item.link().map(|l| normalize_url(l)))
+                .unwrap_or_default(),
             source_id: source_id.clone(),
             title: item.title().unwrap_or("untitled").to_string(),
             date: item
@@ -42,7 +40,6 @@ pub fn parse<R: Read>(reader: R, source_id: &str) -> Vec<FeedItem> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::hash_id;
     use super::*;
 
     #[test]
@@ -66,7 +63,7 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
-        assert_eq!(items[0].id, hash_id(""));
+        assert_eq!(items[0].id, "");
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
@@ -164,7 +161,7 @@ mod tests {
 
         let items = parse(xml.as_bytes(), "https://example.com/feed.xml");
 
-        assert_eq!(items[0].id, hash_id("https://example.com/post/1"));
+        assert_eq!(items[0].id, "https://example.com/post/1");
     }
 
     #[test]
@@ -182,7 +179,7 @@ mod tests {
 
         let items = parse(xml.as_bytes(), "https://example.com/feed.xml");
 
-        assert_eq!(items[0].id, hash_id("https://example.com/post/1"));
+        assert_eq!(items[0].id, "https://example.com/post/1");
     }
 
     #[test]
@@ -200,7 +197,7 @@ mod tests {
 
         let items = parse(xml.as_bytes(), "https://example.com/feed.xml");
 
-        assert_eq!(items[0].id, hash_id("https://example.com/post/1"));
+        assert_eq!(items[0].id, "https://example.com/post/1");
     }
 
     #[test]
@@ -217,7 +214,7 @@ mod tests {
 
         let items = parse(xml.as_bytes(), "https://example.com/feed.xml");
 
-        assert_eq!(items[0].id, hash_id(""));
+        assert_eq!(items[0].id, "");
     }
 
     #[test]
@@ -236,6 +233,6 @@ mod tests {
 
         let items = parse(xml.as_bytes(), "https://example.com/feed.xml");
 
-        assert_eq!(items[0].id, hash_id("urn:uuid:123"));
+        assert_eq!(items[0].id, "urn:uuid:123");
     }
 }

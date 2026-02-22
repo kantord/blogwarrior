@@ -64,13 +64,36 @@ impl TestContext {
     }
 }
 
+fn rss_xml_with_guids(title: &str, items: &[(&str, &str, &str)]) -> String {
+    let items_xml: String = items
+        .iter()
+        .map(|(item_title, date, guid)| {
+            format!(
+                "<item><title>{}</title><pubDate>{}</pubDate><guid>{}</guid></item>",
+                item_title, date, guid
+            )
+        })
+        .collect();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>{}</title>
+    {}
+  </channel>
+</rss>"#,
+        title, items_xml
+    )
+}
+
 fn rss_xml(title: &str, items: &[(&str, &str)]) -> String {
     let items_xml: String = items
         .iter()
-        .map(|(item_title, date)| {
+        .enumerate()
+        .map(|(i, (item_title, date))| {
             format!(
-                "<item><title>{}</title><pubDate>{}</pubDate></item>",
-                item_title, date
+                "<item><title>{}</title><pubDate>{}</pubDate><guid>urn:item:{}</guid></item>",
+                item_title, date, i
             )
         })
         .collect();
@@ -127,9 +150,10 @@ fn test_pull_creates_posts_file() {
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
-    assert_eq!(posts[0]["title"], "First Post");
-    assert_eq!(posts[1]["title"], "Second Post");
-    assert_eq!(posts[0]["author"], "Test Blog");
+    let titles: Vec<&str> = posts.iter().map(|p| p["title"].as_str().unwrap()).collect();
+    assert!(titles.contains(&"First Post"));
+    assert!(titles.contains(&"Second Post"));
+    assert!(posts.iter().all(|p| p["author"] == "Test Blog"));
 }
 
 #[test]
@@ -265,4 +289,51 @@ fn test_serde_roundtrip() {
 
     let posts2 = ctx.read_posts();
     assert_eq!(posts, posts2);
+}
+
+#[test]
+fn test_pull_twice_no_duplicates() {
+    let ctx = TestContext::new();
+
+    let xml1 = rss_xml_with_guids(
+        "Blog",
+        &[
+            ("Post A", "Mon, 01 Jan 2024 00:00:00 +0000", "guid-a"),
+            ("Post B", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-b"),
+        ],
+    );
+    ctx.mock_rss_feed("/feed.xml", &xml1);
+
+    let url = ctx.server.url("/feed.xml");
+    ctx.write_feeds(&[&url]);
+
+    ctx.run(&["pull"]).success();
+    let posts1 = ctx.read_posts();
+    assert_eq!(posts1.len(), 2);
+
+    // Second pull with overlapping + new item
+    let xml2 = rss_xml_with_guids(
+        "Blog",
+        &[
+            ("Post B Updated", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-b"),
+            ("Post C", "Wed, 03 Jan 2024 00:00:00 +0000", "guid-c"),
+        ],
+    );
+    ctx.mock_rss_feed("/feed2.xml", &xml2);
+
+    let url2 = ctx.server.url("/feed2.xml");
+    ctx.write_feeds(&[&url2]);
+
+    ctx.run(&["pull"]).success();
+    let posts2 = ctx.read_posts();
+
+    // Should have 3 items: A (from first pull, preserved), B (updated), C (new)
+    assert_eq!(posts2.len(), 3);
+
+    let titles: Vec<&str> = posts2.iter().map(|p| p["title"].as_str().unwrap()).collect();
+    assert!(titles.contains(&"Post A"));
+    assert!(titles.contains(&"Post B Updated"));
+    assert!(titles.contains(&"Post C"));
+    // Original "Post B" should be overwritten
+    assert!(!titles.contains(&"Post B"));
 }

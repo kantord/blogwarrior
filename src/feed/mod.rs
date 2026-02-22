@@ -3,21 +3,14 @@ pub mod rss;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedItem {
     pub id: String,
     pub source_id: String,
     pub title: String,
     pub date: Option<DateTime<Utc>>,
     pub author: String,
-}
-
-pub fn hash_id(raw: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(raw.as_bytes());
-    format!("{:x}", hasher.finalize())[..14].to_string()
 }
 
 pub fn fetch(url: &str) -> Vec<FeedItem> {
@@ -40,7 +33,7 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_with_date() {
         let item = FeedItem {
-            id: hash_id("https://example.com/post/1"),
+            id: "https://example.com/post/1".to_string(),
             source_id: "https://example.com/feed.xml".to_string(),
             title: "Test Post".to_string(),
             date: Some(
@@ -61,7 +54,7 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_without_date() {
         let item = FeedItem {
-            id: hash_id("urn:post:2"),
+            id: "urn:post:2".to_string(),
             source_id: "urn:test".to_string(),
             title: "No Date Post".to_string(),
             date: None,
