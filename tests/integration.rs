@@ -243,7 +243,7 @@ fn test_show_with_grouping() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["show", "-g", "d"]).success();
+    let output = ctx.run(&["show", "d"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
 
     assert!(stdout.contains("=== 2024-01-15 ==="));

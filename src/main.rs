@@ -20,8 +20,8 @@ struct Args {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Filter by feed @shorthand
-    filter: Option<String>,
+    /// Positional arguments: grouping mode (d, f, df, fd) and/or @shorthand filter
+    args: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -30,12 +30,8 @@ enum Command {
     Pull,
     /// Display items from posts.jsonl
     Show {
-        /// Grouping mode: d (date), f (feed), or combinations like df, fd
-        #[arg(short, long, default_value = "")]
-        group: String,
-
-        /// Filter by feed @shorthand
-        filter: Option<String>,
+        /// Positional arguments: grouping mode (d, f, df, fd) and/or @shorthand filter
+        args: Vec<String>,
     },
     /// Manage feed subscriptions
     Feed {
@@ -152,6 +148,19 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
             _ => None,
         })
         .collect()
+}
+
+fn parse_show_args(args: &[String]) -> (String, Option<String>) {
+    let mut group = String::new();
+    let mut filter = None;
+    for arg in args {
+        if arg.starts_with('@') {
+            filter = Some(arg.clone());
+        } else {
+            group = arg.clone();
+        }
+    }
+    (group, filter)
 }
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
@@ -410,11 +419,17 @@ fn main() {
 
     match args.command {
         Some(Command::Pull) => cmd_pull(&store),
-        Some(Command::Show { ref group, ref filter }) => cmd_show(&store, group, filter.as_deref()),
+        Some(Command::Show { ref args }) => {
+            let (group, filter) = parse_show_args(args);
+            cmd_show(&store, &group, filter.as_deref());
+        }
         Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
         Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => cmd_remove(&store, url),
         Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),
-        None => cmd_show(&store, "", args.filter.as_deref()),
+        None => {
+            let (group, filter) = parse_show_args(&args.args);
+            cmd_show(&store, &group, filter.as_deref());
+        }
     }
 }
 
