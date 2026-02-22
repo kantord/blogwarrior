@@ -11,6 +11,7 @@ use itertools::Itertools;
 
 use feed::FeedItem;
 use feed_source::FeedSource;
+use table::TableRow;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
@@ -32,6 +33,11 @@ enum Command {
     /// Subscribe to a feed by URL
     Add {
         /// The feed URL to subscribe to
+        url: String,
+    },
+    /// Unsubscribe from a feed by URL
+    Remove {
+        /// The feed URL to unsubscribe from
         url: String,
     },
 }
@@ -136,6 +142,26 @@ fn store_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
+fn cmd_remove(store: &Path, url: &str) {
+    let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let mut posts_table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
+
+    feeds_table.on_delete(url, |feed_id| {
+        let post_keys: Vec<String> = posts_table
+            .items()
+            .iter()
+            .filter(|p| p.feed == feed_id)
+            .map(|p| p.key())
+            .collect();
+        for key in post_keys {
+            posts_table.delete(&key);
+        }
+    });
+
+    feeds_table.save();
+    posts_table.save();
+}
+
 fn cmd_add(store: &Path, url: &str) {
     let mut table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     table.upsert(FeedSource {
@@ -215,6 +241,7 @@ fn main() {
         Some(Command::Pull) => cmd_pull(&store),
         Some(Command::Show { ref group }) => cmd_show(&store, group),
         Some(Command::Add { ref url }) => cmd_add(&store, url),
+        Some(Command::Remove { ref url }) => cmd_remove(&store, url),
         None => cmd_show(&store, ""),
     }
 }

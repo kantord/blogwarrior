@@ -18,7 +18,10 @@ fn read_table(dir: &Path) -> Vec<serde_json::Value> {
                 for line in std::io::BufReader::new(file).lines() {
                     let line = line.unwrap();
                     if !line.trim().is_empty() {
-                        items.push(serde_json::from_str(&line).unwrap());
+                        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+                        if value.get("deleted_at").is_none() {
+                            items.push(value);
+                        }
                     }
                 }
             }
@@ -432,4 +435,88 @@ fn test_pull_continues_after_feed_failure() {
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0]["title"].as_str().unwrap(), "Good Post");
+}
+
+#[test]
+fn test_remove_feed() {
+    let ctx = TestContext::new();
+    let xml = rss_xml(
+        "Blog to Remove",
+        &[("Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/removable.xml", &xml);
+
+    let url = ctx.server.url("/removable.xml");
+    ctx.run(&["add", &url]).success();
+    ctx.run(&["pull"]).success();
+
+    let output = ctx.run(&["show"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("Blog to Remove"));
+
+    ctx.run(&["remove", &url]).success();
+
+    // Pull should no longer fetch the removed feed
+    ctx.run(&["pull"]).success();
+
+    // Feed title should no longer appear in show output
+    let output = ctx.run(&["show"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    // Feed and its posts should be gone
+    assert!(!stdout.contains("Blog to Remove"));
+}
+
+#[test]
+fn test_remove_feed_deletes_its_posts() {
+    let ctx = TestContext::new();
+
+    let xml1 = rss_xml_with_guids(
+        "Keep Blog",
+        &[("Keep Post", "Mon, 01 Jan 2024 00:00:00 +0000", "guid-keep")],
+    );
+    ctx.mock_rss_feed("/keep.xml", &xml1);
+
+    let xml2 = rss_xml_with_guids(
+        "Remove Blog",
+        &[("Remove Post", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-remove")],
+    );
+    ctx.mock_rss_feed("/remove.xml", &xml2);
+
+    let keep_url = ctx.server.url("/keep.xml");
+    let remove_url = ctx.server.url("/remove.xml");
+    ctx.write_feeds(&[&keep_url, &remove_url]);
+    ctx.run(&["pull"]).success();
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 2);
+
+    ctx.run(&["remove", &remove_url]).success();
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["title"].as_str().unwrap(), "Keep Post");
+}
+
+#[test]
+fn test_remove_then_readd_feed() {
+    let ctx = TestContext::new();
+    let xml = rss_xml(
+        "Returning Blog",
+        &[("Old Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/returning.xml", &xml);
+
+    let url = ctx.server.url("/returning.xml");
+    ctx.run(&["add", &url]).success();
+    ctx.run(&["pull"]).success();
+    ctx.run(&["remove", &url]).success();
+
+    // Re-add and pull again
+    ctx.run(&["add", &url]).success();
+    ctx.run(&["pull"]).success();
+
+    let output = ctx.run(&["show"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("Returning Blog"));
+    assert!(stdout.contains("Old Post"));
 }

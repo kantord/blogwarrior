@@ -13,12 +13,27 @@ pub trait TableRow: Clone + PartialEq + Serialize + DeserializeOwned {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Row<T> {
-    pub id: String,
-    #[serde(flatten)]
-    pub inner: T,
-    #[serde(default)]
-    pub updated_at: Option<DateTime<Utc>>,
+#[serde(untagged)]
+pub enum Row<T> {
+    Tombstone {
+        id: String,
+        deleted_at: DateTime<Utc>,
+    },
+    Live {
+        id: String,
+        #[serde(flatten)]
+        inner: T,
+        #[serde(default)]
+        updated_at: Option<DateTime<Utc>>,
+    },
+}
+
+impl<T> Row<T> {
+    pub fn id(&self) -> &str {
+        match self {
+            Row::Live { id, .. } | Row::Tombstone { id, .. } => id,
+        }
+    }
 }
 
 fn hash_id(raw: &str, id_length: usize) -> String {
@@ -67,7 +82,7 @@ impl<T: TableRow> Table<T> {
                         }
                         let row: Row<T> = serde_json::from_str(&line)
                             .expect("failed to parse entry");
-                        table.items.insert(row.id.clone(), row);
+                        table.items.insert(row.id().to_string(), row);
                     }
                 }
             }
@@ -78,13 +93,23 @@ impl<T: TableRow> Table<T> {
     pub fn upsert(&mut self, item: T) {
         let id = hash_id(&item.key(), self.id_length);
 
-        if let Some(existing) = self.items.get(&id)
-            && item == existing.inner
+        if let Some(Row::Live { inner: existing, .. }) = self.items.get(&id)
+            && item == *existing
         {
             return;
         }
 
-        self.items.insert(id.clone(), Row { id, inner: item, updated_at: Some(Utc::now()) });
+        self.items.insert(id.clone(), Row::Live { id, inner: item, updated_at: Some(Utc::now()) });
+    }
+
+    pub fn delete(&mut self, key: &str) {
+        self.on_delete(key, |_| {});
+    }
+
+    pub fn on_delete(&mut self, key: &str, mut hook: impl FnMut(&str)) {
+        let id = hash_id(key, self.id_length);
+        self.items.insert(id.clone(), Row::Tombstone { id: id.clone(), deleted_at: Utc::now() });
+        hook(&id);
     }
 
     pub fn id_of(&self, item: &T) -> String {
@@ -114,13 +139,13 @@ impl<T: TableRow> Table<T> {
         // Group items by shard key
         let mut shards: HashMap<String, Vec<&Row<T>>> = HashMap::new();
         for row in self.items.values() {
-            let key = self.shard_key(&row.id);
+            let key = self.shard_key(row.id());
             shards.entry(key).or_default().push(row);
         }
 
         // Write each shard
         for (prefix, mut rows) in shards {
-            rows.sort_by(|a, b| a.id.cmp(&b.id));
+            rows.sort_by(|a, b| a.id().cmp(b.id()));
             let mut out = String::new();
             for row in rows {
                 out.push_str(&serde_json::to_string(row).expect("failed to serialize item"));
@@ -132,7 +157,10 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn items(&self) -> Vec<T> {
-        self.items.values().map(|r| r.inner.clone()).collect()
+        self.items.values().filter_map(|r| match r {
+            Row::Live { inner, .. } => Some(inner.clone()),
+            Row::Tombstone { .. } => None,
+        }).collect()
     }
 }
 
@@ -466,7 +494,10 @@ mod tests {
     }
 
     fn get_updated_at(table: &Table<TestItem>) -> Option<DateTime<Utc>> {
-        table.items.values().next().unwrap().updated_at
+        match table.items.values().next().unwrap() {
+            Row::Live { updated_at, .. } => *updated_at,
+            Row::Tombstone { .. } => None,
+        }
     }
 
     #[test]
@@ -531,9 +562,92 @@ mod tests {
         assert_eq!(ts_before, ts_after);
     }
 
+    #[test]
+    fn test_delete_removes_from_items() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Item"));
+        assert_eq!(table.items().len(), 1);
+
+        table.delete("x");
+        assert_eq!(table.items().len(), 0);
+    }
+
+    #[test]
+    fn test_delete_tombstone_survives_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Item"));
+        table.delete("x");
+        table.save();
+
+        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        assert_eq!(loaded.items().len(), 0);
+    }
+
+    #[test]
+    fn test_upsert_resurrects_deleted_item() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Original"));
+        table.delete("x");
+        assert_eq!(table.items().len(), 0);
+
+        table.upsert(make_item("x", "Resurrected"));
+        let items = table.items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Resurrected");
+    }
+
+    #[test]
+    fn test_upsert_resurrects_after_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("x", "Original"));
+        table.delete("x");
+        table.save();
+
+        let mut loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        assert_eq!(loaded.items().len(), 0);
+
+        loaded.upsert(make_item("x", "Back"));
+        let items = loaded.items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Back");
+    }
+
+    #[test]
+    fn test_delete_nonexistent_key() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("a", "Keep"));
+        table.delete("never-added");
+
+        let items = table.items();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Keep");
+    }
+
+    #[test]
+    fn test_delete_mixed_with_live() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        table.upsert(make_item("a", "Keep"));
+        table.upsert(make_item("b", "Delete"));
+        table.upsert(make_item("c", "Also Keep"));
+        table.delete("b");
+
+        let items = table.items();
+        assert_eq!(items.len(), 2);
+        let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
+        assert!(titles.contains(&"Keep"));
+        assert!(titles.contains(&"Also Keep"));
+        assert!(!titles.contains(&"Delete"));
+    }
+
     /// Helper to create a Row with a pre-set id (no hashing).
     fn make_row_with_id(id: &str, title: &str) -> Row<TestItem> {
-        Row {
+        Row::Live {
             id: id.to_string(),
             inner: TestItem {
                 raw_id: String::new(),
