@@ -3,8 +3,9 @@ mod feed;
 use std::fmt::Write;
 use std::fs;
 use std::io::BufRead;
+use std::path::{Path, PathBuf};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use itertools::Itertools;
 use serde::Deserialize;
 
@@ -18,9 +19,20 @@ struct FeedSource {
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
 struct Args {
-    /// Grouping mode: d (date), a (author), or combinations like da, ad
-    #[arg(short, long, default_value = "")]
-    group: String,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Fetch feeds and save items to posts.jsonl
+    Pull,
+    /// Display items from posts.jsonl
+    Show {
+        /// Grouping mode: d (date), a (author), or combinations like da, ad
+        #[arg(short, long, default_value = "")]
+        group: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -117,31 +129,66 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
         .collect()
 }
 
-fn main() {
-    let args = Args::parse();
+fn store_dir() -> PathBuf {
+    std::env::var("RSS_STORE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
 
-    let keys = match parse_grouping(&args.group) {
-        Some(keys) => keys,
-        None => {
-            eprintln!("Unknown grouping: {}. Use: d, a, da, ad", args.group);
-            return;
-        }
-    };
-
-    let file = fs::File::open("feeds.jsonl").expect("failed to open feeds.jsonl");
-    let sources: Vec<FeedSource> = std::io::BufReader::new(file)
+fn load_sources(store: &Path) -> Vec<FeedSource> {
+    let file = fs::File::open(store.join("feeds.jsonl")).expect("failed to open feeds.jsonl");
+    std::io::BufReader::new(file)
         .lines()
         .map(|l| l.expect("failed to read line"))
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(&l).expect("failed to parse feed entry"))
-        .collect();
+        .collect()
+}
 
-    let mut items: Vec<FeedItem> = sources.iter().flat_map(|s| feed::fetch(&s.url)).collect();
+fn cmd_pull(store: &Path) {
+    let sources = load_sources(store);
+    let items: Vec<FeedItem> = sources.iter().flat_map(|s| feed::fetch(&s.url)).collect();
+
+    let mut out = String::new();
+    for item in &items {
+        out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
+        out.push('\n');
+    }
+    fs::write(store.join("posts.jsonl"), out).expect("failed to write posts.jsonl");
+}
+
+fn cmd_show(store: &Path, group: &str) {
+    let keys = match parse_grouping(group) {
+        Some(keys) => keys,
+        None => {
+            eprintln!("Unknown grouping: {}. Use: d, a, da, ad", group);
+            return;
+        }
+    };
+
+    let file = fs::File::open(store.join("posts.jsonl")).expect("failed to open posts.jsonl");
+    let mut items: Vec<FeedItem> = std::io::BufReader::new(file)
+        .lines()
+        .map(|l| l.expect("failed to read line"))
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(&l).expect("failed to parse post entry"))
+        .collect();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
 
     let refs: Vec<&FeedItem> = items.iter().collect();
     print!("{}", render_grouped(&refs, &keys));
+}
+
+fn main() {
+    let args = Args::parse();
+    let store = store_dir();
+
+    match args.command {
+        Some(Command::Pull) => cmd_pull(&store),
+        Some(Command::Show { ref group }) => cmd_show(&store, group),
+        None => cmd_show(&store, ""),
+    }
 }
 
 #[cfg(test)]
