@@ -33,6 +33,11 @@ enum Command {
         /// Positional arguments: grouping mode (d, f, df, fd) and/or @shorthand filter
         args: Vec<String>,
     },
+    /// Open a post in the default browser
+    Open {
+        /// Post shorthand
+        shorthand: String,
+    },
     /// Manage feed subscriptions
     Feed {
         #[command(subcommand)]
@@ -374,6 +379,37 @@ fn cmd_pull(store: &Path) {
     feeds_table.save();
 }
 
+fn load_sorted_posts(store: &Path) -> Vec<FeedItem> {
+    let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
+    let mut items = table.items();
+    items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
+    items
+}
+
+fn cmd_open(store: &Path, shorthand: &str) {
+    let items = load_sorted_posts(store);
+    let found = items
+        .iter()
+        .enumerate()
+        .find(|(i, _)| index_to_shorthand(*i) == shorthand);
+    match found {
+        Some((_, item)) if !item.link.is_empty() => {
+            if let Err(e) = open::that(&item.link) {
+                eprintln!("Could not open URL: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Some(_) => {
+            eprintln!("Post has no link");
+            std::process::exit(1);
+        }
+        None => {
+            eprintln!("Unknown shorthand: {}", shorthand);
+            std::process::exit(1);
+        }
+    }
+}
+
 fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
     let keys = match parse_grouping(group) {
         Some(keys) => keys,
@@ -417,11 +453,7 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
         })
         .collect();
 
-    let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
-    let mut items = table.items();
-
-    // Sort deterministically (date desc, raw_id asc for ties) to assign stable position-based shorthands
-    items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
+    let mut items = load_sorted_posts(store);
 
     let post_shorthands: HashMap<String, String> = items
         .iter()
@@ -458,6 +490,7 @@ fn main() {
             let (group, filter) = parse_show_args(args);
             cmd_show(&store, &group, filter.as_deref());
         }
+        Some(Command::Open { ref shorthand }) => cmd_open(&store, shorthand),
         Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
         Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => cmd_remove(&store, url),
         Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),

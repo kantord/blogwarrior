@@ -89,6 +89,28 @@ impl TestContext {
     }
 }
 
+fn rss_xml_with_links(title: &str, items: &[(&str, &str, &str, &str)]) -> String {
+    let items_xml: String = items
+        .iter()
+        .map(|(item_title, date, guid, link)| {
+            format!(
+                "<item><title>{}</title><pubDate>{}</pubDate><guid>{}</guid><link>{}</link></item>",
+                item_title, date, guid, link
+            )
+        })
+        .collect();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>{}</title>
+    {}
+  </channel>
+</rss>"#,
+        title, items_xml
+    )
+}
+
 fn rss_xml_with_guids(title: &str, items: &[(&str, &str, &str)]) -> String {
     let items_xml: String = items
         .iter()
@@ -727,4 +749,70 @@ fn test_show_displays_post_shorthands() {
             line,
         );
     }
+}
+
+#[test]
+fn test_open_unknown_shorthand() {
+    let ctx = TestContext::new();
+
+    let output = ctx.run(&["open", "zzzzz"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("Unknown shorthand"),
+        "expected 'Unknown shorthand' on stderr, got: {}",
+        stderr,
+    );
+}
+
+#[test]
+fn test_open_valid_shorthand() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Open Blog",
+        &[(
+            "Open Post",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-open",
+            "https://example.com/post/1",
+        )],
+    );
+    ctx.mock_rss_feed("/open.xml", &xml);
+
+    let url = ctx.server.url("/open.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["pull"]).success();
+
+    // Running `open a` should resolve the shorthand without error.
+    // We can't verify the browser actually opens in CI, but we verify
+    // it doesn't fail with "Unknown shorthand" or "Post has no link".
+    let output = ctx.run(&["open", "a"]);
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        !stderr.contains("Unknown shorthand"),
+        "should resolve shorthand 'a', got: {}",
+        stderr,
+    );
+    assert!(
+        !stderr.contains("Post has no link"),
+        "post should have a link, got: {}",
+        stderr,
+    );
+}
+
+#[test]
+fn test_open_post_without_link() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"No Link Post","date":"2024-01-15T00:00:00Z","feed":"Alice","raw_id":"no-link-1","link":""}"#;
+    std::fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    std::fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    let output = ctx.run(&["open", "a"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("Post has no link"),
+        "expected 'Post has no link' on stderr, got: {}",
+        stderr,
+    );
 }
