@@ -3,9 +3,14 @@ use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::feed::FeedItem;
+pub trait TableRow: Clone + Serialize + DeserializeOwned {
+    fn id(&self) -> &str;
+    fn set_id(&mut self, id: String);
+}
 
 pub fn hash_id(raw: &str) -> String {
     let mut hasher = Sha256::new();
@@ -13,13 +18,13 @@ pub fn hash_id(raw: &str) -> String {
     format!("{:x}", hasher.finalize())[..14].to_string()
 }
 
-pub struct Table {
-    items: HashMap<String, FeedItem>,
+pub struct Table<T: TableRow> {
+    items: HashMap<String, T>,
     dir: PathBuf,
     shard_characters: usize,
 }
 
-impl Table {
+impl<T: TableRow> Table<T> {
     pub fn load(store: &Path, name: &str, shard_characters: usize) -> Self {
         let dir = store.join(name);
         let mut table = Self {
@@ -38,9 +43,9 @@ impl Table {
                                 if line.trim().is_empty() {
                                     continue;
                                 }
-                                let item: FeedItem = serde_json::from_str(&line)
-                                    .expect("failed to parse post entry");
-                                table.items.insert(item.id.clone(), item);
+                                let item: T = serde_json::from_str(&line)
+                                    .expect("failed to parse entry");
+                                table.items.insert(item.id().to_string(), item);
                             }
                         }
                     }
@@ -50,9 +55,9 @@ impl Table {
         table
     }
 
-    pub fn upsert(&mut self, mut item: FeedItem) {
-        item.id = hash_id(&item.id);
-        self.items.insert(item.id.clone(), item);
+    pub fn upsert(&mut self, mut item: T) {
+        item.set_id(hash_id(item.id()));
+        self.items.insert(item.id().to_string(), item);
     }
 
     fn shard_key(&self, id: &str) -> String {
@@ -76,15 +81,15 @@ impl Table {
         }
 
         // Group items by shard key
-        let mut shards: HashMap<String, Vec<&FeedItem>> = HashMap::new();
+        let mut shards: HashMap<String, Vec<&T>> = HashMap::new();
         for item in self.items.values() {
-            let key = self.shard_key(&item.id);
+            let key = self.shard_key(item.id());
             shards.entry(key).or_default().push(item);
         }
 
         // Write each shard
         for (prefix, mut items) in shards {
-            items.sort_by(|a, b| a.id.cmp(&b.id));
+            items.sort_by(|a, b| a.id().cmp(b.id()));
             let mut out = String::new();
             for item in items {
                 out.push_str(&serde_json::to_string(item).expect("failed to serialize item"));
@@ -95,7 +100,7 @@ impl Table {
         }
     }
 
-    pub fn items(&self) -> Vec<FeedItem> {
+    pub fn items(&self) -> Vec<T> {
         self.items.values().cloned().collect()
     }
 }
@@ -103,22 +108,35 @@ impl Table {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
     use tempfile::TempDir;
 
-    fn make_item(id: &str, title: &str) -> FeedItem {
-        FeedItem {
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct TestItem {
+        id: String,
+        title: String,
+    }
+
+    impl TableRow for TestItem {
+        fn id(&self) -> &str {
+            &self.id
+        }
+        fn set_id(&mut self, id: String) {
+            self.id = id;
+        }
+    }
+
+    fn make_item(id: &str, title: &str) -> TestItem {
+        TestItem {
             id: id.to_string(),
-            source_id: "test".to_string(),
             title: title.to_string(),
-            date: None,
-            author: "Author".to_string(),
         }
     }
 
     #[test]
     fn test_upsert_hashes_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "test_table", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2);
         table.upsert(make_item("raw-id", "Post"));
         let items = table.items();
         assert_eq!(items.len(), 1);
@@ -128,7 +146,7 @@ mod tests {
     #[test]
     fn test_upsert_overwrites_existing() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "test_table", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2);
         table.upsert(make_item("same-id", "Original"));
         table.upsert(make_item("same-id", "Updated"));
         let items = table.items();
@@ -140,12 +158,12 @@ mod tests {
     fn test_load_save_roundtrip() {
         let dir = TempDir::new().unwrap();
 
-        let mut table = Table::load(dir.path(), "test_table", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2);
         table.upsert(make_item("id-1", "First"));
         table.upsert(make_item("id-2", "Second"));
         table.save();
 
-        let loaded = Table::load(dir.path(), "test_table", 2);
+        let loaded = Table::<TestItem>::load(dir.path(), "test_table", 2);
         assert_eq!(loaded.items().len(), 2);
 
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
@@ -156,7 +174,7 @@ mod tests {
     #[test]
     fn test_load_nonexistent_file() {
         let dir = TempDir::new().unwrap();
-        let table = Table::load(dir.path(), "nonexistent", 2);
+        let table = Table::<TestItem>::load(dir.path(), "nonexistent", 2);
         assert_eq!(table.items().len(), 0);
     }
 
@@ -220,7 +238,7 @@ mod tests {
     #[test]
     fn test_save_sorts_items_by_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.upsert(make_item("zzz", "Last"));
         table.upsert(make_item("aaa", "First"));
         table.upsert(make_item("mmm", "Middle"));
@@ -235,7 +253,7 @@ mod tests {
     #[test]
     fn test_save_sort_order_is_stable_across_roundtrips() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.upsert(make_item("c", "C"));
         table.upsert(make_item("a", "A"));
         table.upsert(make_item("b", "B"));
@@ -243,7 +261,7 @@ mod tests {
 
         let ids1 = ids_from_lines(&read_lines(&dir, "t"));
 
-        let loaded = Table::load(dir.path(), "t", 2);
+        let loaded = Table::<TestItem>::load(dir.path(), "t", 2);
         loaded.save();
 
         let ids2 = ids_from_lines(&read_lines(&dir, "t"));
@@ -253,12 +271,12 @@ mod tests {
     #[test]
     fn test_save_sort_order_preserved_after_upsert() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.upsert(make_item("b", "B"));
         table.upsert(make_item("a", "A"));
         table.save();
 
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.upsert(make_item("c", "C"));
         table.save();
 
@@ -271,7 +289,7 @@ mod tests {
     #[test]
     fn test_save_single_item_sorted() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.upsert(make_item("only", "Only"));
         table.save();
 
@@ -282,7 +300,7 @@ mod tests {
     #[test]
     fn test_save_empty_table() {
         let dir = TempDir::new().unwrap();
-        let table = Table::load(dir.path(), "t", 2);
+        let table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.save();
 
         let lines = read_lines(&dir, "t");
@@ -292,7 +310,7 @@ mod tests {
     #[test]
     fn test_items_land_in_correct_shard_files() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
         table.items.insert(
             "aabb11".to_string(),
@@ -329,12 +347,12 @@ mod tests {
         fs::create_dir_all(&table_dir).unwrap();
 
         // Write two separate shard files
-        let item1 = r#"{"id":"aa1111","source_id":"test","title":"From AA","date":null,"author":"Author"}"#;
-        let item2 = r#"{"id":"bb2222","source_id":"test","title":"From BB","date":null,"author":"Author"}"#;
+        let item1 = r#"{"id":"aa1111","title":"From AA"}"#;
+        let item2 = r#"{"id":"bb2222","title":"From BB"}"#;
         fs::write(table_dir.join("items_aa.jsonl"), format!("{}\n", item1)).unwrap();
         fs::write(table_dir.join("items_bb.jsonl"), format!("{}\n", item2)).unwrap();
 
-        let table = Table::load(dir.path(), "t", 2);
+        let table = Table::<TestItem>::load(dir.path(), "t", 2);
         assert_eq!(table.items().len(), 2);
         let titles: Vec<String> = table.items().iter().map(|i| i.title.clone()).collect();
         assert!(titles.contains(&"From AA".to_string()));
@@ -344,13 +362,13 @@ mod tests {
     #[test]
     fn test_roundtrip_with_sharding_preserves_all_items() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.upsert(make_item("alpha", "Alpha"));
         table.upsert(make_item("beta", "Beta"));
         table.upsert(make_item("gamma", "Gamma"));
         table.save();
 
-        let loaded = Table::load(dir.path(), "t", 2);
+        let loaded = Table::<TestItem>::load(dir.path(), "t", 2);
         assert_eq!(loaded.items().len(), 3);
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
         assert!(titles.contains(&"Alpha".to_string()));
@@ -361,7 +379,7 @@ mod tests {
     #[test]
     fn test_shard_characters_zero_puts_everything_in_items_empty() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::load(dir.path(), "t", 0);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 0);
         table.items.insert(
             "aabb11".to_string(),
             make_item_with_id("aabb11", "Item 1"),
@@ -387,11 +405,11 @@ mod tests {
         fs::create_dir_all(&table_dir).unwrap();
 
         // Create an old shard file with valid data that won't be needed after re-shard
-        let old_item = r#"{"id":"zz9999","source_id":"test","title":"Old","date":null,"author":"Author"}"#;
+        let old_item = r#"{"id":"zz9999","title":"Old"}"#;
         fs::write(table_dir.join("items_zz.jsonl"), format!("{}\n", old_item)).unwrap();
 
         // Load picks up the old item, then we replace all items with a new one
-        let mut table = Table::load(dir.path(), "t", 2);
+        let mut table = Table::<TestItem>::load(dir.path(), "t", 2);
         table.items.clear();
         table.items.insert(
             "aabb11".to_string(),
@@ -404,14 +422,11 @@ mod tests {
         assert!(!table_dir.join("items_zz.jsonl").exists());
     }
 
-    /// Helper to create a FeedItem with a pre-set id (no hashing).
-    fn make_item_with_id(id: &str, title: &str) -> FeedItem {
-        FeedItem {
+    /// Helper to create a TestItem with a pre-set id (no hashing).
+    fn make_item_with_id(id: &str, title: &str) -> TestItem {
+        TestItem {
             id: id.to_string(),
-            source_id: "test".to_string(),
             title: title.to_string(),
-            date: None,
-            author: "Author".to_string(),
         }
     }
 }

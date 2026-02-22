@@ -1,21 +1,15 @@
 mod feed;
+mod feed_source;
 mod table;
 
 use std::fmt::Write;
-use std::fs;
-use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use itertools::Itertools;
-use serde::Deserialize;
 
 use feed::FeedItem;
-
-#[derive(Deserialize)]
-struct FeedSource {
-    url: String,
-}
+use feed_source::FeedSource;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
@@ -33,6 +27,11 @@ enum Command {
         /// Grouping mode: d (date), a (author), or combinations like da, ad
         #[arg(short, long, default_value = "")]
         group: String,
+    },
+    /// Subscribe to a feed by URL
+    Add {
+        /// The feed URL to subscribe to
+        url: String,
     },
 }
 
@@ -136,19 +135,19 @@ fn store_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
-fn load_sources(store: &Path) -> Vec<FeedSource> {
-    let file = fs::File::open(store.join("feeds.jsonl")).expect("failed to open feeds.jsonl");
-    std::io::BufReader::new(file)
-        .lines()
-        .map(|l| l.expect("failed to read line"))
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(&l).expect("failed to parse feed entry"))
-        .collect()
+fn cmd_add(store: &Path, url: &str) {
+    let mut table = table::Table::<FeedSource>::load(store, "feeds", 0);
+    table.upsert(FeedSource {
+        id: url.to_string(),
+        url: url.to_string(),
+    });
+    table.save();
 }
 
 fn cmd_pull(store: &Path) {
-    let sources = load_sources(store);
-    let mut table = table::Table::load(store, "posts", 1);
+    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0);
+    let sources = feeds_table.items();
+    let mut table = table::Table::<FeedItem>::load(store, "posts", 1);
     for source in &sources {
         for item in feed::fetch(&source.url) {
             table.upsert(item);
@@ -166,7 +165,7 @@ fn cmd_show(store: &Path, group: &str) {
         }
     };
 
-    let table = table::Table::load(store, "posts", 1);
+    let table = table::Table::<FeedItem>::load(store, "posts", 1);
     let mut items = table.items();
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
@@ -182,6 +181,7 @@ fn main() {
     match args.command {
         Some(Command::Pull) => cmd_pull(&store),
         Some(Command::Show { ref group }) => cmd_show(&store, group),
+        Some(Command::Add { ref url }) => cmd_add(&store, url),
         None => cmd_show(&store, ""),
     }
 }

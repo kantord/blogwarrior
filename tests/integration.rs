@@ -19,11 +19,13 @@ impl TestContext {
     }
 
     fn write_feeds(&self, urls: &[&str]) {
+        let feeds_dir = self.dir.path().join("feeds");
+        fs::create_dir_all(&feeds_dir).unwrap();
         let lines: Vec<String> = urls
             .iter()
-            .map(|u| format!(r#"{{"url":"{}"}}"#, u))
+            .map(|u| format!(r#"{{"id":"{}","url":"{}"}}"#, u, u))
             .collect();
-        fs::write(self.dir.path().join("feeds.jsonl"), lines.join("\n")).unwrap();
+        fs::write(feeds_dir.join("items_.jsonl"), lines.join("\n")).unwrap();
     }
 
     fn read_posts(&self) -> Vec<serde_json::Value> {
@@ -73,6 +75,30 @@ impl TestContext {
                 .header("Content-Type", "application/atom+xml")
                 .body(xml);
         });
+    }
+}
+
+impl TestContext {
+    fn read_feeds(&self) -> Vec<serde_json::Value> {
+        let feeds_dir = self.dir.path().join("feeds");
+        let mut items = Vec::new();
+        if let Ok(entries) = fs::read_dir(&feeds_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                    if fname.starts_with("items_") && fname.ends_with(".jsonl") {
+                        let file = fs::File::open(&path).unwrap();
+                        for line in std::io::BufReader::new(file).lines() {
+                            let line = line.unwrap();
+                            if !line.trim().is_empty() {
+                                items.push(serde_json::from_str(&line).unwrap());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        items
     }
 }
 
@@ -362,4 +388,33 @@ fn test_pull_twice_no_duplicates() {
     assert!(titles.contains(&"Post C"));
     // Original "Post B" should be overwritten
     assert!(!titles.contains(&"Post B"));
+}
+
+#[test]
+fn test_add_creates_feed() {
+    let ctx = TestContext::new();
+
+    ctx.run(&["add", "https://example.com/feed.xml"]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), "https://example.com/feed.xml");
+}
+
+#[test]
+fn test_add_then_pull() {
+    let ctx = TestContext::new();
+    let xml = rss_xml(
+        "Added Blog",
+        &[("Added Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/added.xml", &xml);
+
+    let url = ctx.server.url("/added.xml");
+    ctx.run(&["add", &url]).success();
+    ctx.run(&["pull"]).success();
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["title"].as_str().unwrap(), "Added Post");
 }

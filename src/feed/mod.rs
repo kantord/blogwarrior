@@ -13,6 +13,15 @@ pub struct FeedItem {
     pub author: String,
 }
 
+impl crate::table::TableRow for FeedItem {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn set_id(&mut self, id: String) {
+        self.id = id;
+    }
+}
+
 pub fn fetch(url: &str) -> Vec<FeedItem> {
     let response = reqwest::blocking::get(url).expect("failed to fetch feed");
     let bytes = response.bytes().expect("failed to read response body");
