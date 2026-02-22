@@ -498,6 +498,20 @@ fn test_remove_feed_deletes_its_posts() {
 }
 
 #[test]
+fn test_feed_ls() {
+    let ctx = TestContext::new();
+
+    ctx.run(&["feed", "add", "https://example.com/feed1.xml"]).success();
+    ctx.run(&["feed", "add", "https://example.com/feed2.xml"]).success();
+
+    let output = ctx.run(&["feed", "ls"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(stdout.contains("https://example.com/feed1.xml"));
+    assert!(stdout.contains("https://example.com/feed2.xml"));
+}
+
+#[test]
 fn test_remove_then_readd_feed() {
     let ctx = TestContext::new();
     let xml = rss_xml(

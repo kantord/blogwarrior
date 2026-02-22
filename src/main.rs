@@ -49,6 +49,8 @@ enum FeedCommand {
         /// The feed URL to unsubscribe from
         url: String,
     },
+    /// List subscribed feeds
+    Ls,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -182,6 +184,19 @@ fn cmd_add(store: &Path, url: &str) {
     table.save();
 }
 
+fn cmd_feed_ls(store: &Path) {
+    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let mut feeds = feeds_table.items();
+    feeds.sort_by(|a, b| a.url.cmp(&b.url));
+    for feed in &feeds {
+        if feed.title.is_empty() {
+            println!("{}", feed.url);
+        } else {
+            println!("{} ({})", feed.url, feed.title);
+        }
+    }
+}
+
 fn cmd_pull(store: &Path) {
     let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let sources = feeds_table.items();
@@ -251,6 +266,7 @@ fn main() {
         Some(Command::Show { ref group }) => cmd_show(&store, group),
         Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
         Some(Command::Feed { command: FeedCommand::Remove { ref url } }) => cmd_remove(&store, url),
+        Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),
         None => cmd_show(&store, ""),
     }
 }
