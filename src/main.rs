@@ -15,9 +15,13 @@ use table::TableRow;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
+#[command(args_conflicts_with_subcommands = true)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
+
+    /// Filter by feed @shorthand
+    filter: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -29,6 +33,9 @@ enum Command {
         /// Grouping mode: d (date), f (feed), or combinations like df, fd
         #[arg(short, long, default_value = "")]
         group: String,
+
+        /// Filter by feed @shorthand
+        filter: Option<String>,
     },
     /// Manage feed subscriptions
     Feed {
@@ -330,7 +337,7 @@ fn cmd_pull(store: &Path) {
     feeds_table.save();
 }
 
-fn cmd_show(store: &Path, group: &str) {
+fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
     let keys = match parse_grouping(group) {
         Some(keys) => keys,
         None => {
@@ -340,20 +347,49 @@ fn cmd_show(store: &Path, group: &str) {
     };
 
     let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
-    let feeds = feeds_table.items();
-    let feed_titles: HashMap<String, String> = feeds
+    let mut feeds = feeds_table.items();
+    feeds.sort_by(|a, b| a.url.cmp(&b.url));
+    let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
+    let shorthands = compute_shorthands(&ids);
+
+    let filter_feed_id = match filter {
+        Some(f) if f.starts_with('@') => {
+            let shorthand = &f[1..];
+            match shorthands.iter().position(|sh| sh == shorthand) {
+                Some(pos) => Some(ids[pos].clone()),
+                None => {
+                    eprintln!("Unknown shorthand: {}", f);
+                    std::process::exit(1);
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let feed_labels: HashMap<String, String> = ids
         .iter()
-        .map(|f| (feeds_table.id_of(f), f.title.clone()))
+        .zip(feeds.iter())
+        .zip(shorthands.iter())
+        .map(|((id, feed), sh)| {
+            let label = if feed.title.is_empty() {
+                format!("@{} {}", sh, feed.url)
+            } else {
+                format!("@{} {}", sh, feed.title)
+            };
+            (id.clone(), label)
+        })
         .collect();
 
     let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
     let mut items = table.items();
 
+    if let Some(ref feed_id) = filter_feed_id {
+        items.retain(|item| item.feed == *feed_id);
+    }
+
     for item in &mut items {
-        if let Some(title) = feed_titles.get(&item.feed)
-            && !title.is_empty()
-        {
-            item.feed = title.clone();
+        if let Some(label) = feed_labels.get(&item.feed) {
+            item.feed = label.clone();
         }
     }
 
@@ -374,11 +410,11 @@ fn main() {
 
     match args.command {
         Some(Command::Pull) => cmd_pull(&store),
-        Some(Command::Show { ref group }) => cmd_show(&store, group),
+        Some(Command::Show { ref group, ref filter }) => cmd_show(&store, group, filter.as_deref()),
         Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
         Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => cmd_remove(&store, url),
         Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),
-        None => cmd_show(&store, ""),
+        None => cmd_show(&store, "", args.filter.as_deref()),
     }
 }
 

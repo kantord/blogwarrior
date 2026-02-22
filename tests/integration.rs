@@ -593,6 +593,73 @@ fn test_show_no_posts_prints_error() {
 }
 
 #[test]
+fn test_show_filter_by_shorthand() {
+    let ctx = TestContext::new();
+
+    let xml1 = rss_xml_with_guids(
+        "Alpha Blog",
+        &[
+            ("Alpha Post 1", "Mon, 01 Jan 2024 00:00:00 +0000", "guid-a1"),
+            ("Alpha Post 2", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-a2"),
+        ],
+    );
+    ctx.mock_rss_feed("/alpha.xml", &xml1);
+
+    let xml2 = rss_xml_with_guids(
+        "Beta Blog",
+        &[
+            ("Beta Post 1", "Wed, 03 Jan 2024 00:00:00 +0000", "guid-b1"),
+        ],
+    );
+    ctx.mock_rss_feed("/beta.xml", &xml2);
+
+    let alpha_url = ctx.server.url("/alpha.xml");
+    let beta_url = ctx.server.url("/beta.xml");
+    ctx.write_feeds(&[&alpha_url, &beta_url]);
+    ctx.run(&["pull"]).success();
+
+    // Get shorthand for alpha feed
+    let output = ctx.run(&["feed", "ls"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    let alpha_shorthand = stdout
+        .lines()
+        .find(|line| line.contains(&alpha_url))
+        .map(|line| {
+            let first_word: String = line.chars().take_while(|c| *c != ' ').collect();
+            first_word
+        })
+        .expect("should find alpha_url in feed ls output");
+
+    // Filter with `show @shorthand` — should only show alpha posts
+    let output = ctx.run(&["show", &alpha_shorthand]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(stdout.contains("Alpha Post 1"), "should contain Alpha Post 1");
+    assert!(stdout.contains("Alpha Post 2"), "should contain Alpha Post 2");
+    assert!(!stdout.contains("Beta Post 1"), "should NOT contain Beta Post 1");
+
+    // Also test with no subcommand: `blog @shorthand`
+    let output = ctx.run(&[&alpha_shorthand]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(stdout.contains("Alpha Post 1"), "no-subcommand: should contain Alpha Post 1");
+    assert!(stdout.contains("Alpha Post 2"), "no-subcommand: should contain Alpha Post 2");
+    assert!(!stdout.contains("Beta Post 1"), "no-subcommand: should NOT contain Beta Post 1");
+}
+
+#[test]
+fn test_show_filter_unknown_shorthand() {
+    let ctx = TestContext::new();
+
+    ctx.run(&["feed", "add", "https://example.com/feed.xml"]).success();
+
+    let output = ctx.run(&["show", "@zzz"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(stderr.contains("Unknown shorthand"), "expected unknown shorthand error, got: {}", stderr);
+}
+
+#[test]
 fn test_remove_then_readd_feed() {
     let ctx = TestContext::new();
     let xml = rss_xml(
