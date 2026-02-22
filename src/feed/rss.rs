@@ -13,8 +13,8 @@ fn normalize_url(raw: &str) -> String {
     }
 }
 
-pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
-    let channel = Channel::read_from(BufReader::new(reader)).expect("failed to parse RSS feed");
+pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn std::error::Error>> {
+    let channel = Channel::read_from(BufReader::new(reader))?;
 
     let meta = FeedMeta {
         title: channel.title().to_string(),
@@ -42,7 +42,7 @@ pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
         })
         .collect();
 
-    (meta, items)
+    Ok((meta, items))
 }
 
 #[cfg(test)]
@@ -66,7 +66,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
@@ -95,7 +95,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
         let date = items[0].date.unwrap();
 
         assert_eq!(date.format("%Y-%m-%d").to_string(), "2024-01-02");
@@ -114,7 +114,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].title, "untitled");
     }
@@ -131,7 +131,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].date, None);
     }
@@ -145,7 +145,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert!(items.is_empty());
     }
@@ -163,7 +163,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].id, "https://example.com/post/1");
     }
@@ -181,7 +181,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].id, "https://example.com/post/1");
     }
@@ -199,7 +199,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].id, "https://example.com/post/1");
     }
@@ -216,7 +216,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].id, "Post");
     }
@@ -236,7 +236,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items.len(), 2);
         assert_ne!(items[0].id, items[1].id);
@@ -256,7 +256,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items[0].id, "urn:uuid:123");
     }

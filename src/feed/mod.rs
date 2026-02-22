@@ -30,9 +30,9 @@ impl crate::table::TableRow for FeedItem {
     }
 }
 
-pub fn fetch(url: &str) -> (FeedMeta, Vec<FeedItem>) {
-    let response = reqwest::blocking::get(url).expect("failed to fetch feed");
-    let bytes = response.bytes().expect("failed to read response body");
+pub fn fetch(url: &str) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn std::error::Error>> {
+    let response = reqwest::blocking::get(url)?;
+    let bytes = response.bytes()?;
     let text = String::from_utf8_lossy(&bytes);
 
     if text.contains("<rss") {

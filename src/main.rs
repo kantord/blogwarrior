@@ -153,7 +153,13 @@ fn cmd_pull(store: &Path) {
     let sources = feeds_table.items();
     let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
     for source in &sources {
-        let (meta, items) = feed::fetch(&source.url);
+        let (meta, items) = match feed::fetch(&source.url) {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("Error fetching {}: {}", source.url, e);
+                continue;
+            }
+        };
         for mut item in items {
             item.feed = source.id.clone();
             table.upsert(item);

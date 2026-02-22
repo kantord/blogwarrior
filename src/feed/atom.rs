@@ -4,8 +4,8 @@ use atom_syndication::Feed;
 
 use super::{FeedItem, FeedMeta};
 
-pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
-    let feed = Feed::read_from(BufReader::new(reader)).expect("failed to parse Atom feed");
+pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn std::error::Error>> {
+    let feed = Feed::read_from(BufReader::new(reader))?;
 
     let meta = FeedMeta {
         title: feed.title().as_str().to_string(),
@@ -43,7 +43,7 @@ pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
         })
         .collect();
 
-    (meta, items)
+    Ok((meta, items))
 }
 
 #[cfg(test)]
@@ -71,7 +71,7 @@ mod tests {
           </entry>
         </feed>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
@@ -103,7 +103,7 @@ mod tests {
           </entry>
         </feed>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
         let date = items[0].date.unwrap();
 
         assert_eq!(date.format("%Y-%m-%d").to_string(), "2024-01-02");
@@ -124,7 +124,7 @@ mod tests {
           </entry>
         </feed>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
@@ -141,7 +141,7 @@ mod tests {
           <updated>2024-01-01T00:00:00Z</updated>
         </feed>"#;
 
-        let (_, items) = parse(xml.as_bytes());
+        let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert!(items.is_empty());
     }

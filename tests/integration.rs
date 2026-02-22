@@ -421,3 +421,31 @@ fn test_add_then_pull() {
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0]["title"].as_str().unwrap(), "Added Post");
 }
+
+#[test]
+fn test_pull_continues_after_feed_failure() {
+    let ctx = TestContext::new();
+
+    // One feed returns a 500 error
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/broken.xml");
+        then.status(500).body("Internal Server Error");
+    });
+
+    // The other feed works fine
+    let xml = rss_xml(
+        "Good Blog",
+        &[("Good Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/good.xml", &xml);
+
+    let broken_url = ctx.server.url("/broken.xml");
+    let good_url = ctx.server.url("/good.xml");
+    ctx.write_feeds(&[&broken_url, &good_url]);
+
+    ctx.run(&["pull"]).success();
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["title"].as_str().unwrap(), "Good Post");
+}
