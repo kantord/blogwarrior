@@ -682,3 +682,49 @@ fn test_remove_then_readd_feed() {
     assert!(stdout.contains("Returning Blog"));
     assert!(stdout.contains("Old Post"));
 }
+
+#[test]
+fn test_show_displays_post_shorthands() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_guids(
+        "Shorthand Blog",
+        &[
+            ("Post Alpha", "Mon, 01 Jan 2024 00:00:00 +0000", "guid-alpha"),
+            ("Post Beta", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-beta"),
+        ],
+    );
+    ctx.mock_rss_feed("/shorthand.xml", &xml);
+
+    let url = ctx.server.url("/shorthand.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["pull"]).success();
+
+    let output = ctx.run(&["show"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    let post_alphabet: &[char] = &[
+        'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
+        'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
+        'q', 'w', 'e', 'r', 't', 'y', 'i', 'o', 'p',
+        'z', 'x', 'c', 'v', 'b', 'n', 'm',
+    ];
+
+    for line in stdout.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        // Each post line should start with a shorthand of POST_ALPHABET characters
+        let first_word: String = line.chars().take_while(|c| !c.is_whitespace()).collect();
+        assert!(
+            !first_word.is_empty(),
+            "line should start with a shorthand: {}", line
+        );
+        assert!(
+            first_word.chars().all(|c| post_alphabet.contains(&c)),
+            "shorthand '{}' should only contain POST_ALPHABET characters in line: {}",
+            first_word,
+            line,
+        );
+    }
+}

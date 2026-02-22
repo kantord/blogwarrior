@@ -84,25 +84,27 @@ fn format_date(item: &FeedItem) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn format_item(item: &FeedItem, grouped_keys: &[GroupKey]) -> String {
+fn format_item(item: &FeedItem, grouped_keys: &[GroupKey], shorthand: &str) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_feed = !grouped_keys.contains(&GroupKey::Feed);
-    match (show_date, show_feed) {
+    let body = match (show_date, show_feed) {
         (true, true) => format!("{}  {} ({})", format_date(item), item.title, item.feed),
         (true, false) => format!("{}  {}", format_date(item), item.title),
         (false, true) => format!("{} ({})", item.title, item.feed),
         (false, false) => item.title.clone(),
-    }
+    };
+    format!("{} {}", shorthand, body)
 }
 
-fn render_grouped(items: &[&FeedItem], keys: &[GroupKey]) -> String {
-    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], all_keys: &[GroupKey]) {
+fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<String, String>) -> String {
+    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], all_keys: &[GroupKey], shorthands: &HashMap<String, String>) {
         let depth = all_keys.len() - remaining.len();
         let indent = "  ".repeat(depth);
 
         if remaining.is_empty() {
             for item in items {
-                writeln!(out, "{indent}{}", format_item(item, all_keys)).unwrap();
+                let sh = shorthands.get(&item.raw_id).map(|s| s.as_str()).unwrap_or("");
+                writeln!(out, "{indent}{}", format_item(item, all_keys, sh)).unwrap();
             }
             return;
         }
@@ -125,7 +127,7 @@ fn render_grouped(items: &[&FeedItem], keys: &[GroupKey]) -> String {
             if depth == 0 {
                 writeln!(out).unwrap();
             }
-            recurse(out, &group_items, rest, all_keys);
+            recurse(out, &group_items, rest, all_keys, shorthands);
             if depth == 0 {
                 writeln!(out).unwrap();
                 writeln!(out).unwrap();
@@ -136,7 +138,7 @@ fn render_grouped(items: &[&FeedItem], keys: &[GroupKey]) -> String {
     }
 
     let mut out = String::new();
-    recurse(&mut out, items, keys, keys);
+    recurse(&mut out, items, keys, keys, shorthands);
     out
 }
 
@@ -165,9 +167,17 @@ fn parse_show_args(args: &[String]) -> (String, Option<String>) {
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 
-fn hex_to_base9(hex: &str) -> String {
+const POST_ALPHABET: [char; 34] = [
+    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
+    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
+    'q', 'w', 'e', 'r', 't', 'y', 'i', 'o', 'p',
+    'z', 'x', 'c', 'v', 'b', 'n', 'm',
+];
+
+fn hex_to_custom_base(hex: &str, alphabet: &[char]) -> String {
+    let base = alphabet.len() as u16;
     if hex.is_empty() {
-        return String::from("a");
+        return String::from(alphabet[0]);
     }
     // Parse hex string into a vector of digit values
     let mut digits: Vec<u8> = hex
@@ -177,14 +187,14 @@ fn hex_to_base9(hex: &str) -> String {
 
     let mut remainders = Vec::new();
 
-    // Long division: divide the base-16 number by 9 repeatedly
+    // Long division: divide the base-16 number by `base` repeatedly
     loop {
         let mut remainder: u16 = 0;
         let mut quotient = Vec::new();
         for &d in &digits {
             let current = remainder * 16 + d as u16;
-            quotient.push((current / 9) as u8);
-            remainder = current % 9;
+            quotient.push((current / base) as u8);
+            remainder = current % base;
         }
         remainders.push(remainder as u8);
         // Strip leading zeros from quotient
@@ -198,8 +208,26 @@ fn hex_to_base9(hex: &str) -> String {
     remainders
         .into_iter()
         .rev()
-        .map(|d| HOME_ROW[d as usize])
+        .map(|d| alphabet[d as usize])
         .collect()
+}
+
+fn hex_to_base9(hex: &str) -> String {
+    hex_to_custom_base(hex, &HOME_ROW)
+}
+
+fn index_to_shorthand(mut n: usize) -> String {
+    let base = POST_ALPHABET.len();
+    if n == 0 {
+        return POST_ALPHABET[0].to_string();
+    }
+    let mut chars = Vec::new();
+    while n > 0 {
+        chars.push(POST_ALPHABET[n % base]);
+        n /= base;
+    }
+    chars.reverse();
+    chars.into_iter().collect()
 }
 
 fn compute_shorthands(ids: &[String]) -> Vec<String> {
@@ -392,6 +420,15 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
     let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
     let mut items = table.items();
 
+    // Sort deterministically (date desc, raw_id asc for ties) to assign stable position-based shorthands
+    items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
+
+    let post_shorthands: HashMap<String, String> = items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| (item.raw_id.clone(), index_to_shorthand(i)))
+        .collect();
+
     if let Some(ref feed_id) = filter_feed_id {
         items.retain(|item| item.feed == *feed_id);
     }
@@ -402,15 +439,13 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
         }
     }
 
-    items.sort_by(|a, b| b.date.cmp(&a.date));
-
     if items.is_empty() {
         eprintln!("No matching posts");
         std::process::exit(1);
     }
 
     let refs: Vec<&FeedItem> = items.iter().collect();
-    print!("{}", render_grouped(&refs, &keys));
+    print!("{}", render_grouped(&refs, &keys, &post_shorthands));
 }
 
 fn main() {
@@ -499,27 +534,27 @@ mod tests {
     #[test]
     fn test_format_item_no_grouping() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[]), "2024-01-15  Post (Alice)");
+        assert_eq!(format_item(&i, &[], "abc"), "abc 2024-01-15  Post (Alice)");
     }
 
     #[test]
     fn test_format_item_grouped_by_date() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Date]), "Post (Alice)");
+        assert_eq!(format_item(&i, &[GroupKey::Date], "abc"), "abc Post (Alice)");
     }
 
     #[test]
     fn test_format_item_grouped_by_feed() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Feed]), "2024-01-15  Post");
+        assert_eq!(format_item(&i, &[GroupKey::Feed], "abc"), "abc 2024-01-15  Post");
     }
 
     #[test]
     fn test_format_item_grouped_by_both() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Date, GroupKey::Feed]),
-            "Post"
+            format_item(&i, &[GroupKey::Date, GroupKey::Feed], "abc"),
+            "abc Post"
         );
     }
 
@@ -549,10 +584,11 @@ mod tests {
             item("Post B", "2024-01-01", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[], &empty);
         assert_eq!(
             output,
-            "2024-01-02  Post A (Alice)\n2024-01-01  Post B (Bob)\n"
+            " 2024-01-02  Post A (Alice)\n 2024-01-01  Post B (Bob)\n"
         );
     }
 
@@ -564,19 +600,20 @@ mod tests {
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Date]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[GroupKey::Date], &empty);
         assert_eq!(
             output,
             "\
 === 2024-01-02 ===
 
-  Post A (Alice)
-  Post B (Bob)
+   Post A (Alice)
+   Post B (Bob)
 
 
 === 2024-01-01 ===
 
-  Post C (Alice)
+   Post C (Alice)
 
 
 "
@@ -590,18 +627,19 @@ mod tests {
             item("Post B", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Feed]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[GroupKey::Feed], &empty);
         assert_eq!(
             output,
             "\
 === Alice ===
 
-  2024-01-01  Post B
+   2024-01-01  Post B
 
 
 === Bob ===
 
-  2024-01-02  Post A
+   2024-01-02  Post A
 
 
 "
@@ -616,24 +654,25 @@ mod tests {
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Feed]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Feed], &empty);
         assert_eq!(
             output,
             "\
 === 2024-01-02 ===
 
   --- Alice ---
-    Post B
+     Post B
 
   --- Bob ---
-    Post A
+     Post A
 
 
 
 === 2024-01-01 ===
 
   --- Alice ---
-    Post C
+     Post C
 
 
 
@@ -649,24 +688,25 @@ mod tests {
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Feed, GroupKey::Date]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[GroupKey::Feed, GroupKey::Date], &empty);
         assert_eq!(
             output,
             "\
 === Alice ===
 
   --- 2024-01-02 ---
-    Post B
+     Post B
 
   --- 2024-01-01 ---
-    Post C
+     Post C
 
 
 
 === Bob ===
 
   --- 2024-01-02 ---
-    Post A
+     Post A
 
 
 
@@ -677,7 +717,8 @@ mod tests {
     #[test]
     fn test_render_empty_items() {
         let refs: Vec<&FeedItem> = vec![];
-        assert_eq!(render_grouped(&refs, &[GroupKey::Date]), "");
+        let empty: HashMap<String, String> = HashMap::new();
+        assert_eq!(render_grouped(&refs, &[GroupKey::Date], &empty), "");
     }
 
     #[test]
@@ -688,7 +729,8 @@ mod tests {
             item("Mid", "2024-01-02", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Date]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[GroupKey::Date], &empty);
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -704,7 +746,8 @@ mod tests {
             item("Post", "2024-01-03", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let output = render_grouped(&refs, &[GroupKey::Feed]);
+        let empty: HashMap<String, String> = HashMap::new();
+        let output = render_grouped(&refs, &[GroupKey::Feed], &empty);
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -757,5 +800,57 @@ mod tests {
         let ids: Vec<String> = vec![];
         let shorthands = compute_shorthands(&ids);
         assert!(shorthands.is_empty());
+    }
+
+    #[test]
+    fn test_index_to_shorthand() {
+        // Index 0 → first char
+        assert_eq!(index_to_shorthand(0), "a");
+        // Index 1 → second char
+        assert_eq!(index_to_shorthand(1), "s");
+        // Index 33 → last single char (POST_ALPHABET[33] = 'm')
+        assert_eq!(index_to_shorthand(33), "m");
+        // Index 34 → wraps to two chars: 34/34=1 rem 0 → "sa"
+        assert_eq!(index_to_shorthand(34), "sa");
+        // All output characters should be valid POST_ALPHABET chars
+        for i in 0..200 {
+            let sh = index_to_shorthand(i);
+            assert!(sh.chars().all(|c| POST_ALPHABET.contains(&c)));
+        }
+    }
+
+    #[test]
+    fn test_index_to_shorthand_ordering() {
+        // Lower indices produce shorter or lexicographically earlier shorthands
+        let sh0 = index_to_shorthand(0);
+        let sh33 = index_to_shorthand(33);
+        let sh34 = index_to_shorthand(34);
+        assert_eq!(sh0.len(), 1);
+        assert_eq!(sh33.len(), 1);
+        assert_eq!(sh34.len(), 2);
+    }
+
+    #[test]
+    fn test_render_grouped_with_shorthands() {
+        let items = [
+            FeedItem {
+                title: "Post A".to_string(),
+                date: Some(
+                    NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d")
+                        .unwrap()
+                        .and_hms_opt(0, 0, 0)
+                        .unwrap()
+                        .and_utc(),
+                ),
+                feed: "Alice".to_string(),
+                link: String::new(),
+                raw_id: "id-a".to_string(),
+            },
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+        let mut shorthands = HashMap::new();
+        shorthands.insert("id-a".to_string(), "sDf".to_string());
+        let output = render_grouped(&refs, &[], &shorthands);
+        assert_eq!(output, "sDf 2024-01-02  Post A (Alice)\n");
     }
 }
