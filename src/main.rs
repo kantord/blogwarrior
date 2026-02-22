@@ -151,7 +151,7 @@ fn cmd_add(store: &Path, url: &str) {
 fn cmd_pull(store: &Path) {
     let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let sources = feeds_table.items();
-    let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
+    let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
     for source in &sources {
         let (meta, items) = match feed::fetch(&source.url) {
             Ok(result) => result,
@@ -191,7 +191,7 @@ fn cmd_show(store: &Path, group: &str) {
         .map(|f| (f.id.clone(), f.title.clone()))
         .collect();
 
-    let table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
+    let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
     let mut items = table.items();
 
     for item in &mut items {
