@@ -459,11 +459,10 @@ fn test_remove_feed() {
     // Pull should no longer fetch the removed feed
     ctx.run(&["pull"]).success();
 
-    // Feed title should no longer appear in show output
-    let output = ctx.run(&["show"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
-    // Feed and its posts should be gone
-    assert!(!stdout.contains("Blog to Remove"));
+    // Feed and its posts should be gone — show should report no posts
+    let output = ctx.run(&["show"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(stderr.contains("No matching posts"));
 }
 
 #[test]
@@ -530,6 +529,15 @@ fn test_feed_ls() {
 }
 
 #[test]
+fn test_feed_ls_no_feeds_prints_error() {
+    let ctx = TestContext::new();
+
+    let output = ctx.run(&["feed", "ls"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(stderr.contains("No matching feeds"), "expected 'No matching feeds' on stderr, got: {}", stderr);
+}
+
+#[test]
 fn test_feed_remove_by_shorthand() {
     let ctx = TestContext::new();
 
@@ -573,6 +581,15 @@ fn test_feed_remove_by_shorthand() {
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0]["title"].as_str().unwrap(), "Keep Post");
+}
+
+#[test]
+fn test_show_no_posts_prints_error() {
+    let ctx = TestContext::new();
+
+    let output = ctx.run(&["show"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(stderr.contains("No matching posts"), "expected 'No matching posts' on stderr, got: {}", stderr);
 }
 
 #[test]

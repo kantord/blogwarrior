@@ -230,7 +230,11 @@ fn resolve_shorthand(feeds_table: &table::Table<FeedSource>, shorthand: &str) ->
 fn store_dir() -> PathBuf {
     std::env::var("RSS_STORE")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
+        .unwrap_or_else(|_| {
+            dirs::data_dir()
+                .expect("could not determine data directory")
+                .join("blogtato")
+        })
 }
 
 fn cmd_remove(store: &Path, url: &str) {
@@ -283,6 +287,10 @@ fn cmd_add(store: &Path, url: &str) {
 fn cmd_feed_ls(store: &Path) {
     let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     let mut feeds = feeds_table.items();
+    if feeds.is_empty() {
+        eprintln!("No matching feeds");
+        std::process::exit(1);
+    }
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
     let shorthands = compute_shorthands(&ids);
@@ -350,6 +358,11 @@ fn cmd_show(store: &Path, group: &str) {
     }
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
+
+    if items.is_empty() {
+        eprintln!("No matching posts");
+        std::process::exit(1);
+    }
 
     let refs: Vec<&FeedItem> = items.iter().collect();
     print!("{}", render_grouped(&refs, &keys));
