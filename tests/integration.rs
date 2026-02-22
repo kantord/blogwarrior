@@ -11,14 +11,14 @@ fn read_table(dir: &Path) -> Vec<serde_json::Value> {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                if fname.starts_with("items_") && fname.ends_with(".jsonl") {
-                    let file = fs::File::open(&path).unwrap();
-                    for line in std::io::BufReader::new(file).lines() {
-                        let line = line.unwrap();
-                        if !line.trim().is_empty() {
-                            items.push(serde_json::from_str(&line).unwrap());
-                        }
+            if let Some(fname) = path.file_name().and_then(|f| f.to_str())
+                && fname.starts_with("items_") && fname.ends_with(".jsonl")
+            {
+                let file = fs::File::open(&path).unwrap();
+                for line in std::io::BufReader::new(file).lines() {
+                    let line = line.unwrap();
+                    if !line.trim().is_empty() {
+                        items.push(serde_json::from_str(&line).unwrap());
                     }
                 }
             }
@@ -42,12 +42,12 @@ impl TestContext {
 
     fn write_feeds(&self, urls: &[&str]) {
         let feeds_dir = self.dir.path().join("feeds");
-        fs::create_dir_all(&feeds_dir).unwrap();
-        let lines: Vec<String> = urls
-            .iter()
-            .map(|u| format!(r#"{{"id":"{}","url":"{}"}}"#, u, u))
-            .collect();
-        fs::write(feeds_dir.join("items_.jsonl"), lines.join("\n")).unwrap();
+        if feeds_dir.exists() {
+            fs::remove_dir_all(&feeds_dir).unwrap();
+        }
+        for url in urls {
+            self.run(&["add", url]).success();
+        }
     }
 
     fn read_posts(&self) -> Vec<serde_json::Value> {
@@ -317,10 +317,10 @@ fn test_serde_roundtrip() {
     if let Ok(entries) = fs::read_dir(ctx.dir.path().join("posts")) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                if fname.starts_with("items_") && fname.ends_with(".jsonl") {
-                    fs::remove_file(&path).unwrap();
-                }
+            if let Some(fname) = path.file_name().and_then(|f| f.to_str())
+                && fname.starts_with("items_") && fname.ends_with(".jsonl")
+            {
+                fs::remove_file(&path).unwrap();
             }
         }
     }

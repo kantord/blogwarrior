@@ -139,7 +139,6 @@ fn store_dir() -> PathBuf {
 fn cmd_add(store: &Path, url: &str) {
     let mut table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     table.upsert(FeedSource {
-        id: String::new(),
         url: url.to_string(),
         title: String::new(),
         site_url: String::new(),
@@ -160,7 +159,7 @@ fn cmd_pull(store: &Path) {
                 continue;
             }
         };
-        let feed_id = table::hash_id(source.url.as_str(), table::id_length_for_capacity(50_000));
+        let feed_id = feeds_table.id_of(source);
         for mut item in items {
             item.feed = feed_id.clone();
             table.upsert(item);
@@ -185,10 +184,10 @@ fn cmd_show(store: &Path, group: &str) {
     };
 
     let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
-    let feed_titles: HashMap<String, String> = feeds_table
-        .items()
-        .into_iter()
-        .map(|f| (f.id.clone(), f.title.clone()))
+    let feeds = feeds_table.items();
+    let feed_titles: HashMap<String, String> = feeds
+        .iter()
+        .map(|f| (feeds_table.id_of(f), f.title.clone()))
         .collect();
 
     let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
@@ -227,7 +226,6 @@ mod tests {
 
     fn item(title: &str, date: &str, feed: &str) -> FeedItem {
         FeedItem {
-            id: String::new(),
             title: title.to_string(),
             date: Some(
                 NaiveDate::parse_from_str(date, "%Y-%m-%d")
@@ -320,7 +318,6 @@ mod tests {
     #[test]
     fn test_format_date_without_date() {
         let i = FeedItem {
-            id: String::new(),
             title: "Post".to_string(),
             date: None,
             feed: "Alice".to_string(),
@@ -333,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_render_flat() {
-        let items = vec![
+        let items = [
             item("Post A", "2024-01-02", "Alice"),
             item("Post B", "2024-01-01", "Bob"),
         ];
@@ -347,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_render_grouped_by_date() {
-        let items = vec![
+        let items = [
             item("Post A", "2024-01-02", "Alice"),
             item("Post B", "2024-01-02", "Bob"),
             item("Post C", "2024-01-01", "Alice"),
@@ -374,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_render_grouped_by_feed() {
-        let items = vec![
+        let items = [
             item("Post A", "2024-01-02", "Bob"),
             item("Post B", "2024-01-01", "Alice"),
         ];
@@ -399,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_render_grouped_by_date_then_feed() {
-        let items = vec![
+        let items = [
             item("Post A", "2024-01-02", "Bob"),
             item("Post B", "2024-01-02", "Alice"),
             item("Post C", "2024-01-01", "Alice"),
@@ -432,7 +429,7 @@ mod tests {
 
     #[test]
     fn test_render_grouped_by_feed_then_date() {
-        let items = vec![
+        let items = [
             item("Post A", "2024-01-02", "Bob"),
             item("Post B", "2024-01-02", "Alice"),
             item("Post C", "2024-01-01", "Alice"),
@@ -471,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_date_ordering_is_descending() {
-        let items = vec![
+        let items = [
             item("Old", "2024-01-01", "Alice"),
             item("New", "2024-01-03", "Alice"),
             item("Mid", "2024-01-02", "Alice"),
@@ -487,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_feed_ordering_is_ascending() {
-        let items = vec![
+        let items = [
             item("Post", "2024-01-01", "Charlie"),
             item("Post", "2024-01-02", "Alice"),
             item("Post", "2024-01-03", "Bob"),

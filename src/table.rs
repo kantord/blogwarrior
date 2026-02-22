@@ -9,26 +9,25 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub trait TableRow: Clone + PartialEq + Serialize + DeserializeOwned {
-    fn id(&self) -> &str;
-    fn set_id(&mut self, id: String);
-    fn raw_id(&self) -> &str;
+    fn key(&self) -> String;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Row<T> {
+    pub id: String,
     #[serde(flatten)]
     pub inner: T,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-pub fn hash_id(raw: &str, id_length: usize) -> String {
+fn hash_id(raw: &str, id_length: usize) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw.as_bytes());
     format!("{:x}", hasher.finalize())[..id_length].to_string()
 }
 
-pub fn id_length_for_capacity(expected_items: usize) -> usize {
+fn id_length_for_capacity(expected_items: usize) -> usize {
     if expected_items <= 1 {
         return 4;
     }
@@ -68,7 +67,7 @@ impl<T: TableRow> Table<T> {
                         }
                         let row: Row<T> = serde_json::from_str(&line)
                             .expect("failed to parse entry");
-                        table.items.insert(row.inner.id().to_string(), row);
+                        table.items.insert(row.id.clone(), row);
                     }
                 }
             }
@@ -76,9 +75,8 @@ impl<T: TableRow> Table<T> {
         table
     }
 
-    pub fn upsert(&mut self, mut item: T) {
-        let id = hash_id(item.raw_id(), self.id_length);
-        item.set_id(id.clone());
+    pub fn upsert(&mut self, item: T) {
+        let id = hash_id(&item.key(), self.id_length);
 
         if let Some(existing) = self.items.get(&id)
             && item == existing.inner
@@ -86,7 +84,11 @@ impl<T: TableRow> Table<T> {
             return;
         }
 
-        self.items.insert(id, Row { inner: item, updated_at: Some(Utc::now()) });
+        self.items.insert(id.clone(), Row { id, inner: item, updated_at: Some(Utc::now()) });
+    }
+
+    pub fn id_of(&self, item: &T) -> String {
+        hash_id(&item.key(), self.id_length)
     }
 
     fn shard_key(&self, id: &str) -> String {
@@ -112,13 +114,13 @@ impl<T: TableRow> Table<T> {
         // Group items by shard key
         let mut shards: HashMap<String, Vec<&Row<T>>> = HashMap::new();
         for row in self.items.values() {
-            let key = self.shard_key(row.inner.id());
+            let key = self.shard_key(&row.id);
             shards.entry(key).or_default().push(row);
         }
 
         // Write each shard
         for (prefix, mut rows) in shards {
-            rows.sort_by(|a, b| a.inner.id().cmp(b.inner.id()));
+            rows.sort_by(|a, b| a.id.cmp(&b.id));
             let mut out = String::new();
             for row in rows {
                 out.push_str(&serde_json::to_string(row).expect("failed to serialize item"));
@@ -142,27 +144,19 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestItem {
-        id: String,
         #[serde(default)]
         raw_id: String,
         title: String,
     }
 
     impl TableRow for TestItem {
-        fn id(&self) -> &str {
-            &self.id
-        }
-        fn set_id(&mut self, id: String) {
-            self.id = id;
-        }
-        fn raw_id(&self) -> &str {
-            &self.raw_id
+        fn key(&self) -> String {
+            self.raw_id.clone()
         }
     }
 
     fn make_item(raw_id: &str, title: &str) -> TestItem {
         TestItem {
-            id: String::new(),
             raw_id: raw_id.to_string(),
             title: title.to_string(),
         }
@@ -172,10 +166,10 @@ mod tests {
     fn test_upsert_hashes_id() {
         let dir = TempDir::new().unwrap();
         let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
-        table.upsert(make_item("raw-id", "Post"));
-        let items = table.items();
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].id, hash_id("raw-id", id_length_for_capacity(1000)));
+        let item = make_item("raw-id", "Post");
+        table.upsert(item.clone());
+        assert_eq!(table.id_of(&item), hash_id("raw-id", id_length_for_capacity(1000)));
+        assert_eq!(table.items().len(), 1);
     }
 
     #[test]
@@ -349,15 +343,15 @@ mod tests {
         // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
         table.items.insert(
             "aabb11".to_string(),
-            make_item_with_id("aabb11", "Item AA"),
+            make_row_with_id("aabb11", "Item AA"),
         );
         table.items.insert(
             "aabb22".to_string(),
-            make_item_with_id("aabb22", "Item AA2"),
+            make_row_with_id("aabb22", "Item AA2"),
         );
         table.items.insert(
             "ccdd33".to_string(),
-            make_item_with_id("ccdd33", "Item CC"),
+            make_row_with_id("ccdd33", "Item CC"),
         );
         table.save();
 
@@ -417,11 +411,11 @@ mod tests {
         let mut table = Table::<TestItem>::load(dir.path(), "t", 0, 1000);
         table.items.insert(
             "aabb11".to_string(),
-            make_item_with_id("aabb11", "Item 1"),
+            make_row_with_id("aabb11", "Item 1"),
         );
         table.items.insert(
             "ccdd22".to_string(),
-            make_item_with_id("ccdd22", "Item 2"),
+            make_row_with_id("ccdd22", "Item 2"),
         );
         table.save();
 
@@ -448,7 +442,7 @@ mod tests {
         table.items.clear();
         table.items.insert(
             "aabb11".to_string(),
-            make_item_with_id("aabb11", "Item AA"),
+            make_row_with_id("aabb11", "Item AA"),
         );
         table.save();
 
@@ -538,10 +532,10 @@ mod tests {
     }
 
     /// Helper to create a Row with a pre-set id (no hashing).
-    fn make_item_with_id(id: &str, title: &str) -> Row<TestItem> {
+    fn make_row_with_id(id: &str, title: &str) -> Row<TestItem> {
         Row {
+            id: id.to_string(),
             inner: TestItem {
-                id: id.to_string(),
                 raw_id: String::new(),
                 title: title.to_string(),
             },

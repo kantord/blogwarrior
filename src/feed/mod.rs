@@ -13,7 +13,6 @@ pub struct FeedMeta {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedItem {
-    pub id: String,
     pub title: String,
     pub date: Option<DateTime<Utc>>,
     pub feed: String,
@@ -24,14 +23,8 @@ pub struct FeedItem {
 }
 
 impl crate::table::TableRow for FeedItem {
-    fn id(&self) -> &str {
-        &self.id
-    }
-    fn set_id(&mut self, id: String) {
-        self.id = id;
-    }
-    fn raw_id(&self) -> &str {
-        &self.raw_id
+    fn key(&self) -> String {
+        self.raw_id.clone()
     }
 }
 
@@ -55,7 +48,6 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_with_date() {
         let item = FeedItem {
-            id: "https://example.com/post/1".to_string(),
             title: "Test Post".to_string(),
             date: Some(
                 NaiveDate::from_ymd_opt(2024, 1, 15)
@@ -78,7 +70,6 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_without_date() {
         let item = FeedItem {
-            id: "urn:post:2".to_string(),
             title: "No Date Post".to_string(),
             date: None,
             feed: "def456".to_string(),

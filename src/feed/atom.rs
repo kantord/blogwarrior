@@ -26,7 +26,7 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn st
         .entries()
         .iter()
         .map(|entry| FeedItem {
-            id: String::new(),
+
             raw_id: entry.id().to_string(),
             title: entry.title().as_str().to_string(),
             date: entry
