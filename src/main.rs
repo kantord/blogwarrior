@@ -30,6 +30,15 @@ enum Command {
         #[arg(short, long, default_value = "")]
         group: String,
     },
+    /// Manage feed subscriptions
+    Feed {
+        #[command(subcommand)]
+        command: FeedCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum FeedCommand {
     /// Subscribe to a feed by URL
     Add {
         /// The feed URL to subscribe to
@@ -240,8 +249,8 @@ fn main() {
     match args.command {
         Some(Command::Pull) => cmd_pull(&store),
         Some(Command::Show { ref group }) => cmd_show(&store, group),
-        Some(Command::Add { ref url }) => cmd_add(&store, url),
-        Some(Command::Remove { ref url }) => cmd_remove(&store, url),
+        Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
+        Some(Command::Feed { command: FeedCommand::Remove { ref url } }) => cmd_remove(&store, url),
         None => cmd_show(&store, ""),
     }
 }

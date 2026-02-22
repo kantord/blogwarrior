@@ -49,7 +49,7 @@ impl TestContext {
             fs::remove_dir_all(&feeds_dir).unwrap();
         }
         for url in urls {
-            self.run(&["add", url]).success();
+            self.run(&["feed", "add", url]).success();
         }
     }
 
@@ -384,7 +384,7 @@ fn test_pull_twice_no_duplicates() {
 fn test_add_creates_feed() {
     let ctx = TestContext::new();
 
-    ctx.run(&["add", "https://example.com/feed.xml"]).success();
+    ctx.run(&["feed", "add", "https://example.com/feed.xml"]).success();
 
     let feeds = ctx.read_feeds();
     assert_eq!(feeds.len(), 1);
@@ -401,7 +401,7 @@ fn test_add_then_pull() {
     ctx.mock_rss_feed("/added.xml", &xml);
 
     let url = ctx.server.url("/added.xml");
-    ctx.run(&["add", &url]).success();
+    ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["pull"]).success();
 
     let posts = ctx.read_posts();
@@ -447,14 +447,14 @@ fn test_remove_feed() {
     ctx.mock_rss_feed("/removable.xml", &xml);
 
     let url = ctx.server.url("/removable.xml");
-    ctx.run(&["add", &url]).success();
+    ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["pull"]).success();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("Blog to Remove"));
 
-    ctx.run(&["remove", &url]).success();
+    ctx.run(&["feed", "remove", &url]).success();
 
     // Pull should no longer fetch the removed feed
     ctx.run(&["pull"]).success();
@@ -490,7 +490,7 @@ fn test_remove_feed_deletes_its_posts() {
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
 
-    ctx.run(&["remove", &remove_url]).success();
+    ctx.run(&["feed", "remove", &remove_url]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
@@ -507,12 +507,12 @@ fn test_remove_then_readd_feed() {
     ctx.mock_rss_feed("/returning.xml", &xml);
 
     let url = ctx.server.url("/returning.xml");
-    ctx.run(&["add", &url]).success();
+    ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["pull"]).success();
-    ctx.run(&["remove", &url]).success();
+    ctx.run(&["feed", "remove", &url]).success();
 
     // Re-add and pull again
-    ctx.run(&["add", &url]).success();
+    ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["pull"]).success();
 
     let output = ctx.run(&["show"]).success();
