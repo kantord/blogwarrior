@@ -19,6 +19,8 @@ pub struct FeedItem {
     pub feed: String,
     #[serde(default)]
     pub link: String,
+    #[serde(default)]
+    pub raw_id: String,
 }
 
 impl crate::table::TableRow for FeedItem {
@@ -27,6 +29,9 @@ impl crate::table::TableRow for FeedItem {
     }
     fn set_id(&mut self, id: String) {
         self.id = id;
+    }
+    fn raw_id(&self) -> &str {
+        &self.raw_id
     }
 }
 
@@ -61,6 +66,7 @@ mod tests {
             ),
             feed: "abc123".to_string(),
             link: String::new(),
+            raw_id: String::new(),
         };
 
         let json = serde_json::to_string(&item).unwrap();
@@ -76,6 +82,7 @@ mod tests {
             date: None,
             feed: "def456".to_string(),
             link: String::new(),
+            raw_id: String::new(),
         };
 
         let json = serde_json::to_string(&item).unwrap();

@@ -21,4 +21,7 @@ impl TableRow for FeedSource {
     fn set_id(&mut self, id: String) {
         self.id = id;
     }
+    fn raw_id(&self) -> &str {
+        &self.url
+    }
 }

@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 pub trait TableRow: Clone + Serialize + DeserializeOwned {
     fn id(&self) -> &str;
     fn set_id(&mut self, id: String);
+    fn raw_id(&self) -> &str;
 }
 
 pub fn hash_id(raw: &str, id_length: usize) -> String {
@@ -68,11 +69,7 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn upsert(&mut self, mut item: T) {
-        item.set_id(hash_id(item.id(), self.id_length));
-        self.items.insert(item.id().to_string(), item);
-    }
-
-    pub fn update(&mut self, item: T) {
+        item.set_id(hash_id(item.raw_id(), self.id_length));
         self.items.insert(item.id().to_string(), item);
     }
 
@@ -130,6 +127,8 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestItem {
         id: String,
+        #[serde(default)]
+        raw_id: String,
         title: String,
     }
 
@@ -140,11 +139,15 @@ mod tests {
         fn set_id(&mut self, id: String) {
             self.id = id;
         }
+        fn raw_id(&self) -> &str {
+            &self.raw_id
+        }
     }
 
-    fn make_item(id: &str, title: &str) -> TestItem {
+    fn make_item(raw_id: &str, title: &str) -> TestItem {
         TestItem {
-            id: id.to_string(),
+            id: String::new(),
+            raw_id: raw_id.to_string(),
             title: title.to_string(),
         }
     }
@@ -456,6 +459,7 @@ mod tests {
     fn make_item_with_id(id: &str, title: &str) -> TestItem {
         TestItem {
             id: id.to_string(),
+            raw_id: String::new(),
             title: title.to_string(),
         }
     }

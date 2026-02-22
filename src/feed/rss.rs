@@ -26,7 +26,8 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn st
         .items()
         .iter()
         .map(|item| FeedItem {
-            id: item
+            id: String::new(),
+            raw_id: item
                 .guid()
                 .map(|g| g.value().to_string())
                 .or_else(|| item.link().map(|l| normalize_url(l)))
@@ -70,7 +71,7 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
-        assert_eq!(items[0].id, "First Post");
+        assert_eq!(items[0].raw_id, "First Post");
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
@@ -165,7 +166,7 @@ mod tests {
 
         let (_, items) = parse(xml.as_bytes()).unwrap();
 
-        assert_eq!(items[0].id, "https://example.com/post/1");
+        assert_eq!(items[0].raw_id, "https://example.com/post/1");
     }
 
     #[test]
@@ -183,7 +184,7 @@ mod tests {
 
         let (_, items) = parse(xml.as_bytes()).unwrap();
 
-        assert_eq!(items[0].id, "https://example.com/post/1");
+        assert_eq!(items[0].raw_id, "https://example.com/post/1");
     }
 
     #[test]
@@ -201,7 +202,7 @@ mod tests {
 
         let (_, items) = parse(xml.as_bytes()).unwrap();
 
-        assert_eq!(items[0].id, "https://example.com/post/1");
+        assert_eq!(items[0].raw_id, "https://example.com/post/1");
     }
 
     #[test]
@@ -218,7 +219,7 @@ mod tests {
 
         let (_, items) = parse(xml.as_bytes()).unwrap();
 
-        assert_eq!(items[0].id, "Post");
+        assert_eq!(items[0].raw_id, "Post");
     }
 
     #[test]
@@ -239,7 +240,7 @@ mod tests {
         let (_, items) = parse(xml.as_bytes()).unwrap();
 
         assert_eq!(items.len(), 2);
-        assert_ne!(items[0].id, items[1].id);
+        assert_ne!(items[0].raw_id, items[1].raw_id);
     }
 
     #[test]
@@ -258,6 +259,6 @@ mod tests {
 
         let (_, items) = parse(xml.as_bytes()).unwrap();
 
-        assert_eq!(items[0].id, "urn:uuid:123");
+        assert_eq!(items[0].raw_id, "urn:uuid:123");
     }
 }

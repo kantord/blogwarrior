@@ -26,7 +26,8 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn st
         .entries()
         .iter()
         .map(|entry| FeedItem {
-            id: entry.id().to_string(),
+            id: String::new(),
+            raw_id: entry.id().to_string(),
             title: entry.title().as_str().to_string(),
             date: entry
                 .published()
@@ -75,13 +76,13 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "First Post");
-        assert_eq!(items[0].id, "urn:post:1");
+        assert_eq!(items[0].raw_id, "urn:post:1");
         assert_eq!(
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
         );
         assert_eq!(items[1].title, "Second Post");
-        assert_eq!(items[1].id, "urn:post:2");
+        assert_eq!(items[1].raw_id, "urn:post:2");
         assert_eq!(
             items[1].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-02"

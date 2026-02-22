@@ -139,7 +139,7 @@ fn store_dir() -> PathBuf {
 fn cmd_add(store: &Path, url: &str) {
     let mut table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
     table.upsert(FeedSource {
-        id: url.to_string(),
+        id: String::new(),
         url: url.to_string(),
         title: String::new(),
         site_url: String::new(),
@@ -160,15 +160,16 @@ fn cmd_pull(store: &Path) {
                 continue;
             }
         };
+        let feed_id = table::hash_id(source.url.as_str(), table::id_length_for_capacity(50_000));
         for mut item in items {
-            item.feed = source.id.clone();
+            item.feed = feed_id.clone();
             table.upsert(item);
         }
         let mut updated = source.clone();
         updated.title = meta.title;
         updated.site_url = meta.site_url;
         updated.description = meta.description;
-        feeds_table.update(updated);
+        feeds_table.upsert(updated);
     }
     table.save();
     feeds_table.save();
@@ -237,6 +238,7 @@ mod tests {
             ),
             feed: feed.to_string(),
             link: String::new(),
+            raw_id: String::new(),
         }
     }
 
@@ -322,6 +324,7 @@ mod tests {
             date: None,
             feed: "Alice".to_string(),
             link: String::new(),
+            raw_id: String::new(),
         };
         assert_eq!(format_date(&i), "unknown");
     }
