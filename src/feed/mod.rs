@@ -14,10 +14,9 @@ pub struct FeedMeta {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedItem {
     pub id: String,
-    pub source_id: String,
     pub title: String,
     pub date: Option<DateTime<Utc>>,
-    pub author: String,
+    pub feed: String,
 }
 
 impl crate::table::TableRow for FeedItem {
@@ -35,7 +34,7 @@ pub fn fetch(url: &str) -> (FeedMeta, Vec<FeedItem>) {
     let text = String::from_utf8_lossy(&bytes);
 
     if text.contains("<rss") {
-        rss::parse(&bytes[..], url)
+        rss::parse(&bytes[..])
     } else {
         atom::parse(&bytes[..])
     }
@@ -50,7 +49,6 @@ mod tests {
     fn test_serde_roundtrip_with_date() {
         let item = FeedItem {
             id: "https://example.com/post/1".to_string(),
-            source_id: "https://example.com/feed.xml".to_string(),
             title: "Test Post".to_string(),
             date: Some(
                 NaiveDate::from_ymd_opt(2024, 1, 15)
@@ -59,7 +57,7 @@ mod tests {
                     .unwrap()
                     .and_utc(),
             ),
-            author: "Alice".to_string(),
+            feed: "abc123".to_string(),
         };
 
         let json = serde_json::to_string(&item).unwrap();
@@ -71,10 +69,9 @@ mod tests {
     fn test_serde_roundtrip_without_date() {
         let item = FeedItem {
             id: "urn:post:2".to_string(),
-            source_id: "urn:test".to_string(),
             title: "No Date Post".to_string(),
             date: None,
-            author: "Bob".to_string(),
+            feed: "def456".to_string(),
         };
 
         let json = serde_json::to_string(&item).unwrap();

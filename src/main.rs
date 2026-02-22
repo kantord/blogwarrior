@@ -2,6 +2,7 @@ mod feed;
 mod feed_source;
 mod table;
 
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -45,14 +46,14 @@ impl GroupKey {
     fn extract(&self, item: &FeedItem) -> String {
         match self {
             GroupKey::Date => format_date(item),
-            GroupKey::Author => item.author.clone(),
+            GroupKey::Author => item.feed.clone(),
         }
     }
 
     fn compare(&self, a: &FeedItem, b: &FeedItem) -> std::cmp::Ordering {
         match self {
             GroupKey::Date => format_date(b).cmp(&format_date(a)),
-            GroupKey::Author => a.author.cmp(&b.author),
+            GroupKey::Author => a.feed.cmp(&b.feed),
         }
     }
 }
@@ -67,9 +68,9 @@ fn format_item(item: &FeedItem, grouped_keys: &[GroupKey]) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_author = !grouped_keys.contains(&GroupKey::Author);
     match (show_date, show_author) {
-        (true, true) => format!("{}  {} ({})", format_date(item), item.title, item.author),
+        (true, true) => format!("{}  {} ({})", format_date(item), item.title, item.feed),
         (true, false) => format!("{}  {}", format_date(item), item.title),
-        (false, true) => format!("{} ({})", item.title, item.author),
+        (false, true) => format!("{} ({})", item.title, item.feed),
         (false, false) => item.title.clone(),
     }
 }
@@ -153,7 +154,8 @@ fn cmd_pull(store: &Path) {
     let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
     for source in &sources {
         let (meta, items) = feed::fetch(&source.url);
-        for item in items {
+        for mut item in items {
+            item.feed = source.id.clone();
             table.upsert(item);
         }
         let mut updated = source.clone();
@@ -175,8 +177,23 @@ fn cmd_show(store: &Path, group: &str) {
         }
     };
 
+    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let feed_titles: HashMap<String, String> = feeds_table
+        .items()
+        .into_iter()
+        .map(|f| (f.id.clone(), f.title.clone()))
+        .collect();
+
     let table = table::Table::<FeedItem>::load(store, "posts", 1, 20_000_000_000);
     let mut items = table.items();
+
+    for item in &mut items {
+        if let Some(title) = feed_titles.get(&item.feed) {
+            if !title.is_empty() {
+                item.feed = title.clone();
+            }
+        }
+    }
 
     items.sort_by(|a, b| b.date.cmp(&a.date));
 
@@ -201,10 +218,9 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
 
-    fn item(title: &str, date: &str, author: &str) -> FeedItem {
+    fn item(title: &str, date: &str, feed: &str) -> FeedItem {
         FeedItem {
             id: String::new(),
-            source_id: String::new(),
             title: title.to_string(),
             date: Some(
                 NaiveDate::parse_from_str(date, "%Y-%m-%d")
@@ -213,7 +229,7 @@ mod tests {
                     .unwrap()
                     .and_utc(),
             ),
-            author: author.to_string(),
+            feed: feed.to_string(),
         }
     }
 
@@ -295,10 +311,9 @@ mod tests {
     fn test_format_date_without_date() {
         let i = FeedItem {
             id: String::new(),
-            source_id: String::new(),
             title: "Post".to_string(),
             date: None,
-            author: "Alice".to_string(),
+            feed: "Alice".to_string(),
         };
         assert_eq!(format_date(&i), "unknown");
     }

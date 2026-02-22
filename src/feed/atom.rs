@@ -6,8 +6,6 @@ use super::{FeedItem, FeedMeta};
 
 pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
     let feed = Feed::read_from(BufReader::new(reader)).expect("failed to parse Atom feed");
-    let author = feed.title().as_str().to_string();
-    let source_id = feed.id().to_string();
 
     let meta = FeedMeta {
         title: feed.title().as_str().to_string(),
@@ -29,13 +27,12 @@ pub fn parse<R: Read>(reader: R) -> (FeedMeta, Vec<FeedItem>) {
         .iter()
         .map(|entry| FeedItem {
             id: entry.id().to_string(),
-            source_id: source_id.clone(),
             title: entry.title().as_str().to_string(),
             date: entry
                 .published()
                 .or(Some(entry.updated()))
                 .map(|d| d.to_utc()),
-            author: author.clone(),
+            feed: String::new(),
         })
         .collect();
 
@@ -76,15 +73,12 @@ mod tests {
             items[0].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-01"
         );
-        assert_eq!(items[0].author, "Test Blog");
-        assert_eq!(items[0].source_id, "urn:test");
         assert_eq!(items[1].title, "Second Post");
         assert_eq!(items[1].id, "urn:post:2");
         assert_eq!(
             items[1].date.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-02"
         );
-        assert_eq!(items[1].author, "Test Blog");
     }
 
     #[test]

@@ -191,7 +191,10 @@ fn test_pull_creates_posts_file() {
     let titles: Vec<&str> = posts.iter().map(|p| p["title"].as_str().unwrap()).collect();
     assert!(titles.contains(&"First Post"));
     assert!(titles.contains(&"Second Post"));
-    assert!(posts.iter().all(|p| p["author"] == "Test Blog"));
+    // feed field should contain the feed's table ID, same for all posts from this feed
+    let feed_ids: Vec<&str> = posts.iter().map(|p| p["feed"].as_str().unwrap()).collect();
+    assert!(feed_ids.iter().all(|f| !f.is_empty()));
+    assert!(feed_ids.iter().all(|f| f == &feed_ids[0]));
 }
 
 #[test]
@@ -229,8 +232,8 @@ fn test_pull_multiple_feeds() {
 fn test_show_displays_posts() {
     let ctx = TestContext::new();
 
-    let posts = r#"{"id":"1","source_id":"src","title":"Hello World","date":"2024-01-15T00:00:00Z","author":"Alice"}
-{"id":"2","source_id":"src","title":"Second Post","date":"2024-01-14T00:00:00Z","author":"Bob"}"#;
+    let posts = r#"{"id":"1","title":"Hello World","date":"2024-01-15T00:00:00Z","feed":"Alice"}
+{"id":"2","title":"Second Post","date":"2024-01-14T00:00:00Z","feed":"Bob"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
@@ -247,9 +250,9 @@ fn test_show_displays_posts() {
 fn test_show_with_grouping() {
     let ctx = TestContext::new();
 
-    let posts = r#"{"id":"1","source_id":"src","title":"Post A","date":"2024-01-15T00:00:00Z","author":"Alice"}
-{"id":"2","source_id":"src","title":"Post B","date":"2024-01-15T00:00:00Z","author":"Bob"}
-{"id":"3","source_id":"src","title":"Post C","date":"2024-01-14T00:00:00Z","author":"Alice"}"#;
+    let posts = r#"{"id":"1","title":"Post A","date":"2024-01-15T00:00:00Z","feed":"Alice"}
+{"id":"2","title":"Post B","date":"2024-01-15T00:00:00Z","feed":"Bob"}
+{"id":"3","title":"Post C","date":"2024-01-14T00:00:00Z","feed":"Alice"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
@@ -268,7 +271,7 @@ fn test_show_default_no_subcommand() {
     let ctx = TestContext::new();
 
     let posts =
-        r#"{"id":"1","source_id":"src","title":"Default Show","date":"2024-01-15T00:00:00Z","author":"Alice"}"#;
+        r#"{"id":"1","title":"Default Show","date":"2024-01-15T00:00:00Z","feed":"Alice"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
