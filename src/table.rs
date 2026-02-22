@@ -103,11 +103,19 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn delete(&mut self, key: &str) {
-        self.on_delete(key, |_| {});
+        let id = hash_id(key, self.id_length);
+        assert!(
+            matches!(self.items.get(&id), Some(Row::Live { .. })),
+            "delete called on nonexistent key: {key}"
+        );
+        self.items.insert(id.clone(), Row::Tombstone { id: id.clone(), deleted_at: Utc::now() });
     }
 
     pub fn on_delete(&mut self, key: &str, mut hook: impl FnMut(&str)) {
         let id = hash_id(key, self.id_length);
+        if !matches!(self.items.get(&id), Some(Row::Live { .. })) {
+            return;
+        }
         self.items.insert(id.clone(), Row::Tombstone { id: id.clone(), deleted_at: Utc::now() });
         hook(&id);
     }
@@ -617,16 +625,15 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_nonexistent_key() {
+    #[should_panic(expected = "delete called on nonexistent key")]
+    fn test_delete_nonexistent_key_panics() {
         let dir = TempDir::new().unwrap();
         let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("a", "Keep"));
         table.delete("never-added");
-
-        let items = table.items();
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title, "Keep");
     }
+
+
 
     #[test]
     fn test_delete_mixed_with_live() {
