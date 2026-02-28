@@ -145,19 +145,6 @@ impl<T: TableRow> Table<T> {
     pub fn save(&self) -> anyhow::Result<()> {
         fs::create_dir_all(&self.dir).context("failed to create table directory")?;
 
-        // Remove all existing shard files
-        if let Ok(entries) = fs::read_dir(&self.dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(fname) = path.file_name().and_then(|f| f.to_str())
-                    && fname.starts_with("items_")
-                    && fname.ends_with(".jsonl")
-                {
-                    fs::remove_file(&path).context("failed to remove old shard file")?;
-                }
-            }
-        }
-
         // Group items by shard key
         let mut shards: HashMap<String, Vec<&Row<T>>> = HashMap::new();
         for row in self.items.values() {
@@ -165,17 +152,48 @@ impl<T: TableRow> Table<T> {
             shards.entry(key).or_default().push(row);
         }
 
-        // Write each shard
-        for (prefix, mut rows) in shards {
+        // Phase 1: Write new shards to temporary files.
+        // If this fails, old shard files remain untouched.
+        let mut tmp_paths = Vec::new();
+        for (prefix, rows) in &mut shards {
             rows.sort_by(|a, b| a.id().cmp(b.id()));
             let mut out = String::new();
-            for row in rows {
+            for row in rows.iter() {
                 out.push_str(&serde_json::to_string(row).context("failed to serialize item")?);
                 out.push('\n');
             }
-            let path = self.dir.join(format!("items_{}.jsonl", prefix));
-            fs::write(&path, out).context("failed to write shard file")?;
+            let tmp_path = self.dir.join(format!("items_{}.jsonl.tmp", prefix));
+            if let Err(e) = fs::write(&tmp_path, out) {
+                // Clean up the failed temp file and any previously written ones
+                let _ = fs::remove_file(&tmp_path);
+                for (p, _) in &tmp_paths {
+                    let _ = fs::remove_file(p);
+                }
+                return Err(e).context("failed to write shard file");
+            }
+            tmp_paths.push((tmp_path, format!("items_{}.jsonl", prefix)));
         }
+
+        // Phase 2: Remove old shard files
+        if let Ok(entries) = fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|f| f.to_str())
+                    && fname.starts_with("items_")
+                    && fname.ends_with(".jsonl")
+                    && !fname.ends_with(".tmp")
+                {
+                    fs::remove_file(&path).context("failed to remove old shard file")?;
+                }
+            }
+        }
+
+        // Phase 3: Rename temp files to final names
+        for (tmp_path, final_name) in tmp_paths {
+            let final_path = self.dir.join(final_name);
+            fs::rename(&tmp_path, &final_path).context("failed to rename shard file")?;
+        }
+
         Ok(())
     }
 
@@ -789,6 +807,67 @@ mod tests {
         let table = Table::<TestItem>::load(dir.path()).unwrap();
         assert_eq!(table.items().len(), 1);
         assert_eq!(table.items()[0].title, "Post");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_failed_save_preserves_previous_data() {
+        let dir = TempDir::new().unwrap();
+
+        // Save initial data
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        table
+            .items
+            .insert("aabb11".to_string(), make_row_with_id("aabb11", "Original"));
+        table.save().unwrap();
+
+        // Verify initial data is saved
+        let loaded = Table::<TestItem>::load(dir.path()).unwrap();
+        assert_eq!(loaded.items().len(), 1);
+
+        // Fork a child process to attempt save() with RLIMIT_FSIZE=8.
+        // RLIMIT_FSIZE is process-wide, so we isolate it in a subprocess to
+        // avoid interfering with other tests running in parallel.
+        // The child sets a file size limit of 8 bytes — enough to create a file
+        // but too small for any real JSONL row — then attempts save().
+        // Deletions (unlink) are unaffected by RLIMIT_FSIZE, so save() will
+        // delete old shards but fail writing new ones — simulating disk-full.
+        let dir_path = dir.path().to_path_buf();
+        let child_status = unsafe { libc::fork() };
+        match child_status {
+            -1 => panic!("fork failed"),
+            0 => {
+                // Child process: set RLIMIT_FSIZE and attempt save()
+                unsafe {
+                    libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+                    let limit = libc::rlimit {
+                        rlim_cur: 8,
+                        rlim_max: libc::RLIM_INFINITY,
+                    };
+                    libc::setrlimit(libc::RLIMIT_FSIZE, &limit);
+                }
+                let table = Table::<TestItem>::load(&dir_path).unwrap();
+                let _ = table.save();
+                std::process::exit(0);
+            }
+            child_pid => {
+                // Parent: wait for child
+                let mut wstatus: libc::c_int = 0;
+                unsafe {
+                    libc::waitpid(child_pid, &mut wstatus, 0);
+                }
+            }
+        }
+
+        // Original data should still be loadable after the child's failed save
+        let recovered = Table::<TestItem>::load(dir.path())
+            .expect("load should not fail after a failed save");
+        assert_eq!(
+            recovered.items().len(),
+            1,
+            "original data should survive a failed save()"
+        );
+        assert_eq!(recovered.items()[0].title, "Original");
     }
 
     /// Helper to create a Row with a pre-set id (no hashing).

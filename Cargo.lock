@@ -394,6 +394,7 @@ dependencies = [
  "dirs",
  "httpmock",
  "itertools 0.14.0",
+ "libc",
  "open",
  "reqwest",
  "rss",
