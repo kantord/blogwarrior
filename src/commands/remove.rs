@@ -12,20 +12,14 @@ pub(crate) fn cmd_remove(store: &Path, url: &str) -> anyhow::Result<()> {
     let mut feeds_table = synctato::Table::<FeedSource>::load(store)?;
     let mut posts_table = synctato::Table::<FeedItem>::load(store)?;
 
-    let resolved_url;
     let url = if let Some(shorthand) = url.strip_prefix('@') {
-        match resolve_shorthand(&feeds_table, shorthand) {
-            Some(u) => {
-                resolved_url = u;
-                &resolved_url
-            }
-            None => bail!("Unknown shorthand: @{}", shorthand),
-        }
+        resolve_shorthand(&feeds_table, shorthand)
+            .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?
     } else {
-        url
+        url.to_string()
     };
 
-    match feeds_table.delete(url) {
+    match feeds_table.delete(&url) {
         Some(feed_id) => {
             let post_keys: Vec<String> = posts_table
                 .items()

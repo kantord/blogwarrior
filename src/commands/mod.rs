@@ -102,6 +102,15 @@ pub(crate) struct FeedIndex {
     pub shorthands: Vec<String>,
 }
 
+impl FeedIndex {
+    pub(crate) fn id_for_shorthand(&self, shorthand: &str) -> Option<&str> {
+        self.shorthands
+            .iter()
+            .position(|sh| sh == shorthand)
+            .map(|pos| self.ids[pos].as_str())
+    }
+}
+
 pub(crate) fn feed_index(table: &synctato::Table<FeedSource>) -> FeedIndex {
     let mut feeds = table.items();
     feeds.sort_by(|a, b| a.url.cmp(&b.url));

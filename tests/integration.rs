@@ -801,7 +801,7 @@ fn test_show_filter_unknown_shorthand() {
     let output = ctx.run(&["show", "@zzz"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
     assert!(
-        stderr.contains("Unknown shorthand"),
+        stderr.contains("Unknown feed shorthand"),
         "expected unknown shorthand error, got: {}",
         stderr
     );

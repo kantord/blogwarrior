@@ -160,10 +160,11 @@ pub(crate) fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyho
     let filter_feed_id = match filter {
         Some(f) if f.starts_with('@') => {
             let shorthand = &f[1..];
-            match fi.shorthands.iter().position(|sh| sh == shorthand) {
-                Some(pos) => Some(fi.ids[pos].clone()),
-                None => bail!("Unknown shorthand: {}", f),
-            }
+            Some(
+                fi.id_for_shorthand(shorthand)
+                    .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?
+                    .to_string(),
+            )
         }
         _ => None,
     };
