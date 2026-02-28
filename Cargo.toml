@@ -8,6 +8,7 @@ name = "blog"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
 atom_syndication = "0.12"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }

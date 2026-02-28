@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
+use anyhow::{bail, ensure};
 use clap::{Parser, Subcommand};
 use itertools::Itertools;
 
@@ -171,21 +172,18 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
         .collect()
 }
 
-fn parse_show_args(args: &[String]) -> (String, Option<String>) {
+fn parse_show_args(args: &[String]) -> anyhow::Result<(String, Option<String>)> {
     let mut group = String::new();
     let mut filter = None;
     for arg in args {
         if arg.starts_with('@') {
             filter = Some(arg.clone());
         } else {
-            if !group.is_empty() {
-                eprintln!("Multiple grouping arguments: '{}' and '{}'. Use a single argument like '{}{}'.", group, arg, group, arg);
-                std::process::exit(1);
-            }
+            ensure!(group.is_empty(), "Multiple grouping arguments: '{}' and '{}'. Use a single argument like '{}{}'.", group, arg, group, arg);
             group = arg.clone();
         }
     }
-    (group, filter)
+    Ok((group, filter))
 }
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
@@ -304,7 +302,7 @@ fn store_dir() -> PathBuf {
         })
 }
 
-fn cmd_remove(store: &Path, url: &str) {
+fn cmd_remove(store: &Path, url: &str) -> anyhow::Result<()> {
     let mut feeds_table = table::Table::<FeedSource>::load(store);
     let mut posts_table = table::Table::<FeedItem>::load(store);
 
@@ -315,10 +313,7 @@ fn cmd_remove(store: &Path, url: &str) {
                 resolved_url = u;
                 &resolved_url
             }
-            None => {
-                eprintln!("Unknown shorthand: @{}", shorthand);
-                return;
-            }
+            None => bail!("Unknown shorthand: @{}", shorthand),
         }
     } else {
         url
@@ -336,14 +331,12 @@ fn cmd_remove(store: &Path, url: &str) {
                 posts_table.delete(&key);
             }
         }
-        None => {
-            eprintln!("Feed not found: {}", url);
-            std::process::exit(1);
-        }
+        None => bail!("Feed not found: {}", url),
     }
 
     feeds_table.save();
     posts_table.save();
+    Ok(())
 }
 
 fn cmd_add(store: &Path, url: &str) {
@@ -357,13 +350,10 @@ fn cmd_add(store: &Path, url: &str) {
     table.save();
 }
 
-fn cmd_feed_ls(store: &Path) {
+fn cmd_feed_ls(store: &Path) -> anyhow::Result<()> {
     let feeds_table = table::Table::<FeedSource>::load(store);
     let mut feeds = feeds_table.items();
-    if feeds.is_empty() {
-        eprintln!("No matching feeds");
-        std::process::exit(1);
-    }
+    ensure!(!feeds.is_empty(), "No matching feeds");
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
     let shorthands = compute_shorthands(&ids);
@@ -374,6 +364,7 @@ fn cmd_feed_ls(store: &Path) {
             println!("@{} {} ({})", shorthand, feed.url, feed.title);
         }
     }
+    Ok(())
 }
 
 fn cmd_pull(store: &Path) {
@@ -411,84 +402,48 @@ fn load_sorted_posts(store: &Path) -> Vec<FeedItem> {
     items
 }
 
-fn resolve_post_shorthand(store: &Path, shorthand: &str) -> FeedItem {
+fn resolve_post_shorthand(store: &Path, shorthand: &str) -> anyhow::Result<FeedItem> {
     let items = load_sorted_posts(store);
     let found = items
         .into_iter()
         .enumerate()
         .find(|(i, _)| index_to_shorthand(*i) == shorthand);
     match found {
-        Some((_, item)) => item,
-        None => {
-            eprintln!("Unknown shorthand: {}", shorthand);
-            std::process::exit(1);
-        }
+        Some((_, item)) => Ok(item),
+        None => bail!("Unknown shorthand: {}", shorthand),
     }
 }
 
-fn cmd_open(store: &Path, shorthand: &str) {
-    let item = resolve_post_shorthand(store, shorthand);
-    if item.link.is_empty() {
-        eprintln!("Post has no link");
-        std::process::exit(1);
-    }
-    if let Err(e) = open::that(&item.link) {
-        eprintln!("Could not open URL: {}", e);
-        std::process::exit(1);
-    }
+fn cmd_open(store: &Path, shorthand: &str) -> anyhow::Result<()> {
+    let item = resolve_post_shorthand(store, shorthand)?;
+    ensure!(!item.link.is_empty(), "Post has no link");
+    open::that(&item.link).map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
+    Ok(())
 }
 
-fn cmd_read(store: &Path, shorthand: &str) {
-    let item = resolve_post_shorthand(store, shorthand);
-    if item.link.is_empty() {
-        eprintln!("Post has no link");
-        std::process::exit(1);
-    }
+fn cmd_read(store: &Path, shorthand: &str) -> anyhow::Result<()> {
+    let item = resolve_post_shorthand(store, shorthand)?;
+    ensure!(!item.link.is_empty(), "Post has no link");
     let client = http_client();
-    let response = match client.get(&item.link).send() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Could not fetch URL: {}", e);
-            std::process::exit(1);
-        }
-    };
-    let html = match response.text() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Could not read response: {}", e);
-            std::process::exit(1);
-        }
-    };
-    let reader = match readability_js::Readability::new() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Could not initialize reader: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let response = client.get(&item.link).send()
+        .map_err(|e| anyhow::anyhow!("Could not fetch URL: {}", e))?;
+    let html = response.text()
+        .map_err(|e| anyhow::anyhow!("Could not read response: {}", e))?;
+    let reader = readability_js::Readability::new()
+        .map_err(|e| anyhow::anyhow!("Could not initialize reader: {}", e))?;
     let article = reader
         .parse_with_url(&html, &item.link)
-        .or_else(|_| reader.parse(&html));
-    match article {
-        Ok(a) => {
-            println!("{}\n", a.title);
-            print!("{}", a.text_content);
-        }
-        Err(e) => {
-            eprintln!("Could not extract readable content: {}", e);
-            eprintln!("Try: blog open {}", shorthand);
-            std::process::exit(1);
-        }
-    }
+        .or_else(|_| reader.parse(&html))
+        .map_err(|e| anyhow::anyhow!("Could not extract readable content: {}\nTry: blog open {}", e, shorthand))?;
+    println!("{}\n", article.title);
+    print!("{}", article.text_content);
+    Ok(())
 }
 
-fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
+fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<()> {
     let keys = match parse_grouping(group) {
         Some(keys) => keys,
-        None => {
-            eprintln!("Unknown grouping: {}. Use: d, f, df, fd", group);
-            return;
-        }
+        None => bail!("Unknown grouping: {}. Use: d, f, df, fd", group),
     };
 
     let feeds_table = table::Table::<FeedSource>::load(store);
@@ -502,10 +457,7 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
             let shorthand = &f[1..];
             match shorthands.iter().position(|sh| sh == shorthand) {
                 Some(pos) => Some(ids[pos].clone()),
-                None => {
-                    eprintln!("Unknown shorthand: {}", f);
-                    std::process::exit(1);
-                }
+                None => bail!("Unknown shorthand: {}", f),
             }
         }
         _ => None,
@@ -537,34 +489,40 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
         items.retain(|item| item.feed == *feed_id);
     }
 
-    if items.is_empty() {
-        eprintln!("No matching posts");
-        std::process::exit(1);
-    }
+    ensure!(!items.is_empty(), "No matching posts");
 
     let refs: Vec<&FeedItem> = items.iter().collect();
     print!("{}", render_grouped(&refs, &keys, &post_shorthands, &feed_labels));
+    Ok(())
 }
 
-fn main() {
+fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let store = store_dir();
 
     match args.command {
-        Some(Command::Pull) => cmd_pull(&store),
+        Some(Command::Pull) => { cmd_pull(&store); }
         Some(Command::Show { ref args }) => {
-            let (group, filter) = parse_show_args(args);
-            cmd_show(&store, &group, filter.as_deref());
+            let (group, filter) = parse_show_args(args)?;
+            cmd_show(&store, &group, filter.as_deref())?;
         }
-        Some(Command::Open { ref shorthand }) => cmd_open(&store, shorthand),
-        Some(Command::Read { ref shorthand }) => cmd_read(&store, shorthand),
-        Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
-        Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => cmd_remove(&store, url),
-        Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),
+        Some(Command::Open { ref shorthand }) => { cmd_open(&store, shorthand)?; }
+        Some(Command::Read { ref shorthand }) => { cmd_read(&store, shorthand)?; }
+        Some(Command::Feed { command: FeedCommand::Add { ref url } }) => { cmd_add(&store, url); }
+        Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => { cmd_remove(&store, url)?; }
+        Some(Command::Feed { command: FeedCommand::Ls }) => { cmd_feed_ls(&store)?; }
         None => {
-            let (group, filter) = parse_show_args(&args.args);
-            cmd_show(&store, &group, filter.as_deref());
+            let (group, filter) = parse_show_args(&args.args)?;
+            cmd_show(&store, &group, filter.as_deref())?;
         }
+    }
+    Ok(())
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{e}");
+        std::process::exit(1);
     }
 }
 
