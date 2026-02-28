@@ -92,8 +92,7 @@ fn run() -> anyhow::Result<()> {
 
     match args.command {
         Some(Command::Pull) => {
-            commands::pull::cmd_pull(&mut store)?;
-            store.save()?;
+            store.transaction(commands::pull::cmd_pull)?;
         }
         Some(Command::Show { ref args }) => {
             let (group, filter) = parse_show_args(args)?;
@@ -105,14 +104,12 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
         }) => {
-            commands::add::cmd_add(&mut store, url)?;
-            store.save()?;
+            store.transaction(|tx| commands::add::cmd_add(tx, url))?;
         }
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },
         }) => {
-            commands::remove::cmd_remove(&mut store, url)?;
-            store.save()?;
+            store.transaction(|tx| commands::remove::cmd_remove(tx, url))?;
         }
         Some(Command::Feed {
             command: FeedCommand::Ls,

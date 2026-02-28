@@ -1,21 +1,21 @@
 use anyhow::bail;
 use synctato::TableRow;
 
-use crate::store::Store;
+use crate::store::Transaction;
 
 use super::resolve_shorthand;
 
-pub(crate) fn cmd_remove(store: &mut Store, url: &str) -> anyhow::Result<()> {
+pub(crate) fn cmd_remove(tx: &mut Transaction, url: &str) -> anyhow::Result<()> {
     let url = if let Some(shorthand) = url.strip_prefix('@') {
-        resolve_shorthand(&store.feeds, shorthand)
+        resolve_shorthand(tx.feeds, shorthand)
             .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?
     } else {
         url.to_string()
     };
 
-    match store.feeds.delete(&url) {
+    match tx.feeds.delete(&url) {
         Some(feed_id) => {
-            let post_keys: Vec<String> = store
+            let post_keys: Vec<String> = tx
                 .posts
                 .items()
                 .iter()
@@ -23,7 +23,7 @@ pub(crate) fn cmd_remove(store: &mut Store, url: &str) -> anyhow::Result<()> {
                 .map(|p| p.key())
                 .collect();
             for key in post_keys {
-                store.posts.delete(&key);
+                tx.posts.delete(&key);
             }
         }
         None => bail!("Feed not found: {}", url),

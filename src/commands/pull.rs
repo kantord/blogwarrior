@@ -1,4 +1,4 @@
-use crate::store::Store;
+use crate::store::Transaction;
 
 fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
@@ -8,9 +8,9 @@ fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
         .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {}", e))
 }
 
-pub(crate) fn cmd_pull(store: &mut Store) -> anyhow::Result<()> {
+pub(crate) fn cmd_pull(tx: &mut Transaction) -> anyhow::Result<()> {
     let client = http_client()?;
-    let sources = store.feeds.items();
+    let sources = tx.feeds.items();
     for source in &sources {
         let (meta, items) = match crate::feed::fetch(&client, &source.url) {
             Ok(result) => result,
@@ -19,16 +19,16 @@ pub(crate) fn cmd_pull(store: &mut Store) -> anyhow::Result<()> {
                 continue;
             }
         };
-        let feed_id = store.feeds.id_of(source);
+        let feed_id = tx.feeds.id_of(source);
         for mut item in items {
             item.feed = feed_id.clone();
-            store.posts.upsert(item);
+            tx.posts.upsert(item);
         }
         let mut updated = source.clone();
         updated.title = meta.title;
         updated.site_url = meta.site_url;
         updated.description = meta.description;
-        store.feeds.upsert(updated);
+        tx.feeds.upsert(updated);
     }
     Ok(())
 }

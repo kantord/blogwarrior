@@ -6,7 +6,7 @@ use crate::store::Store;
 use super::{PostIndex, post_index};
 
 fn resolve_post_shorthand(store: &Store, shorthand: &str) -> anyhow::Result<FeedItem> {
-    let PostIndex { items, shorthands } = post_index(&store.posts);
+    let PostIndex { items, shorthands } = post_index(store.posts());
     items
         .into_iter()
         .find(|item| shorthands.get(&item.raw_id).is_some_and(|s| s == shorthand))

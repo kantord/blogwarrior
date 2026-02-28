@@ -153,7 +153,7 @@ pub(crate) fn cmd_show(store: &Store, group: &str, filter: Option<&str>) -> anyh
         None => bail!("Unknown grouping: {}. Use: d, f, df, fd", group),
     };
 
-    let fi = feed_index(&store.feeds);
+    let fi = feed_index(store.feeds());
 
     let filter_feed_id = match filter {
         Some(f) if f.starts_with('@') => {
@@ -182,7 +182,7 @@ pub(crate) fn cmd_show(store: &Store, group: &str, filter: Option<&str>) -> anyh
         })
         .collect();
 
-    let mut posts = post_index(&store.posts);
+    let mut posts = post_index(store.posts());
 
     if let Some(ref feed_id) = filter_feed_id {
         posts.items.retain(|item| item.feed == *feed_id);
