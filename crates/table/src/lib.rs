@@ -174,7 +174,16 @@ impl<T: TableRow> Table<T> {
             tmp_paths.push((tmp_path, format!("items_{}.jsonl", prefix)));
         }
 
-        // Phase 2: Remove old shard files
+        // Phase 2: Atomically rename temp files over old shard files.
+        // On POSIX, rename() replaces the destination if it exists.
+        let new_shard_names: std::collections::HashSet<String> =
+            tmp_paths.iter().map(|(_, name)| name.clone()).collect();
+        for (tmp_path, final_name) in tmp_paths {
+            let final_path = self.dir.join(final_name);
+            fs::rename(&tmp_path, &final_path).context("failed to rename shard file")?;
+        }
+
+        // Phase 3: Remove stale shard files that no longer have data
         if let Ok(entries) = fs::read_dir(&self.dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -182,16 +191,11 @@ impl<T: TableRow> Table<T> {
                     && fname.starts_with("items_")
                     && fname.ends_with(".jsonl")
                     && !fname.ends_with(".tmp")
+                    && !new_shard_names.contains(fname)
                 {
-                    fs::remove_file(&path).context("failed to remove old shard file")?;
+                    fs::remove_file(&path).context("failed to remove stale shard file")?;
                 }
             }
-        }
-
-        // Phase 3: Rename temp files to final names
-        for (tmp_path, final_name) in tmp_paths {
-            let final_path = self.dir.join(final_name);
-            fs::rename(&tmp_path, &final_path).context("failed to rename shard file")?;
         }
 
         Ok(())
