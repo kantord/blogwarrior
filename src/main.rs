@@ -169,6 +169,10 @@ fn parse_show_args(args: &[String]) -> (String, Option<String>) {
         if arg.starts_with('@') {
             filter = Some(arg.clone());
         } else {
+            if !group.is_empty() {
+                eprintln!("Multiple grouping arguments: '{}' and '{}'. Use a single argument like '{}{}'.", group, arg, group, arg);
+                std::process::exit(1);
+            }
             group = arg.clone();
         }
     }

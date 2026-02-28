@@ -265,6 +265,23 @@ fn test_show_displays_posts() {
 }
 
 #[test]
+fn test_show_rejects_multiple_grouping_args() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Post A","date":"2024-01-15T00:00:00Z","feed":"Alice"}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    let output = ctx.run(&["show", "d", "f"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("Multiple grouping arguments"),
+        "expected error about multiple grouping args, got: {}",
+        stderr,
+    );
+}
+
+#[test]
 fn test_show_with_grouping() {
     let ctx = TestContext::new();
 
