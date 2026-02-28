@@ -1,0 +1,546 @@
+use std::collections::HashMap;
+use std::fmt::Write;
+use std::path::Path;
+
+use anyhow::{bail, ensure};
+use itertools::Itertools;
+
+use crate::feed::FeedItem;
+use crate::feed_source::FeedSource;
+
+use super::{compute_shorthands, index_to_shorthand, load_sorted_posts};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GroupKey {
+    Date,
+    Feed,
+}
+
+impl GroupKey {
+    fn extract(&self, item: &FeedItem, feed_labels: &HashMap<String, String>) -> String {
+        match self {
+            GroupKey::Date => format_date(item),
+            GroupKey::Feed => feed_labels
+                .get(&item.feed)
+                .cloned()
+                .unwrap_or_else(|| item.feed.clone()),
+        }
+    }
+
+    fn compare(
+        &self,
+        a: &FeedItem,
+        b: &FeedItem,
+        feed_labels: &HashMap<String, String>,
+    ) -> std::cmp::Ordering {
+        match self {
+            GroupKey::Date => format_date(b).cmp(&format_date(a)),
+            GroupKey::Feed => self
+                .extract(a, feed_labels)
+                .cmp(&self.extract(b, feed_labels)),
+        }
+    }
+}
+
+fn format_date(item: &FeedItem) -> String {
+    item.date
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn format_item(
+    item: &FeedItem,
+    grouped_keys: &[GroupKey],
+    shorthand: &str,
+    feed_labels: &HashMap<String, String>,
+) -> String {
+    let show_date = !grouped_keys.contains(&GroupKey::Date);
+    let show_feed = !grouped_keys.contains(&GroupKey::Feed);
+    let feed_label = feed_labels
+        .get(&item.feed)
+        .map(|s| s.as_str())
+        .unwrap_or(&item.feed);
+    let body = match (show_date, show_feed) {
+        (true, true) => format!("{}  {} ({})", format_date(item), item.title, feed_label),
+        (true, false) => format!("{}  {}", format_date(item), item.title),
+        (false, true) => format!("{} ({})", item.title, feed_label),
+        (false, false) => item.title.clone(),
+    };
+    format!("{} {}", shorthand, body)
+}
+
+fn render_grouped(
+    items: &[&FeedItem],
+    keys: &[GroupKey],
+    shorthands: &HashMap<String, String>,
+    feed_labels: &HashMap<String, String>,
+) -> String {
+    fn recurse(
+        out: &mut String,
+        items: &[&FeedItem],
+        remaining: &[GroupKey],
+        all_keys: &[GroupKey],
+        shorthands: &HashMap<String, String>,
+        feed_labels: &HashMap<String, String>,
+    ) {
+        let depth = all_keys.len() - remaining.len();
+        let indent = "  ".repeat(depth);
+
+        if remaining.is_empty() {
+            for item in items {
+                let sh = shorthands
+                    .get(&item.raw_id)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                writeln!(
+                    out,
+                    "{indent}{}",
+                    format_item(item, all_keys, sh, feed_labels)
+                )
+                .unwrap();
+            }
+            return;
+        }
+
+        let key = remaining[0];
+        let rest = &remaining[1..];
+
+        let mut sorted = items.to_vec();
+        sorted.sort_by(|a, b| key.compare(a, b, feed_labels));
+
+        let (prefix, suffix) = if depth == 0 {
+            ("=== ", " ===")
+        } else {
+            ("--- ", " ---")
+        };
+
+        for (group_val, group) in &sorted
+            .iter()
+            .chunk_by(|item| key.extract(item, feed_labels))
+        {
+            let group_items: Vec<&FeedItem> = group.copied().collect();
+            writeln!(out, "{indent}{prefix}{group_val}{suffix}").unwrap();
+            if depth == 0 {
+                writeln!(out).unwrap();
+            }
+            recurse(out, &group_items, rest, all_keys, shorthands, feed_labels);
+            if depth == 0 {
+                writeln!(out).unwrap();
+                writeln!(out).unwrap();
+            } else {
+                writeln!(out).unwrap();
+            }
+        }
+    }
+
+    let mut out = String::new();
+    recurse(&mut out, items, keys, keys, shorthands, feed_labels);
+    out
+}
+
+fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
+    arg.chars()
+        .map(|c| match c {
+            'd' => Some(GroupKey::Date),
+            'f' => Some(GroupKey::Feed),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<()> {
+    let keys = match parse_grouping(group) {
+        Some(keys) => keys,
+        None => bail!("Unknown grouping: {}. Use: d, f, df, fd", group),
+    };
+
+    let feeds_table = synctato::Table::<FeedSource>::load(store)?;
+    let mut feeds = feeds_table.items();
+    feeds.sort_by(|a, b| a.url.cmp(&b.url));
+    let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
+    let shorthands = compute_shorthands(&ids);
+
+    let filter_feed_id = match filter {
+        Some(f) if f.starts_with('@') => {
+            let shorthand = &f[1..];
+            match shorthands.iter().position(|sh| sh == shorthand) {
+                Some(pos) => Some(ids[pos].clone()),
+                None => bail!("Unknown shorthand: {}", f),
+            }
+        }
+        _ => None,
+    };
+
+    let feed_labels: HashMap<String, String> = ids
+        .iter()
+        .zip(feeds.iter())
+        .zip(shorthands.iter())
+        .map(|((id, feed), sh)| {
+            let label = if feed.title.is_empty() {
+                format!("@{} {}", sh, feed.url)
+            } else {
+                format!("@{} {}", sh, feed.title)
+            };
+            (id.clone(), label)
+        })
+        .collect();
+
+    let mut items = load_sorted_posts(store)?;
+
+    let post_shorthands: HashMap<String, String> = items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| (item.raw_id.clone(), index_to_shorthand(i)))
+        .collect();
+
+    if let Some(ref feed_id) = filter_feed_id {
+        items.retain(|item| item.feed == *feed_id);
+    }
+
+    ensure!(!items.is_empty(), "No matching posts");
+
+    let refs: Vec<&FeedItem> = items.iter().collect();
+    print!(
+        "{}",
+        render_grouped(&refs, &keys, &post_shorthands, &feed_labels)
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn no_labels() -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn item(title: &str, date: &str, feed: &str) -> FeedItem {
+        FeedItem {
+            title: title.to_string(),
+            date: Some(
+                NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: feed.to_string(),
+            link: String::new(),
+            raw_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_parse_grouping_empty() {
+        assert_eq!(parse_grouping(""), Some(vec![]));
+    }
+
+    #[test]
+    fn test_parse_grouping_date() {
+        assert_eq!(parse_grouping("d"), Some(vec![GroupKey::Date]));
+    }
+
+    #[test]
+    fn test_parse_grouping_feed() {
+        assert_eq!(parse_grouping("f"), Some(vec![GroupKey::Feed]));
+    }
+
+    #[test]
+    fn test_parse_grouping_date_feed() {
+        assert_eq!(
+            parse_grouping("df"),
+            Some(vec![GroupKey::Date, GroupKey::Feed])
+        );
+    }
+
+    #[test]
+    fn test_parse_grouping_feed_date() {
+        assert_eq!(
+            parse_grouping("fd"),
+            Some(vec![GroupKey::Feed, GroupKey::Date])
+        );
+    }
+
+    #[test]
+    fn test_parse_grouping_invalid() {
+        assert_eq!(parse_grouping("x"), None);
+    }
+
+    #[test]
+    fn test_parse_grouping_partially_invalid() {
+        assert_eq!(parse_grouping("dx"), None);
+    }
+
+    #[test]
+    fn test_format_item_no_grouping() {
+        let i = item("Post", "2024-01-15", "Alice");
+        assert_eq!(
+            format_item(&i, &[], "abc", &no_labels()),
+            "abc 2024-01-15  Post (Alice)"
+        );
+    }
+
+    #[test]
+    fn test_format_item_grouped_by_date() {
+        let i = item("Post", "2024-01-15", "Alice");
+        assert_eq!(
+            format_item(&i, &[GroupKey::Date], "abc", &no_labels()),
+            "abc Post (Alice)"
+        );
+    }
+
+    #[test]
+    fn test_format_item_grouped_by_feed() {
+        let i = item("Post", "2024-01-15", "Alice");
+        assert_eq!(
+            format_item(&i, &[GroupKey::Feed], "abc", &no_labels()),
+            "abc 2024-01-15  Post"
+        );
+    }
+
+    #[test]
+    fn test_format_item_grouped_by_both() {
+        let i = item("Post", "2024-01-15", "Alice");
+        assert_eq!(
+            format_item(&i, &[GroupKey::Date, GroupKey::Feed], "abc", &no_labels()),
+            "abc Post"
+        );
+    }
+
+    #[test]
+    fn test_format_date_with_date() {
+        let i = item("Post", "2024-01-15", "Alice");
+        assert_eq!(format_date(&i), "2024-01-15");
+    }
+
+    #[test]
+    fn test_format_date_without_date() {
+        let i = FeedItem {
+            title: "Post".to_string(),
+            date: None,
+            feed: "Alice".to_string(),
+            link: String::new(),
+            raw_id: String::new(),
+        };
+        assert_eq!(format_date(&i), "unknown");
+    }
+
+    #[test]
+    fn test_render_flat() {
+        let items = [
+            item("Post A", "2024-01-02", "Alice"),
+            item("Post B", "2024-01-01", "Bob"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(&refs, &[], &no_labels(), &no_labels());
+        assert_eq!(
+            output,
+            " 2024-01-02  Post A (Alice)\n 2024-01-01  Post B (Bob)\n"
+        );
+    }
+
+    #[test]
+    fn test_render_grouped_by_date() {
+        let items = [
+            item("Post A", "2024-01-02", "Alice"),
+            item("Post B", "2024-01-02", "Bob"),
+            item("Post C", "2024-01-01", "Alice"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels());
+        assert_eq!(
+            output,
+            "\
+=== 2024-01-02 ===
+
+   Post A (Alice)
+   Post B (Bob)
+
+
+=== 2024-01-01 ===
+
+   Post C (Alice)
+
+
+"
+        );
+    }
+
+    #[test]
+    fn test_render_grouped_by_feed() {
+        let items = [
+            item("Post A", "2024-01-02", "Bob"),
+            item("Post B", "2024-01-01", "Alice"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(&refs, &[GroupKey::Feed], &no_labels(), &no_labels());
+        assert_eq!(
+            output,
+            "\
+=== Alice ===
+
+   2024-01-01  Post B
+
+
+=== Bob ===
+
+   2024-01-02  Post A
+
+
+"
+        );
+    }
+
+    #[test]
+    fn test_render_grouped_by_date_then_feed() {
+        let items = [
+            item("Post A", "2024-01-02", "Bob"),
+            item("Post B", "2024-01-02", "Alice"),
+            item("Post C", "2024-01-01", "Alice"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Date, GroupKey::Feed],
+            &no_labels(),
+            &no_labels(),
+        );
+        assert_eq!(
+            output,
+            "\
+=== 2024-01-02 ===
+
+  --- Alice ---
+     Post B
+
+  --- Bob ---
+     Post A
+
+
+
+=== 2024-01-01 ===
+
+  --- Alice ---
+     Post C
+
+
+
+"
+        );
+    }
+
+    #[test]
+    fn test_render_grouped_by_feed_then_date() {
+        let items = [
+            item("Post A", "2024-01-02", "Bob"),
+            item("Post B", "2024-01-02", "Alice"),
+            item("Post C", "2024-01-01", "Alice"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Feed, GroupKey::Date],
+            &no_labels(),
+            &no_labels(),
+        );
+        assert_eq!(
+            output,
+            "\
+=== Alice ===
+
+  --- 2024-01-02 ---
+     Post B
+
+  --- 2024-01-01 ---
+     Post C
+
+
+
+=== Bob ===
+
+  --- 2024-01-02 ---
+     Post A
+
+
+
+"
+        );
+    }
+
+    #[test]
+    fn test_render_empty_items() {
+        let refs: Vec<&FeedItem> = vec![];
+
+        assert_eq!(
+            render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels()),
+            ""
+        );
+    }
+
+    #[test]
+    fn test_date_ordering_is_descending() {
+        let items = [
+            item("Old", "2024-01-01", "Alice"),
+            item("New", "2024-01-03", "Alice"),
+            item("Mid", "2024-01-02", "Alice"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels());
+        let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
+        assert_eq!(
+            headers,
+            vec![
+                "=== 2024-01-03 ===",
+                "=== 2024-01-02 ===",
+                "=== 2024-01-01 ==="
+            ]
+        );
+    }
+
+    #[test]
+    fn test_feed_ordering_is_ascending() {
+        let items = [
+            item("Post", "2024-01-01", "Charlie"),
+            item("Post", "2024-01-02", "Alice"),
+            item("Post", "2024-01-03", "Bob"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+
+        let output = render_grouped(&refs, &[GroupKey::Feed], &no_labels(), &no_labels());
+        let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
+        assert_eq!(
+            headers,
+            vec!["=== Alice ===", "=== Bob ===", "=== Charlie ==="]
+        );
+    }
+
+    #[test]
+    fn test_render_grouped_with_shorthands() {
+        let items = [FeedItem {
+            title: "Post A".to_string(),
+            date: Some(
+                NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: "Alice".to_string(),
+            link: String::new(),
+            raw_id: "id-a".to_string(),
+        }];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+        let mut shorthands = HashMap::new();
+        shorthands.insert("id-a".to_string(), "sDf".to_string());
+        let output = render_grouped(&refs, &[], &shorthands, &no_labels());
+        assert_eq!(output, "sDf 2024-01-02  Post A (Alice)\n");
+    }
+}
