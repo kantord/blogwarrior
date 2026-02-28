@@ -64,16 +64,9 @@ pub struct Table<T: TableRow> {
 }
 
 impl<T: TableRow> Table<T> {
-    pub fn load(store: &Path) -> anyhow::Result<Self> {
-        let dir = store.join(T::TABLE_NAME);
-        let id_length = id_length_for_capacity(T::EXPECTED_CAPACITY);
-        let mut table = Self {
-            items: HashMap::new(),
-            dir,
-            shard_characters: T::SHARD_CHARACTERS,
-            id_length,
-        };
-        if let Ok(entries) = fs::read_dir(&table.dir) {
+    fn read_items(dir: &Path) -> anyhow::Result<HashMap<String, Row<T>>> {
+        let mut items = HashMap::new();
+        if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(fname) = path.file_name().and_then(|f| f.to_str())
@@ -89,12 +82,24 @@ impl<T: TableRow> Table<T> {
                         let row: Row<T> = serde_json::from_str(&line).with_context(|| {
                             format!("failed to parse entry in {}", path.display())
                         })?;
-                        table.items.insert(row.id().to_string(), row);
+                        items.insert(row.id().to_string(), row);
                     }
                 }
             }
         }
-        Ok(table)
+        Ok(items)
+    }
+
+    pub fn load(store: &Path) -> anyhow::Result<Self> {
+        let dir = store.join(T::TABLE_NAME);
+        let id_length = id_length_for_capacity(T::EXPECTED_CAPACITY);
+        let items = Self::read_items(&dir)?;
+        Ok(Self {
+            items,
+            dir,
+            shard_characters: T::SHARD_CHARACTERS,
+            id_length,
+        })
     }
 
     pub fn upsert(&mut self, item: T) {
@@ -145,9 +150,19 @@ impl<T: TableRow> Table<T> {
     pub fn save(&self) -> anyhow::Result<()> {
         fs::create_dir_all(&self.dir).context("failed to create table directory")?;
 
+        let lock_file =
+            fs::File::create(self.dir.join(".lock")).context("failed to create lock file")?;
+        lock_file.lock().context("failed to acquire lock")?;
+
+        // Re-read disk state and merge: preserve items added by other processes
+        let mut merged = Self::read_items(&self.dir)?;
+        for (id, row) in &self.items {
+            merged.insert(id.clone(), row.clone());
+        }
+
         // Group items by shard key
         let mut shards: HashMap<String, Vec<&Row<T>>> = HashMap::new();
-        for row in self.items.values() {
+        for row in merged.values() {
             let key = self.shard_key(row.id());
             shards.entry(key).or_default().push(row);
         }
@@ -551,17 +566,29 @@ mod tests {
         let old_item = r#"{"id":"zz9999","title":"Old"}"#;
         fs::write(table_dir.join("items_zz.jsonl"), format!("{}\n", old_item)).unwrap();
 
-        // Load picks up the old item, then we replace all items with a new one
+        // Load picks up the old item, then delete it and add one in a different shard
         let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        table.items.clear();
+        table.items.insert(
+            "zz9999".to_string(),
+            Row::Tombstone {
+                id: "zz9999".to_string(),
+                deleted_at: Utc::now(),
+            },
+        );
         table
             .items
             .insert("aabb11".to_string(), make_row_with_id("aabb11", "Item AA"));
         table.save().unwrap();
 
-        let files = shard_files(&dir, "t");
-        assert_eq!(files, vec!["items_aa.jsonl"]);
-        assert!(!table_dir.join("items_zz.jsonl").exists());
+        // items_zz.jsonl still exists (holds the tombstone), but only items_aa has live data
+        let loaded = Table::<TestItem>::load(dir.path()).unwrap();
+        assert_eq!(loaded.items().len(), 1);
+        assert_eq!(loaded.items()[0].title, "Item AA");
+
+        // An orphaned empty shard file gets cleaned up
+        fs::write(table_dir.join("items_qq.jsonl"), "").unwrap();
+        loaded.save().unwrap();
+        assert!(!table_dir.join("items_qq.jsonl").exists());
     }
 
     #[test]
@@ -867,6 +894,36 @@ mod tests {
             "original data should survive a failed save()"
         );
         assert_eq!(recovered.items()[0].title, "Original");
+    }
+
+    #[test]
+    fn test_concurrent_saves_lose_data() {
+        let dir = TempDir::new().unwrap();
+
+        // Initial state: one item
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        table.upsert(make_item("existing", "Existing"));
+        table.save().unwrap();
+
+        // Two "processes" load the same data
+        let mut process_a = Table::<TestItem>::load(dir.path()).unwrap();
+        let mut process_b = Table::<TestItem>::load(dir.path()).unwrap();
+
+        // Each adds a different item
+        process_a.upsert(make_item("from-a", "From A"));
+        process_b.upsert(make_item("from-b", "From B"));
+
+        // Both save — second write overwrites the first
+        process_a.save().unwrap();
+        process_b.save().unwrap();
+
+        // We should have 3 items, but process_b's save didn't include "From A"
+        let final_table = Table::<TestItem>::load(dir.path()).unwrap();
+        assert_eq!(
+            final_table.items().len(),
+            3,
+            "expected all 3 items but lost data due to concurrent saves"
+        );
     }
 
     /// Helper to create a Row with a pre-set id (no hashing).
