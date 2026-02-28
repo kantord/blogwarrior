@@ -38,6 +38,11 @@ enum Command {
         /// Post shorthand
         shorthand: String,
     },
+    /// Read a post's content in the terminal
+    Read {
+        /// Post shorthand
+        shorthand: String,
+    },
     /// Manage feed subscriptions
     Feed {
         #[command(subcommand)]
@@ -386,25 +391,71 @@ fn load_sorted_posts(store: &Path) -> Vec<FeedItem> {
     items
 }
 
-fn cmd_open(store: &Path, shorthand: &str) {
+fn resolve_post_shorthand(store: &Path, shorthand: &str) -> FeedItem {
     let items = load_sorted_posts(store);
     let found = items
-        .iter()
+        .into_iter()
         .enumerate()
         .find(|(i, _)| index_to_shorthand(*i) == shorthand);
     match found {
-        Some((_, item)) if !item.link.is_empty() => {
-            if let Err(e) = open::that(&item.link) {
-                eprintln!("Could not open URL: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Some(_) => {
-            eprintln!("Post has no link");
-            std::process::exit(1);
-        }
+        Some((_, item)) => item,
         None => {
             eprintln!("Unknown shorthand: {}", shorthand);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cmd_open(store: &Path, shorthand: &str) {
+    let item = resolve_post_shorthand(store, shorthand);
+    if item.link.is_empty() {
+        eprintln!("Post has no link");
+        std::process::exit(1);
+    }
+    if let Err(e) = open::that(&item.link) {
+        eprintln!("Could not open URL: {}", e);
+        std::process::exit(1);
+    }
+}
+
+fn cmd_read(store: &Path, shorthand: &str) {
+    let item = resolve_post_shorthand(store, shorthand);
+    if item.link.is_empty() {
+        eprintln!("Post has no link");
+        std::process::exit(1);
+    }
+    let response = match reqwest::blocking::get(&item.link) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Could not fetch URL: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let html = match response.text() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Could not read response: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let reader = match readability_js::Readability::new() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Could not initialize reader: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let article = reader
+        .parse_with_url(&html, &item.link)
+        .or_else(|_| reader.parse(&html));
+    match article {
+        Ok(a) => {
+            println!("{}\n", a.title);
+            print!("{}", a.text_content);
+        }
+        Err(e) => {
+            eprintln!("Could not extract readable content: {}", e);
+            eprintln!("Try: blog open {}", shorthand);
             std::process::exit(1);
         }
     }
@@ -491,6 +542,7 @@ fn main() {
             cmd_show(&store, &group, filter.as_deref());
         }
         Some(Command::Open { ref shorthand }) => cmd_open(&store, shorthand),
+        Some(Command::Read { ref shorthand }) => cmd_read(&store, shorthand),
         Some(Command::Feed { command: FeedCommand::Add { ref url } }) => cmd_add(&store, url),
         Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => cmd_remove(&store, url),
         Some(Command::Feed { command: FeedCommand::Ls }) => cmd_feed_ls(&store),
