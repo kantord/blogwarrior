@@ -98,14 +98,6 @@ impl TestContext {
         });
     }
 
-    fn mock_html_page(&self, path: &str, html: &str) {
-        self.server.mock(|when, then| {
-            when.method(GET).path(path);
-            then.status(200)
-                .header("Content-Type", "text/html")
-                .body(html);
-        });
-    }
 }
 
 fn rss_xml_with_links(title: &str, items: &[(&str, &str, &str, &str)]) -> String {
@@ -499,7 +491,48 @@ fn test_pull_continues_after_feed_failure() {
     let good_url = ctx.server.url("/good.xml");
     ctx.write_feeds(&[&broken_url, &good_url]);
 
-    ctx.run(&["pull"]).success();
+    let output = ctx.run(&["pull"]).success();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+
+    // Error message should mention the HTTP status, not a confusing XML parse error
+    assert!(
+        stderr.contains("500"),
+        "error should mention HTTP 500 status, got: {}",
+        stderr
+    );
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["title"].as_str().unwrap(), "Good Post");
+}
+
+#[test]
+fn test_pull_reports_http_404_clearly() {
+    let ctx = TestContext::new();
+
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/gone.xml");
+        then.status(404).body("Not Found");
+    });
+
+    let xml = rss_xml(
+        "Good Blog",
+        &[("Good Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/good.xml", &xml);
+
+    let gone_url = ctx.server.url("/gone.xml");
+    let good_url = ctx.server.url("/good.xml");
+    ctx.write_feeds(&[&gone_url, &good_url]);
+
+    let output = ctx.run(&["pull"]).success();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+
+    assert!(
+        stderr.contains("404"),
+        "error should mention HTTP 404 status, got: {}",
+        stderr
+    );
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
@@ -911,83 +944,6 @@ fn test_open_post_without_link() {
         stderr.contains("Post has no link"),
         "expected 'Post has no link' on stderr, got: {}",
         stderr,
-    );
-}
-
-#[test]
-fn test_read_unknown_shorthand() {
-    let ctx = TestContext::new();
-
-    let output = ctx.run(&["read", "zzzzz"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
-    assert!(
-        stderr.contains("Unknown shorthand"),
-        "expected 'Unknown shorthand' on stderr, got: {}",
-        stderr,
-    );
-}
-
-#[test]
-fn test_read_post_without_link() {
-    let ctx = TestContext::new();
-
-    let posts = r#"{"id":"1","title":"No Link Post","date":"2024-01-15T00:00:00Z","feed":"Alice","raw_id":"no-link-1","link":""}"#;
-    std::fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
-    std::fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
-
-    let output = ctx.run(&["read", "a"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
-    assert!(
-        stderr.contains("Post has no link"),
-        "expected 'Post has no link' on stderr, got: {}",
-        stderr,
-    );
-}
-
-#[test]
-fn test_read_extracts_article_text() {
-    let ctx = TestContext::new();
-
-    let html = r#"<!DOCTYPE html>
-<html>
-<head><title>Test Article</title></head>
-<body>
-  <nav>Navigation links here</nav>
-  <article>
-    <h1>Test Article</h1>
-    <p>This is the main content of the test article. It contains enough text to be recognized as readable content by the readability algorithm. We need several sentences to ensure the content is extracted properly.</p>
-    <p>Here is another paragraph with more substantial content. The readability library needs a reasonable amount of text to determine that this is the main article content and not just noise or navigation.</p>
-    <p>A third paragraph helps ensure we have enough content density. Real articles typically have multiple paragraphs with meaningful text content that readers would want to consume.</p>
-  </article>
-  <aside>Sidebar content</aside>
-</body>
-</html>"#;
-
-    let article_url = ctx.server.url("/article.html");
-    ctx.mock_html_page("/article.html", html);
-
-    let feed_xml = rss_xml_with_links(
-        "Read Blog",
-        &[(
-            "Readable Post",
-            "Mon, 01 Jan 2024 00:00:00 +0000",
-            "guid-read",
-            &article_url,
-        )],
-    );
-    ctx.mock_rss_feed("/read.xml", &feed_xml);
-
-    let url = ctx.server.url("/read.xml");
-    ctx.write_feeds(&[&url]);
-    ctx.run(&["pull"]).success();
-
-    let output = ctx.run(&["read", "a"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
-
-    assert!(
-        stdout.contains("main content of the test article"),
-        "should contain article text, got: {}",
-        stdout,
     );
 }
 

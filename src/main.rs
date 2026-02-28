@@ -47,11 +47,6 @@ enum Command {
         /// Post shorthand
         shorthand: String,
     },
-    /// Read a post's content in the terminal
-    Read {
-        /// Post shorthand
-        shorthand: String,
-    },
     /// Manage feed subscriptions
     Feed {
         #[command(subcommand)]
@@ -468,34 +463,6 @@ fn cmd_open(store: &Path, shorthand: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_read(store: &Path, shorthand: &str) -> anyhow::Result<()> {
-    let item = resolve_post_shorthand(store, shorthand)?;
-    ensure!(!item.link.is_empty(), "Post has no link");
-    let client = http_client();
-    let response = client
-        .get(&item.link)
-        .send()
-        .map_err(|e| anyhow::anyhow!("Could not fetch URL: {}", e))?;
-    let html = response
-        .text()
-        .map_err(|e| anyhow::anyhow!("Could not read response: {}", e))?;
-    let reader = readability_js::Readability::new()
-        .map_err(|e| anyhow::anyhow!("Could not initialize reader: {}", e))?;
-    let article = reader
-        .parse_with_url(&html, &item.link)
-        .or_else(|_| reader.parse(&html))
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Could not extract readable content: {}\nTry: blog open {}",
-                e,
-                shorthand
-            )
-        })?;
-    println!("{}\n", article.title);
-    print!("{}", article.text_content);
-    Ok(())
-}
-
 fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<()> {
     let keys = match parse_grouping(group) {
         Some(keys) => keys,
@@ -569,9 +536,6 @@ fn run() -> anyhow::Result<()> {
         }
         Some(Command::Open { ref shorthand }) => {
             cmd_open(&store, shorthand)?;
-        }
-        Some(Command::Read { ref shorthand }) => {
-            cmd_read(&store, shorthand)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },

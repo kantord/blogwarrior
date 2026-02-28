@@ -36,7 +36,7 @@ pub fn fetch(
     client: &reqwest::blocking::Client,
     url: &str,
 ) -> anyhow::Result<(FeedMeta, Vec<FeedItem>)> {
-    let response = client.get(url).send()?;
+    let response = client.get(url).send()?.error_for_status()?;
     let bytes = response.bytes()?;
     let text = String::from_utf8_lossy(&bytes);
 

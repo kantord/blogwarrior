@@ -21,7 +21,6 @@ sha2 = "0.10"
 url = "2"
 dirs = "6"
 open = "5"
-readability-js = "0.1"
 
 [dev-dependencies]
 httpmock = "0.7"
