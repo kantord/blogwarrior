@@ -1,5 +1,6 @@
 use std::io::{BufReader, Read};
 
+use anyhow::Result;
 use chrono::{DateTime, FixedOffset};
 use rss::Channel;
 use url::Url;
@@ -13,7 +14,7 @@ fn normalize_url(raw: &str) -> String {
     }
 }
 
-pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn std::error::Error>> {
+pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
     let channel = Channel::read_from(BufReader::new(reader))?;
 
     let meta = FeedMeta {

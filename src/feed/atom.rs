@@ -1,10 +1,11 @@
 use std::io::{BufReader, Read};
 
+use anyhow::Result;
 use atom_syndication::Feed;
 
 use super::{FeedItem, FeedMeta};
 
-pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn std::error::Error>> {
+pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
     let feed = Feed::read_from(BufReader::new(reader))?;
 
     let meta = FeedMeta {

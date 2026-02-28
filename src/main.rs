@@ -280,7 +280,7 @@ fn compute_shorthands(ids: &[String]) -> Vec<String> {
 }
 
 fn resolve_shorthand(feeds_table: &table::Table<FeedSource>, shorthand: &str) -> Option<String> {
-    let mut feeds = feeds_table.items();
+    let mut feeds: Vec<FeedSource> = feeds_table.items();
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
     let shorthands = compute_shorthands(&ids);
@@ -303,8 +303,8 @@ fn store_dir() -> PathBuf {
 }
 
 fn cmd_remove(store: &Path, url: &str) -> anyhow::Result<()> {
-    let mut feeds_table = table::Table::<FeedSource>::load(store);
-    let mut posts_table = table::Table::<FeedItem>::load(store);
+    let mut feeds_table = table::Table::<FeedSource>::load(store)?;
+    let mut posts_table = table::Table::<FeedItem>::load(store)?;
 
     let resolved_url;
     let url = if let Some(shorthand) = url.strip_prefix('@') {
@@ -334,24 +334,24 @@ fn cmd_remove(store: &Path, url: &str) -> anyhow::Result<()> {
         None => bail!("Feed not found: {}", url),
     }
 
-    feeds_table.save();
-    posts_table.save();
+    feeds_table.save()?;
+    posts_table.save()?;
     Ok(())
 }
 
-fn cmd_add(store: &Path, url: &str) {
-    let mut table = table::Table::<FeedSource>::load(store);
+fn cmd_add(store: &Path, url: &str) -> anyhow::Result<()> {
+    let mut table = table::Table::<FeedSource>::load(store)?;
     table.upsert(FeedSource {
         url: url.to_string(),
         title: String::new(),
         site_url: String::new(),
         description: String::new(),
     });
-    table.save();
+    table.save()
 }
 
 fn cmd_feed_ls(store: &Path) -> anyhow::Result<()> {
-    let feeds_table = table::Table::<FeedSource>::load(store);
+    let feeds_table = table::Table::<FeedSource>::load(store)?;
     let mut feeds = feeds_table.items();
     ensure!(!feeds.is_empty(), "No matching feeds");
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
@@ -367,11 +367,11 @@ fn cmd_feed_ls(store: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_pull(store: &Path) {
+fn cmd_pull(store: &Path) -> anyhow::Result<()> {
     let client = http_client();
-    let mut feeds_table = table::Table::<FeedSource>::load(store);
+    let mut feeds_table = table::Table::<FeedSource>::load(store)?;
     let sources = feeds_table.items();
-    let mut table = table::Table::<FeedItem>::load(store);
+    let mut table = table::Table::<FeedItem>::load(store)?;
     for source in &sources {
         let (meta, items) = match feed::fetch(&client, &source.url) {
             Ok(result) => result,
@@ -391,19 +391,20 @@ fn cmd_pull(store: &Path) {
         updated.description = meta.description;
         feeds_table.upsert(updated);
     }
-    table.save();
-    feeds_table.save();
+    table.save()?;
+    feeds_table.save()?;
+    Ok(())
 }
 
-fn load_sorted_posts(store: &Path) -> Vec<FeedItem> {
-    let table = table::Table::<FeedItem>::load(store);
+fn load_sorted_posts(store: &Path) -> anyhow::Result<Vec<FeedItem>> {
+    let table = table::Table::<FeedItem>::load(store)?;
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
-    items
+    Ok(items)
 }
 
 fn resolve_post_shorthand(store: &Path, shorthand: &str) -> anyhow::Result<FeedItem> {
-    let items = load_sorted_posts(store);
+    let items = load_sorted_posts(store)?;
     let found = items
         .into_iter()
         .enumerate()
@@ -446,7 +447,7 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<(
         None => bail!("Unknown grouping: {}. Use: d, f, df, fd", group),
     };
 
-    let feeds_table = table::Table::<FeedSource>::load(store);
+    let feeds_table = table::Table::<FeedSource>::load(store)?;
     let mut feeds = feeds_table.items();
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
@@ -477,7 +478,7 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<(
         })
         .collect();
 
-    let mut items = load_sorted_posts(store);
+    let mut items = load_sorted_posts(store)?;
 
     let post_shorthands: HashMap<String, String> = items
         .iter()
@@ -501,14 +502,14 @@ fn run() -> anyhow::Result<()> {
     let store = store_dir();
 
     match args.command {
-        Some(Command::Pull) => { cmd_pull(&store); }
+        Some(Command::Pull) => { cmd_pull(&store)?; }
         Some(Command::Show { ref args }) => {
             let (group, filter) = parse_show_args(args)?;
             cmd_show(&store, &group, filter.as_deref())?;
         }
         Some(Command::Open { ref shorthand }) => { cmd_open(&store, shorthand)?; }
         Some(Command::Read { ref shorthand }) => { cmd_read(&store, shorthand)?; }
-        Some(Command::Feed { command: FeedCommand::Add { ref url } }) => { cmd_add(&store, url); }
+        Some(Command::Feed { command: FeedCommand::Add { ref url } }) => { cmd_add(&store, url)?; }
         Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => { cmd_remove(&store, url)?; }
         Some(Command::Feed { command: FeedCommand::Ls }) => { cmd_feed_ls(&store)?; }
         None => {
