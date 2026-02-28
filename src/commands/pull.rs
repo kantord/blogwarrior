@@ -1,7 +1,4 @@
-use std::path::Path;
-
-use crate::feed::FeedItem;
-use crate::feed_source::FeedSource;
+use crate::store::Store;
 
 fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
@@ -11,11 +8,9 @@ fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
         .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {}", e))
 }
 
-pub(crate) fn cmd_pull(store: &Path) -> anyhow::Result<()> {
+pub(crate) fn cmd_pull(store: &mut Store) -> anyhow::Result<()> {
     let client = http_client()?;
-    let mut feeds_table = synctato::Table::<FeedSource>::load(store)?;
-    let sources = feeds_table.items();
-    let mut table = synctato::Table::<FeedItem>::load(store)?;
+    let sources = store.feeds.items();
     for source in &sources {
         let (meta, items) = match crate::feed::fetch(&client, &source.url) {
             Ok(result) => result,
@@ -24,18 +19,16 @@ pub(crate) fn cmd_pull(store: &Path) -> anyhow::Result<()> {
                 continue;
             }
         };
-        let feed_id = feeds_table.id_of(source);
+        let feed_id = store.feeds.id_of(source);
         for mut item in items {
             item.feed = feed_id.clone();
-            table.upsert(item);
+            store.posts.upsert(item);
         }
         let mut updated = source.clone();
         updated.title = meta.title;
         updated.site_url = meta.site_url;
         updated.description = meta.description;
-        feeds_table.upsert(updated);
+        store.feeds.upsert(updated);
     }
-    table.save()?;
-    feeds_table.save()?;
     Ok(())
 }

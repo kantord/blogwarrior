@@ -1,6 +1,7 @@
 mod commands;
 mod feed;
 mod feed_source;
+mod store;
 
 use std::path::PathBuf;
 
@@ -87,11 +88,12 @@ fn store_dir() -> anyhow::Result<PathBuf> {
 
 fn run() -> anyhow::Result<()> {
     let args = Args::parse();
-    let store = store_dir()?;
+    let mut store = store::Store::open(&store_dir()?)?;
 
     match args.command {
         Some(Command::Pull) => {
-            commands::pull::cmd_pull(&store)?;
+            commands::pull::cmd_pull(&mut store)?;
+            store.save()?;
         }
         Some(Command::Show { ref args }) => {
             let (group, filter) = parse_show_args(args)?;
@@ -103,12 +105,14 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
         }) => {
-            commands::add::cmd_add(&store, url)?;
+            commands::add::cmd_add(&mut store, url)?;
+            store.save()?;
         }
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },
         }) => {
-            commands::remove::cmd_remove(&store, url)?;
+            commands::remove::cmd_remove(&mut store, url)?;
+            store.save()?;
         }
         Some(Command::Feed {
             command: FeedCommand::Ls,

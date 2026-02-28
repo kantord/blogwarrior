@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::path::Path;
 
 use anyhow::{bail, ensure};
 use itertools::Itertools;
 
 use crate::feed::FeedItem;
-use crate::feed_source::FeedSource;
+use crate::store::Store;
 
 use super::{feed_index, post_index};
 
@@ -148,14 +147,13 @@ fn parse_grouping(arg: &str) -> Option<Vec<GroupKey>> {
         .collect()
 }
 
-pub(crate) fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<()> {
+pub(crate) fn cmd_show(store: &Store, group: &str, filter: Option<&str>) -> anyhow::Result<()> {
     let keys = match parse_grouping(group) {
         Some(keys) => keys,
         None => bail!("Unknown grouping: {}. Use: d, f, df, fd", group),
     };
 
-    let feeds_table = synctato::Table::<FeedSource>::load(store)?;
-    let fi = feed_index(&feeds_table);
+    let fi = feed_index(&store.feeds);
 
     let filter_feed_id = match filter {
         Some(f) if f.starts_with('@') => {
@@ -184,7 +182,7 @@ pub(crate) fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyho
         })
         .collect();
 
-    let mut posts = post_index(store)?;
+    let mut posts = post_index(&store.posts);
 
     if let Some(ref feed_id) = filter_feed_id {
         posts.items.retain(|item| item.feed == *feed_id);

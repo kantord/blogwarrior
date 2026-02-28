@@ -6,7 +6,6 @@ pub mod remove;
 pub mod show;
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
@@ -128,8 +127,7 @@ pub(crate) struct PostIndex {
     pub shorthands: HashMap<String, String>,
 }
 
-pub(crate) fn post_index(store: &Path) -> anyhow::Result<PostIndex> {
-    let table = synctato::Table::<FeedItem>::load(store)?;
+pub(crate) fn post_index(table: &synctato::Table<FeedItem>) -> PostIndex {
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
     let shorthands = items
@@ -137,7 +135,7 @@ pub(crate) fn post_index(store: &Path) -> anyhow::Result<PostIndex> {
         .enumerate()
         .map(|(i, item)| (item.raw_id.clone(), index_to_shorthand(i)))
         .collect();
-    Ok(PostIndex { items, shorthands })
+    PostIndex { items, shorthands }
 }
 
 pub(crate) fn resolve_shorthand(
