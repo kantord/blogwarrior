@@ -97,7 +97,6 @@ impl TestContext {
                 .body(xml);
         });
     }
-
 }
 
 fn rss_xml_with_links(title: &str, items: &[(&str, &str, &str, &str)]) -> String {
@@ -1015,7 +1014,9 @@ fn test_pull_continues_after_non_utf8_feed() {
     // At minimum the good feed's post should be present
     let posts = ctx.read_posts();
     assert!(
-        posts.iter().any(|p| p["title"].as_str() == Some("Good Post")),
+        posts
+            .iter()
+            .any(|p| p["title"].as_str() == Some("Good Post")),
         "good feed's post should be present"
     );
 }

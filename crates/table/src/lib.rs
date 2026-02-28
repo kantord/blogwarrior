@@ -765,8 +765,7 @@ mod tests {
 
         let content = format!(
             "{}\n\n{}\n\n",
-            r#"{"id":"aa1111","title":"First"}"#,
-            r#"{"id":"bb2222","title":"Second"}"#,
+            r#"{"id":"aa1111","title":"First"}"#, r#"{"id":"bb2222","title":"Second"}"#,
         );
         fs::write(table_dir.join("items_aa.jsonl"), content).unwrap();
 
@@ -798,11 +797,7 @@ mod tests {
 
         let content =
             r#"{"id":"aa1111","title":"Post","extra_field":"should be ignored","another":42}"#;
-        fs::write(
-            table_dir.join("items_aa.jsonl"),
-            format!("{}\n", content),
-        )
-        .unwrap();
+        fs::write(table_dir.join("items_aa.jsonl"), format!("{}\n", content)).unwrap();
 
         let table = Table::<TestItem>::load(dir.path()).unwrap();
         assert_eq!(table.items().len(), 1);
@@ -860,8 +855,8 @@ mod tests {
         }
 
         // Original data should still be loadable after the child's failed save
-        let recovered = Table::<TestItem>::load(dir.path())
-            .expect("load should not fail after a failed save");
+        let recovered =
+            Table::<TestItem>::load(dir.path()).expect("load should not fail after a failed save");
         assert_eq!(
             recovered.items().len(),
             1,
