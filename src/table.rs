@@ -705,6 +705,92 @@ mod tests {
         assert!(!titles.contains(&"Delete"));
     }
 
+    #[test]
+    fn test_load_truncated_json_returns_error() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        fs::write(
+            table_dir.join("items_aa.jsonl"),
+            "{\"id\":\"abc\",\"title\":\"tr\n",
+        )
+        .unwrap();
+
+        let result = Table::<TestItem>::load(dir.path());
+        assert!(result.is_err());
+        let err_msg = format!("{:#}", result.err().unwrap());
+        assert!(
+            err_msg.contains("items_aa.jsonl"),
+            "error should mention file path, got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_load_completely_invalid_content_returns_error() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        fs::write(table_dir.join("items_aa.jsonl"), "not json at all\n").unwrap();
+
+        let result = Table::<TestItem>::load(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_empty_lines_between_valid_entries() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        let content = format!(
+            "{}\n\n{}\n\n",
+            r#"{"id":"aa1111","title":"First"}"#,
+            r#"{"id":"bb2222","title":"Second"}"#,
+        );
+        fs::write(table_dir.join("items_aa.jsonl"), content).unwrap();
+
+        let table = Table::<TestItem>::load(dir.path()).unwrap();
+        assert_eq!(table.items().len(), 2);
+    }
+
+    #[test]
+    fn test_load_mixed_valid_and_invalid_lines_returns_error() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        let content = format!(
+            "{}\n{}\n",
+            r#"{"id":"aa1111","title":"Valid"}"#, "corrupted line",
+        );
+        fs::write(table_dir.join("items_aa.jsonl"), content).unwrap();
+
+        let result = Table::<TestItem>::load(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_extra_unknown_fields_ignored() {
+        let dir = TempDir::new().unwrap();
+        let table_dir = dir.path().join("t");
+        fs::create_dir_all(&table_dir).unwrap();
+
+        let content =
+            r#"{"id":"aa1111","title":"Post","extra_field":"should be ignored","another":42}"#;
+        fs::write(
+            table_dir.join("items_aa.jsonl"),
+            format!("{}\n", content),
+        )
+        .unwrap();
+
+        let table = Table::<TestItem>::load(dir.path()).unwrap();
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Post");
+    }
+
     /// Helper to create a Row with a pre-set id (no hashing).
     fn make_row_with_id(id: &str, title: &str) -> Row<TestItem> {
         Row::Live {

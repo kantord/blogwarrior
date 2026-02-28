@@ -134,6 +134,27 @@ mod tests {
     }
 
     #[test]
+    fn test_unparseable_date_returns_error() {
+        // Atom requires <updated> with a valid datetime; an invalid one
+        // should cause a parse error from the atom_syndication crate.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>Test</title>
+          <id>urn:test</id>
+          <updated>not-a-date</updated>
+          <entry>
+            <title>Bad Date Post</title>
+            <id>urn:post:1</id>
+            <updated>not-a-date</updated>
+          </entry>
+        </feed>"#;
+
+        // atom_syndication requires valid dates, so this should error
+        let result = parse(xml.as_bytes());
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_empty_feed() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <feed xmlns="http://www.w3.org/2005/Atom">

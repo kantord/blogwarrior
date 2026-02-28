@@ -244,6 +244,44 @@ mod tests {
     }
 
     #[test]
+    fn test_unparseable_date_results_in_none() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Bad Date Post</title>
+              <pubDate>not-a-date</pubDate>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let (_, items) = parse(xml.as_bytes()).unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Bad Date Post");
+        assert_eq!(items[0].date, None);
+    }
+
+    #[test]
+    fn test_non_utf8_bytes_do_not_panic() {
+        // Latin-1 encoded "café" (0xe9 is 'é' in Latin-1, invalid in UTF-8)
+        let xml_start = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+            <rss version=\"2.0\">\n\
+              <channel>\n\
+                <title>Test</title>\n\
+                <item>\n\
+                  <title>Caf\xe9</title>\n\
+                </item>\n\
+              </channel>\n\
+            </rss>";
+
+        // This may error (invalid UTF-8 in XML) or parse with replacement —
+        // the important thing is it doesn't panic.
+        let _ = parse(&xml_start[..]);
+    }
+
+    #[test]
     fn test_id_prefers_guid_over_link() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">

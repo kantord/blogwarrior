@@ -80,6 +80,15 @@ impl TestContext {
         });
     }
 
+    fn mock_rss_feed_bytes(&self, path: &str, body: &[u8]) {
+        self.server.mock(|when, then| {
+            when.method(GET).path(path);
+            then.status(200)
+                .header("Content-Type", "application/rss+xml")
+                .body(body);
+        });
+    }
+
     fn mock_atom_feed(&self, path: &str, xml: &str) {
         self.server.mock(|when, then| {
             when.method(GET).path(path);
@@ -979,5 +988,52 @@ fn test_read_extracts_article_text() {
         stdout.contains("main content of the test article"),
         "should contain article text, got: {}",
         stdout,
+    );
+}
+
+#[test]
+fn test_pull_continues_after_non_utf8_feed() {
+    let ctx = TestContext::new();
+
+    // Build an RSS feed with a non-UTF8 byte (0xe9 for Latin-1 'é') in the title
+    let non_utf8_body: Vec<u8> = [
+        b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+          <rss version=\"2.0\">\n\
+            <channel>\n\
+              <title>Caf"
+            .as_slice(),
+        &[0xe9],
+        b"</title>\n\
+              <item>\n\
+                <title>Post</title>\n\
+                <guid>urn:bad:1</guid>\n\
+              </item>\n\
+            </channel>\n\
+          </rss>"
+            .as_slice(),
+    ]
+    .concat();
+
+    ctx.mock_rss_feed_bytes("/bad.xml", &non_utf8_body);
+
+    // A second feed that is valid
+    let good_xml = rss_xml(
+        "Good Blog",
+        &[("Good Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/good.xml", &good_xml);
+
+    let bad_url = ctx.server.url("/bad.xml");
+    let good_url = ctx.server.url("/good.xml");
+    ctx.write_feeds(&[&bad_url, &good_url]);
+
+    // Pull should succeed overall — the bad feed errors but doesn't crash
+    ctx.run(&["pull"]).success();
+
+    // At minimum the good feed's post should be present
+    let posts = ctx.read_posts();
+    assert!(
+        posts.iter().any(|p| p["title"].as_str() == Some("Good Post")),
+        "good feed's post should be present"
     );
 }
