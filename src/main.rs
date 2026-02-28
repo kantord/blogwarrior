@@ -311,17 +311,23 @@ fn cmd_remove(store: &Path, url: &str) {
         url
     };
 
-    feeds_table.on_delete(url, |feed_id| {
-        let post_keys: Vec<String> = posts_table
-            .items()
-            .iter()
-            .filter(|p| p.feed == feed_id)
-            .map(|p| p.key())
-            .collect();
-        for key in post_keys {
-            posts_table.delete(&key);
+    match feeds_table.delete(url) {
+        Some(feed_id) => {
+            let post_keys: Vec<String> = posts_table
+                .items()
+                .iter()
+                .filter(|p| p.feed == feed_id)
+                .map(|p| p.key())
+                .collect();
+            for key in post_keys {
+                posts_table.delete(&key);
+            }
         }
-    });
+        None => {
+            eprintln!("Feed not found: {}", url);
+            std::process::exit(1);
+        }
+    }
 
     feeds_table.save();
     posts_table.save();

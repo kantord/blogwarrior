@@ -102,22 +102,13 @@ impl<T: TableRow> Table<T> {
         self.items.insert(id.clone(), Row::Live { id, inner: item, updated_at: Some(Utc::now()) });
     }
 
-    pub fn delete(&mut self, key: &str) {
-        let id = hash_id(key, self.id_length);
-        assert!(
-            matches!(self.items.get(&id), Some(Row::Live { .. })),
-            "delete called on nonexistent key: {key}"
-        );
-        self.items.insert(id.clone(), Row::Tombstone { id: id.clone(), deleted_at: Utc::now() });
-    }
-
-    pub fn on_delete(&mut self, key: &str, mut hook: impl FnMut(&str)) {
+    pub fn delete(&mut self, key: &str) -> Option<String> {
         let id = hash_id(key, self.id_length);
         if !matches!(self.items.get(&id), Some(Row::Live { .. })) {
-            return;
+            return None;
         }
         self.items.insert(id.clone(), Row::Tombstone { id: id.clone(), deleted_at: Utc::now() });
-        hook(&id);
+        Some(id)
     }
 
     pub fn id_of(&self, item: &T) -> String {
@@ -625,12 +616,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "delete called on nonexistent key")]
-    fn test_delete_nonexistent_key_panics() {
+    fn test_delete_nonexistent_key_returns_none() {
         let dir = TempDir::new().unwrap();
         let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
         table.upsert(make_item("a", "Keep"));
-        table.delete("never-added");
+        assert!(table.delete("never-added").is_none());
+        assert_eq!(table.items().len(), 1);
     }
 
 
