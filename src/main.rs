@@ -81,17 +81,17 @@ enum GroupKey {
 }
 
 impl GroupKey {
-    fn extract(&self, item: &FeedItem) -> String {
+    fn extract(&self, item: &FeedItem, feed_labels: &HashMap<String, String>) -> String {
         match self {
             GroupKey::Date => format_date(item),
-            GroupKey::Feed => item.feed.clone(),
+            GroupKey::Feed => feed_labels.get(&item.feed).cloned().unwrap_or_else(|| item.feed.clone()),
         }
     }
 
-    fn compare(&self, a: &FeedItem, b: &FeedItem) -> std::cmp::Ordering {
+    fn compare(&self, a: &FeedItem, b: &FeedItem, feed_labels: &HashMap<String, String>) -> std::cmp::Ordering {
         match self {
             GroupKey::Date => format_date(b).cmp(&format_date(a)),
-            GroupKey::Feed => a.feed.cmp(&b.feed),
+            GroupKey::Feed => self.extract(a, feed_labels).cmp(&self.extract(b, feed_labels)),
         }
     }
 }
@@ -102,27 +102,28 @@ fn format_date(item: &FeedItem) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn format_item(item: &FeedItem, grouped_keys: &[GroupKey], shorthand: &str) -> String {
+fn format_item(item: &FeedItem, grouped_keys: &[GroupKey], shorthand: &str, feed_labels: &HashMap<String, String>) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_feed = !grouped_keys.contains(&GroupKey::Feed);
+    let feed_label = feed_labels.get(&item.feed).map(|s| s.as_str()).unwrap_or(&item.feed);
     let body = match (show_date, show_feed) {
-        (true, true) => format!("{}  {} ({})", format_date(item), item.title, item.feed),
+        (true, true) => format!("{}  {} ({})", format_date(item), item.title, feed_label),
         (true, false) => format!("{}  {}", format_date(item), item.title),
-        (false, true) => format!("{} ({})", item.title, item.feed),
+        (false, true) => format!("{} ({})", item.title, feed_label),
         (false, false) => item.title.clone(),
     };
     format!("{} {}", shorthand, body)
 }
 
-fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<String, String>) -> String {
-    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], all_keys: &[GroupKey], shorthands: &HashMap<String, String>) {
+fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<String, String>, feed_labels: &HashMap<String, String>) -> String {
+    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], all_keys: &[GroupKey], shorthands: &HashMap<String, String>, feed_labels: &HashMap<String, String>) {
         let depth = all_keys.len() - remaining.len();
         let indent = "  ".repeat(depth);
 
         if remaining.is_empty() {
             for item in items {
                 let sh = shorthands.get(&item.raw_id).map(|s| s.as_str()).unwrap_or("");
-                writeln!(out, "{indent}{}", format_item(item, all_keys, sh)).unwrap();
+                writeln!(out, "{indent}{}", format_item(item, all_keys, sh, feed_labels)).unwrap();
             }
             return;
         }
@@ -131,7 +132,7 @@ fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<S
         let rest = &remaining[1..];
 
         let mut sorted = items.to_vec();
-        sorted.sort_by(|a, b| key.compare(a, b));
+        sorted.sort_by(|a, b| key.compare(a, b, feed_labels));
 
         let (prefix, suffix) = if depth == 0 {
             ("=== ", " ===")
@@ -139,13 +140,13 @@ fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<S
             ("--- ", " ---")
         };
 
-        for (group_val, group) in &sorted.iter().chunk_by(|item| key.extract(item)) {
+        for (group_val, group) in &sorted.iter().chunk_by(|item| key.extract(item, feed_labels)) {
             let group_items: Vec<&FeedItem> = group.copied().collect();
             writeln!(out, "{indent}{prefix}{group_val}{suffix}").unwrap();
             if depth == 0 {
                 writeln!(out).unwrap();
             }
-            recurse(out, &group_items, rest, all_keys, shorthands);
+            recurse(out, &group_items, rest, all_keys, shorthands, feed_labels);
             if depth == 0 {
                 writeln!(out).unwrap();
                 writeln!(out).unwrap();
@@ -156,7 +157,7 @@ fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<S
     }
 
     let mut out = String::new();
-    recurse(&mut out, items, keys, keys, shorthands);
+    recurse(&mut out, items, keys, keys, shorthands, feed_labels);
     out
 }
 
@@ -536,19 +537,13 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
         items.retain(|item| item.feed == *feed_id);
     }
 
-    for item in &mut items {
-        if let Some(label) = feed_labels.get(&item.feed) {
-            item.feed = label.clone();
-        }
-    }
-
     if items.is_empty() {
         eprintln!("No matching posts");
         std::process::exit(1);
     }
 
     let refs: Vec<&FeedItem> = items.iter().collect();
-    print!("{}", render_grouped(&refs, &keys, &post_shorthands));
+    print!("{}", render_grouped(&refs, &keys, &post_shorthands, &feed_labels));
 }
 
 fn main() {
@@ -577,6 +572,10 @@ fn main() {
 mod tests {
     use super::*;
     use chrono::NaiveDate;
+
+    fn no_labels() -> HashMap<String, String> {
+        HashMap::new()
+    }
 
     fn item(title: &str, date: &str, feed: &str) -> FeedItem {
         FeedItem {
@@ -639,26 +638,26 @@ mod tests {
     #[test]
     fn test_format_item_no_grouping() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[], "abc"), "abc 2024-01-15  Post (Alice)");
+        assert_eq!(format_item(&i, &[], "abc", &no_labels()), "abc 2024-01-15  Post (Alice)");
     }
 
     #[test]
     fn test_format_item_grouped_by_date() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Date], "abc"), "abc Post (Alice)");
+        assert_eq!(format_item(&i, &[GroupKey::Date], "abc", &no_labels()), "abc Post (Alice)");
     }
 
     #[test]
     fn test_format_item_grouped_by_feed() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Feed], "abc"), "abc 2024-01-15  Post");
+        assert_eq!(format_item(&i, &[GroupKey::Feed], "abc", &no_labels()), "abc 2024-01-15  Post");
     }
 
     #[test]
     fn test_format_item_grouped_by_both() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Date, GroupKey::Feed], "abc"),
+            format_item(&i, &[GroupKey::Date, GroupKey::Feed], "abc", &no_labels()),
             "abc Post"
         );
     }
@@ -689,8 +688,8 @@ mod tests {
             item("Post B", "2024-01-01", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[], &empty);
+
+        let output = render_grouped(&refs, &[], &no_labels(), &no_labels());
         assert_eq!(
             output,
             " 2024-01-02  Post A (Alice)\n 2024-01-01  Post B (Bob)\n"
@@ -705,8 +704,8 @@ mod tests {
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[GroupKey::Date], &empty);
+
+        let output = render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels());
         assert_eq!(
             output,
             "\
@@ -732,8 +731,8 @@ mod tests {
             item("Post B", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[GroupKey::Feed], &empty);
+
+        let output = render_grouped(&refs, &[GroupKey::Feed], &no_labels(), &no_labels());
         assert_eq!(
             output,
             "\
@@ -759,8 +758,8 @@ mod tests {
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Feed], &empty);
+
+        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Feed], &no_labels(), &no_labels());
         assert_eq!(
             output,
             "\
@@ -793,8 +792,8 @@ mod tests {
             item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[GroupKey::Feed, GroupKey::Date], &empty);
+
+        let output = render_grouped(&refs, &[GroupKey::Feed, GroupKey::Date], &no_labels(), &no_labels());
         assert_eq!(
             output,
             "\
@@ -822,8 +821,8 @@ mod tests {
     #[test]
     fn test_render_empty_items() {
         let refs: Vec<&FeedItem> = vec![];
-        let empty: HashMap<String, String> = HashMap::new();
-        assert_eq!(render_grouped(&refs, &[GroupKey::Date], &empty), "");
+
+        assert_eq!(render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels()), "");
     }
 
     #[test]
@@ -834,8 +833,8 @@ mod tests {
             item("Mid", "2024-01-02", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[GroupKey::Date], &empty);
+
+        let output = render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels());
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -851,8 +850,8 @@ mod tests {
             item("Post", "2024-01-03", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
-        let empty: HashMap<String, String> = HashMap::new();
-        let output = render_grouped(&refs, &[GroupKey::Feed], &empty);
+
+        let output = render_grouped(&refs, &[GroupKey::Feed], &no_labels(), &no_labels());
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -955,7 +954,7 @@ mod tests {
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id-a".to_string(), "sDf".to_string());
-        let output = render_grouped(&refs, &[], &shorthands);
+        let output = render_grouped(&refs, &[], &shorthands, &no_labels());
         assert_eq!(output, "sDf 2024-01-02  Post A (Alice)\n");
     }
 }
