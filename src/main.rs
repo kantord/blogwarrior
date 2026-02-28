@@ -14,12 +14,12 @@ use feed::FeedItem;
 use feed_source::FeedSource;
 use table::TableRow;
 
-fn http_client() -> reqwest::blocking::Client {
+fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
         .user_agent(format!("blogtato/{}", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .expect("failed to build HTTP client")
+        .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {}", e))
 }
 
 /// A simple RSS/Atom feed reader
@@ -316,7 +316,10 @@ fn compute_shorthands(ids: &[String]) -> Vec<String> {
         }
     }
 
-    // Fallback: return full strings
+    // Fallback: return full base9 strings. Collisions are astronomically
+    // unlikely here because id_length_for_capacity already sizes the
+    // truncated hex IDs to keep collision probability below ~1/500 even
+    // at EXPECTED_CAPACITY (50,000 feeds → 11 hex chars / 44 bits).
     base9s
 }
 
@@ -333,14 +336,13 @@ fn resolve_shorthand(feeds_table: &table::Table<FeedSource>, shorthand: &str) ->
     None
 }
 
-fn store_dir() -> PathBuf {
-    std::env::var("RSS_STORE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            dirs::data_dir()
-                .expect("could not determine data directory")
-                .join("blogtato")
-        })
+fn store_dir() -> anyhow::Result<PathBuf> {
+    if let Ok(val) = std::env::var("RSS_STORE") {
+        return Ok(PathBuf::from(val));
+    }
+    dirs::data_dir()
+        .map(|d| d.join("blogtato"))
+        .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
 fn cmd_remove(store: &Path, url: &str) -> anyhow::Result<()> {
@@ -409,7 +411,7 @@ fn cmd_feed_ls(store: &Path) -> anyhow::Result<()> {
 }
 
 fn cmd_pull(store: &Path) -> anyhow::Result<()> {
-    let client = http_client();
+    let client = http_client()?;
     let mut feeds_table = table::Table::<FeedSource>::load(store)?;
     let sources = feeds_table.items();
     let mut table = table::Table::<FeedItem>::load(store)?;
@@ -524,7 +526,7 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<(
 
 fn run() -> anyhow::Result<()> {
     let args = Args::parse();
-    let store = store_dir();
+    let store = store_dir()?;
 
     match args.command {
         Some(Command::Pull) => {

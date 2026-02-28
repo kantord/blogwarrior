@@ -948,6 +948,32 @@ fn test_open_post_without_link() {
 }
 
 #[test]
+fn test_remove_nonexistent_feed() {
+    let ctx = TestContext::new();
+
+    ctx.run(&["feed", "add", "https://example.com/keep.xml"])
+        .success();
+
+    let output = ctx
+        .run(&["feed", "rm", "https://example.com/nonexistent.xml"])
+        .failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("Feed not found"),
+        "expected 'Feed not found' on stderr, got: {}",
+        stderr
+    );
+
+    // The existing feed should still be there
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(
+        feeds[0]["url"].as_str().unwrap(),
+        "https://example.com/keep.xml"
+    );
+}
+
+#[test]
 fn test_pull_continues_after_non_utf8_feed() {
     let ctx = TestContext::new();
 
