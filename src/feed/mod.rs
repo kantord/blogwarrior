@@ -32,7 +32,10 @@ impl crate::table::TableRow for FeedItem {
     const EXPECTED_CAPACITY: usize = 100_000_000;
 }
 
-pub fn fetch(client: &reqwest::blocking::Client, url: &str) -> anyhow::Result<(FeedMeta, Vec<FeedItem>)> {
+pub fn fetch(
+    client: &reqwest::blocking::Client,
+    url: &str,
+) -> anyhow::Result<(FeedMeta, Vec<FeedItem>)> {
     let response = client.get(url).send()?;
     let bytes = response.bytes()?;
     let text = String::from_utf8_lossy(&bytes);
@@ -63,7 +66,6 @@ mod tests {
             feed: "abc123".to_string(),
             link: String::new(),
             raw_id: String::new(),
-
         };
 
         let json = serde_json::to_string(&item).unwrap();
@@ -79,7 +81,6 @@ mod tests {
             feed: "def456".to_string(),
             link: String::new(),
             raw_id: String::new(),
-
         };
 
         let json = serde_json::to_string(&item).unwrap();

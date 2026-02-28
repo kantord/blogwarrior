@@ -27,7 +27,6 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
         .entries()
         .iter()
         .map(|entry| FeedItem {
-
             raw_id: entry.id().to_string(),
             title: entry.title().as_str().to_string(),
             date: entry
@@ -42,7 +41,6 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
                 .or_else(|| entry.links().first())
                 .map(|l| l.href().to_string())
                 .unwrap_or_default(),
-
         })
         .collect();
 

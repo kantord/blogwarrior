@@ -85,14 +85,24 @@ impl GroupKey {
     fn extract(&self, item: &FeedItem, feed_labels: &HashMap<String, String>) -> String {
         match self {
             GroupKey::Date => format_date(item),
-            GroupKey::Feed => feed_labels.get(&item.feed).cloned().unwrap_or_else(|| item.feed.clone()),
+            GroupKey::Feed => feed_labels
+                .get(&item.feed)
+                .cloned()
+                .unwrap_or_else(|| item.feed.clone()),
         }
     }
 
-    fn compare(&self, a: &FeedItem, b: &FeedItem, feed_labels: &HashMap<String, String>) -> std::cmp::Ordering {
+    fn compare(
+        &self,
+        a: &FeedItem,
+        b: &FeedItem,
+        feed_labels: &HashMap<String, String>,
+    ) -> std::cmp::Ordering {
         match self {
             GroupKey::Date => format_date(b).cmp(&format_date(a)),
-            GroupKey::Feed => self.extract(a, feed_labels).cmp(&self.extract(b, feed_labels)),
+            GroupKey::Feed => self
+                .extract(a, feed_labels)
+                .cmp(&self.extract(b, feed_labels)),
         }
     }
 }
@@ -103,10 +113,18 @@ fn format_date(item: &FeedItem) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn format_item(item: &FeedItem, grouped_keys: &[GroupKey], shorthand: &str, feed_labels: &HashMap<String, String>) -> String {
+fn format_item(
+    item: &FeedItem,
+    grouped_keys: &[GroupKey],
+    shorthand: &str,
+    feed_labels: &HashMap<String, String>,
+) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_feed = !grouped_keys.contains(&GroupKey::Feed);
-    let feed_label = feed_labels.get(&item.feed).map(|s| s.as_str()).unwrap_or(&item.feed);
+    let feed_label = feed_labels
+        .get(&item.feed)
+        .map(|s| s.as_str())
+        .unwrap_or(&item.feed);
     let body = match (show_date, show_feed) {
         (true, true) => format!("{}  {} ({})", format_date(item), item.title, feed_label),
         (true, false) => format!("{}  {}", format_date(item), item.title),
@@ -116,15 +134,35 @@ fn format_item(item: &FeedItem, grouped_keys: &[GroupKey], shorthand: &str, feed
     format!("{} {}", shorthand, body)
 }
 
-fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<String, String>, feed_labels: &HashMap<String, String>) -> String {
-    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], all_keys: &[GroupKey], shorthands: &HashMap<String, String>, feed_labels: &HashMap<String, String>) {
+fn render_grouped(
+    items: &[&FeedItem],
+    keys: &[GroupKey],
+    shorthands: &HashMap<String, String>,
+    feed_labels: &HashMap<String, String>,
+) -> String {
+    fn recurse(
+        out: &mut String,
+        items: &[&FeedItem],
+        remaining: &[GroupKey],
+        all_keys: &[GroupKey],
+        shorthands: &HashMap<String, String>,
+        feed_labels: &HashMap<String, String>,
+    ) {
         let depth = all_keys.len() - remaining.len();
         let indent = "  ".repeat(depth);
 
         if remaining.is_empty() {
             for item in items {
-                let sh = shorthands.get(&item.raw_id).map(|s| s.as_str()).unwrap_or("");
-                writeln!(out, "{indent}{}", format_item(item, all_keys, sh, feed_labels)).unwrap();
+                let sh = shorthands
+                    .get(&item.raw_id)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                writeln!(
+                    out,
+                    "{indent}{}",
+                    format_item(item, all_keys, sh, feed_labels)
+                )
+                .unwrap();
             }
             return;
         }
@@ -141,7 +179,10 @@ fn render_grouped(items: &[&FeedItem], keys: &[GroupKey], shorthands: &HashMap<S
             ("--- ", " ---")
         };
 
-        for (group_val, group) in &sorted.iter().chunk_by(|item| key.extract(item, feed_labels)) {
+        for (group_val, group) in &sorted
+            .iter()
+            .chunk_by(|item| key.extract(item, feed_labels))
+        {
             let group_items: Vec<&FeedItem> = group.copied().collect();
             writeln!(out, "{indent}{prefix}{group_val}{suffix}").unwrap();
             if depth == 0 {
@@ -179,7 +220,14 @@ fn parse_show_args(args: &[String]) -> anyhow::Result<(String, Option<String>)> 
         if arg.starts_with('@') {
             filter = Some(arg.clone());
         } else {
-            ensure!(group.is_empty(), "Multiple grouping arguments: '{}' and '{}'. Use a single argument like '{}{}'.", group, arg, group, arg);
+            ensure!(
+                group.is_empty(),
+                "Multiple grouping arguments: '{}' and '{}'. Use a single argument like '{}{}'.",
+                group,
+                arg,
+                group,
+                arg
+            );
             group = arg.clone();
         }
     }
@@ -189,10 +237,8 @@ fn parse_show_args(args: &[String]) -> anyhow::Result<(String, Option<String>)> 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 
 const POST_ALPHABET: [char; 34] = [
-    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
-    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
-    'q', 'w', 'e', 'r', 't', 'y', 'i', 'o', 'p',
-    'z', 'x', 'c', 'v', 'b', 'n', 'm',
+    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'q',
+    'w', 'e', 'r', 't', 'y', 'i', 'o', 'p', 'z', 'x', 'c', 'v', 'b', 'n', 'm',
 ];
 
 fn hex_to_custom_base(hex: &str, alphabet: &[char]) -> String {
@@ -426,16 +472,25 @@ fn cmd_read(store: &Path, shorthand: &str) -> anyhow::Result<()> {
     let item = resolve_post_shorthand(store, shorthand)?;
     ensure!(!item.link.is_empty(), "Post has no link");
     let client = http_client();
-    let response = client.get(&item.link).send()
+    let response = client
+        .get(&item.link)
+        .send()
         .map_err(|e| anyhow::anyhow!("Could not fetch URL: {}", e))?;
-    let html = response.text()
+    let html = response
+        .text()
         .map_err(|e| anyhow::anyhow!("Could not read response: {}", e))?;
     let reader = readability_js::Readability::new()
         .map_err(|e| anyhow::anyhow!("Could not initialize reader: {}", e))?;
     let article = reader
         .parse_with_url(&html, &item.link)
         .or_else(|_| reader.parse(&html))
-        .map_err(|e| anyhow::anyhow!("Could not extract readable content: {}\nTry: blog open {}", e, shorthand))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Could not extract readable content: {}\nTry: blog open {}",
+                e,
+                shorthand
+            )
+        })?;
     println!("{}\n", article.title);
     print!("{}", article.text_content);
     Ok(())
@@ -493,7 +548,10 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyhow::Result<(
     ensure!(!items.is_empty(), "No matching posts");
 
     let refs: Vec<&FeedItem> = items.iter().collect();
-    print!("{}", render_grouped(&refs, &keys, &post_shorthands, &feed_labels));
+    print!(
+        "{}",
+        render_grouped(&refs, &keys, &post_shorthands, &feed_labels)
+    );
     Ok(())
 }
 
@@ -502,16 +560,34 @@ fn run() -> anyhow::Result<()> {
     let store = store_dir();
 
     match args.command {
-        Some(Command::Pull) => { cmd_pull(&store)?; }
+        Some(Command::Pull) => {
+            cmd_pull(&store)?;
+        }
         Some(Command::Show { ref args }) => {
             let (group, filter) = parse_show_args(args)?;
             cmd_show(&store, &group, filter.as_deref())?;
         }
-        Some(Command::Open { ref shorthand }) => { cmd_open(&store, shorthand)?; }
-        Some(Command::Read { ref shorthand }) => { cmd_read(&store, shorthand)?; }
-        Some(Command::Feed { command: FeedCommand::Add { ref url } }) => { cmd_add(&store, url)?; }
-        Some(Command::Feed { command: FeedCommand::Rm { ref url } }) => { cmd_remove(&store, url)?; }
-        Some(Command::Feed { command: FeedCommand::Ls }) => { cmd_feed_ls(&store)?; }
+        Some(Command::Open { ref shorthand }) => {
+            cmd_open(&store, shorthand)?;
+        }
+        Some(Command::Read { ref shorthand }) => {
+            cmd_read(&store, shorthand)?;
+        }
+        Some(Command::Feed {
+            command: FeedCommand::Add { ref url },
+        }) => {
+            cmd_add(&store, url)?;
+        }
+        Some(Command::Feed {
+            command: FeedCommand::Rm { ref url },
+        }) => {
+            cmd_remove(&store, url)?;
+        }
+        Some(Command::Feed {
+            command: FeedCommand::Ls,
+        }) => {
+            cmd_feed_ls(&store)?;
+        }
         None => {
             let (group, filter) = parse_show_args(&args.args)?;
             cmd_show(&store, &group, filter.as_deref())?;
@@ -549,7 +625,6 @@ mod tests {
             feed: feed.to_string(),
             link: String::new(),
             raw_id: String::new(),
-
         }
     }
 
@@ -597,19 +672,28 @@ mod tests {
     #[test]
     fn test_format_item_no_grouping() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[], "abc", &no_labels()), "abc 2024-01-15  Post (Alice)");
+        assert_eq!(
+            format_item(&i, &[], "abc", &no_labels()),
+            "abc 2024-01-15  Post (Alice)"
+        );
     }
 
     #[test]
     fn test_format_item_grouped_by_date() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Date], "abc", &no_labels()), "abc Post (Alice)");
+        assert_eq!(
+            format_item(&i, &[GroupKey::Date], "abc", &no_labels()),
+            "abc Post (Alice)"
+        );
     }
 
     #[test]
     fn test_format_item_grouped_by_feed() {
         let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_item(&i, &[GroupKey::Feed], "abc", &no_labels()), "abc 2024-01-15  Post");
+        assert_eq!(
+            format_item(&i, &[GroupKey::Feed], "abc", &no_labels()),
+            "abc 2024-01-15  Post"
+        );
     }
 
     #[test]
@@ -635,7 +719,6 @@ mod tests {
             feed: "Alice".to_string(),
             link: String::new(),
             raw_id: String::new(),
-
         };
         assert_eq!(format_date(&i), "unknown");
     }
@@ -718,7 +801,12 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[GroupKey::Date, GroupKey::Feed], &no_labels(), &no_labels());
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Date, GroupKey::Feed],
+            &no_labels(),
+            &no_labels(),
+        );
         assert_eq!(
             output,
             "\
@@ -752,7 +840,12 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[GroupKey::Feed, GroupKey::Date], &no_labels(), &no_labels());
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Feed, GroupKey::Date],
+            &no_labels(),
+            &no_labels(),
+        );
         assert_eq!(
             output,
             "\
@@ -781,7 +874,10 @@ mod tests {
     fn test_render_empty_items() {
         let refs: Vec<&FeedItem> = vec![];
 
-        assert_eq!(render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels()), "");
+        assert_eq!(
+            render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels()),
+            ""
+        );
     }
 
     #[test]
@@ -797,7 +893,11 @@ mod tests {
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
-            vec!["=== 2024-01-03 ===", "=== 2024-01-02 ===", "=== 2024-01-01 ==="]
+            vec![
+                "=== 2024-01-03 ===",
+                "=== 2024-01-02 ===",
+                "=== 2024-01-01 ==="
+            ]
         );
     }
 
@@ -847,7 +947,11 @@ mod tests {
         assert_eq!(shorthands2.len(), 2);
         assert_ne!(shorthands2[0], shorthands2[1]);
         // They should be longer than 1 since they share a prefix in base9
-        assert!(shorthands2[0].len() > 1 || shorthands2[1].len() > 1 || shorthands2[0] != shorthands2[1]);
+        assert!(
+            shorthands2[0].len() > 1
+                || shorthands2[1].len() > 1
+                || shorthands2[0] != shorthands2[1]
+        );
     }
 
     #[test]
@@ -895,21 +999,19 @@ mod tests {
 
     #[test]
     fn test_render_grouped_with_shorthands() {
-        let items = [
-            FeedItem {
-                title: "Post A".to_string(),
-                date: Some(
-                    NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d")
-                        .unwrap()
-                        .and_hms_opt(0, 0, 0)
-                        .unwrap()
-                        .and_utc(),
-                ),
-                feed: "Alice".to_string(),
-                link: String::new(),
-                raw_id: "id-a".to_string(),
-            },
-        ];
+        let items = [FeedItem {
+            title: "Post A".to_string(),
+            date: Some(
+                NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: "Alice".to_string(),
+            link: String::new(),
+            raw_id: "id-a".to_string(),
+        }];
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id-a".to_string(), "sDf".to_string());

@@ -27,7 +27,6 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
         .items()
         .iter()
         .map(|item| FeedItem {
-
             raw_id: item
                 .guid()
                 .map(|g| g.value().to_string())
@@ -41,7 +40,6 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
                 .map(|d| d.to_utc()),
             feed: String::new(),
             link: item.link().unwrap_or_default().to_string(),
-
         })
         .collect();
 

@@ -12,7 +12,8 @@ fn read_table(dir: &Path) -> Vec<serde_json::Value> {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(fname) = path.file_name().and_then(|f| f.to_str())
-                && fname.starts_with("items_") && fname.ends_with(".jsonl")
+                && fname.starts_with("items_")
+                && fname.ends_with(".jsonl")
             {
                 let file = fs::File::open(&path).unwrap();
                 for line in std::io::BufReader::new(file).lines() {
@@ -305,8 +306,7 @@ fn test_show_with_grouping() {
 fn test_show_default_no_subcommand() {
     let ctx = TestContext::new();
 
-    let posts =
-        r#"{"id":"1","title":"Default Show","date":"2024-01-15T00:00:00Z","feed":"Alice"}"#;
+    let posts = r#"{"id":"1","title":"Default Show","date":"2024-01-15T00:00:00Z","feed":"Alice"}"#;
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
@@ -369,7 +369,8 @@ fn test_serde_roundtrip() {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(fname) = path.file_name().and_then(|f| f.to_str())
-                && fname.starts_with("items_") && fname.ends_with(".jsonl")
+                && fname.starts_with("items_")
+                && fname.ends_with(".jsonl")
             {
                 fs::remove_file(&path).unwrap();
             }
@@ -405,7 +406,11 @@ fn test_pull_twice_no_duplicates() {
     let xml2 = rss_xml_with_guids(
         "Blog",
         &[
-            ("Post B Updated", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-b"),
+            (
+                "Post B Updated",
+                "Tue, 02 Jan 2024 00:00:00 +0000",
+                "guid-b",
+            ),
             ("Post C", "Wed, 03 Jan 2024 00:00:00 +0000", "guid-c"),
         ],
     );
@@ -420,7 +425,10 @@ fn test_pull_twice_no_duplicates() {
     // Should have 3 items: A (from first pull, preserved), B (updated), C (new)
     assert_eq!(posts2.len(), 3);
 
-    let titles: Vec<&str> = posts2.iter().map(|p| p["title"].as_str().unwrap()).collect();
+    let titles: Vec<&str> = posts2
+        .iter()
+        .map(|p| p["title"].as_str().unwrap())
+        .collect();
     assert!(titles.contains(&"Post A"));
     assert!(titles.contains(&"Post B Updated"));
     assert!(titles.contains(&"Post C"));
@@ -432,11 +440,15 @@ fn test_pull_twice_no_duplicates() {
 fn test_add_creates_feed() {
     let ctx = TestContext::new();
 
-    ctx.run(&["feed", "add", "https://example.com/feed.xml"]).success();
+    ctx.run(&["feed", "add", "https://example.com/feed.xml"])
+        .success();
 
     let feeds = ctx.read_feeds();
     assert_eq!(feeds.len(), 1);
-    assert_eq!(feeds[0]["url"].as_str().unwrap(), "https://example.com/feed.xml");
+    assert_eq!(
+        feeds[0]["url"].as_str().unwrap(),
+        "https://example.com/feed.xml"
+    );
 }
 
 #[test]
@@ -525,7 +537,11 @@ fn test_remove_feed_deletes_its_posts() {
 
     let xml2 = rss_xml_with_guids(
         "Remove Blog",
-        &[("Remove Post", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-remove")],
+        &[(
+            "Remove Post",
+            "Tue, 02 Jan 2024 00:00:00 +0000",
+            "guid-remove",
+        )],
     );
     ctx.mock_rss_feed("/remove.xml", &xml2);
 
@@ -548,8 +564,10 @@ fn test_remove_feed_deletes_its_posts() {
 fn test_feed_ls() {
     let ctx = TestContext::new();
 
-    ctx.run(&["feed", "add", "https://example.com/feed1.xml"]).success();
-    ctx.run(&["feed", "add", "https://example.com/feed2.xml"]).success();
+    ctx.run(&["feed", "add", "https://example.com/feed1.xml"])
+        .success();
+    ctx.run(&["feed", "add", "https://example.com/feed2.xml"])
+        .success();
 
     let output = ctx.run(&["feed", "ls"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -564,9 +582,17 @@ fn test_feed_ls() {
             continue;
         }
         let first_word: String = line.chars().take_while(|c| *c != ' ').collect();
-        assert!(first_word.starts_with('@'), "line should start with @shorthand: {}", line);
+        assert!(
+            first_word.starts_with('@'),
+            "line should start with @shorthand: {}",
+            line
+        );
         let shorthand = &first_word[1..];
-        assert!(!shorthand.is_empty(), "shorthand should not be empty: {}", line);
+        assert!(
+            !shorthand.is_empty(),
+            "shorthand should not be empty: {}",
+            line
+        );
         assert!(
             shorthand.chars().all(|c| home_row_chars.contains(&c)),
             "shorthand '{}' contains non-home-row characters in line: {}",
@@ -582,7 +608,11 @@ fn test_feed_ls_no_feeds_prints_error() {
 
     let output = ctx.run(&["feed", "ls"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
-    assert!(stderr.contains("No matching feeds"), "expected 'No matching feeds' on stderr, got: {}", stderr);
+    assert!(
+        stderr.contains("No matching feeds"),
+        "expected 'No matching feeds' on stderr, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -597,7 +627,11 @@ fn test_feed_remove_by_shorthand() {
 
     let xml2 = rss_xml_with_guids(
         "Remove Blog",
-        &[("Remove Post", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-remove")],
+        &[(
+            "Remove Post",
+            "Tue, 02 Jan 2024 00:00:00 +0000",
+            "guid-remove",
+        )],
     );
     ctx.mock_rss_feed("/remove.xml", &xml2);
 
@@ -637,7 +671,11 @@ fn test_show_no_posts_prints_error() {
 
     let output = ctx.run(&["show"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
-    assert!(stderr.contains("No matching posts"), "expected 'No matching posts' on stderr, got: {}", stderr);
+    assert!(
+        stderr.contains("No matching posts"),
+        "expected 'No matching posts' on stderr, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -655,9 +693,7 @@ fn test_show_filter_by_shorthand() {
 
     let xml2 = rss_xml_with_guids(
         "Beta Blog",
-        &[
-            ("Beta Post 1", "Wed, 03 Jan 2024 00:00:00 +0000", "guid-b1"),
-        ],
+        &[("Beta Post 1", "Wed, 03 Jan 2024 00:00:00 +0000", "guid-b1")],
     );
     ctx.mock_rss_feed("/beta.xml", &xml2);
 
@@ -683,28 +719,51 @@ fn test_show_filter_by_shorthand() {
     let output = ctx.run(&["show", &alpha_shorthand]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
 
-    assert!(stdout.contains("Alpha Post 1"), "should contain Alpha Post 1");
-    assert!(stdout.contains("Alpha Post 2"), "should contain Alpha Post 2");
-    assert!(!stdout.contains("Beta Post 1"), "should NOT contain Beta Post 1");
+    assert!(
+        stdout.contains("Alpha Post 1"),
+        "should contain Alpha Post 1"
+    );
+    assert!(
+        stdout.contains("Alpha Post 2"),
+        "should contain Alpha Post 2"
+    );
+    assert!(
+        !stdout.contains("Beta Post 1"),
+        "should NOT contain Beta Post 1"
+    );
 
     // Also test with no subcommand: `blog @shorthand`
     let output = ctx.run(&[&alpha_shorthand]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
 
-    assert!(stdout.contains("Alpha Post 1"), "no-subcommand: should contain Alpha Post 1");
-    assert!(stdout.contains("Alpha Post 2"), "no-subcommand: should contain Alpha Post 2");
-    assert!(!stdout.contains("Beta Post 1"), "no-subcommand: should NOT contain Beta Post 1");
+    assert!(
+        stdout.contains("Alpha Post 1"),
+        "no-subcommand: should contain Alpha Post 1"
+    );
+    assert!(
+        stdout.contains("Alpha Post 2"),
+        "no-subcommand: should contain Alpha Post 2"
+    );
+    assert!(
+        !stdout.contains("Beta Post 1"),
+        "no-subcommand: should NOT contain Beta Post 1"
+    );
 }
 
 #[test]
 fn test_show_filter_unknown_shorthand() {
     let ctx = TestContext::new();
 
-    ctx.run(&["feed", "add", "https://example.com/feed.xml"]).success();
+    ctx.run(&["feed", "add", "https://example.com/feed.xml"])
+        .success();
 
     let output = ctx.run(&["show", "@zzz"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
-    assert!(stderr.contains("Unknown shorthand"), "expected unknown shorthand error, got: {}", stderr);
+    assert!(
+        stderr.contains("Unknown shorthand"),
+        "expected unknown shorthand error, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -738,7 +797,11 @@ fn test_show_displays_post_shorthands() {
     let xml = rss_xml_with_guids(
         "Shorthand Blog",
         &[
-            ("Post Alpha", "Mon, 01 Jan 2024 00:00:00 +0000", "guid-alpha"),
+            (
+                "Post Alpha",
+                "Mon, 01 Jan 2024 00:00:00 +0000",
+                "guid-alpha",
+            ),
             ("Post Beta", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-beta"),
         ],
     );
@@ -752,10 +815,8 @@ fn test_show_displays_post_shorthands() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
 
     let post_alphabet: &[char] = &[
-        'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
-        'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
-        'q', 'w', 'e', 'r', 't', 'y', 'i', 'o', 'p',
-        'z', 'x', 'c', 'v', 'b', 'n', 'm',
+        'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
+        'q', 'w', 'e', 'r', 't', 'y', 'i', 'o', 'p', 'z', 'x', 'c', 'v', 'b', 'n', 'm',
     ];
 
     for line in stdout.lines() {
@@ -766,7 +827,8 @@ fn test_show_displays_post_shorthands() {
         let first_word: String = line.chars().take_while(|c| !c.is_whitespace()).collect();
         assert!(
             !first_word.is_empty(),
-            "line should start with a shorthand: {}", line
+            "line should start with a shorthand: {}",
+            line
         );
         assert!(
             first_word.chars().all(|c| post_alphabet.contains(&c)),

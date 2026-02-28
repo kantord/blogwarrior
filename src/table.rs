@@ -77,7 +77,8 @@ impl<T: TableRow> Table<T> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(fname) = path.file_name().and_then(|f| f.to_str())
-                    && fname.starts_with("items_") && fname.ends_with(".jsonl")
+                    && fname.starts_with("items_")
+                    && fname.ends_with(".jsonl")
                     && let Ok(file) = fs::File::open(&path)
                 {
                     for line in std::io::BufReader::new(file).lines() {
@@ -85,8 +86,9 @@ impl<T: TableRow> Table<T> {
                         if line.trim().is_empty() {
                             continue;
                         }
-                        let row: Row<T> = serde_json::from_str(&line)
-                            .with_context(|| format!("failed to parse entry in {}", path.display()))?;
+                        let row: Row<T> = serde_json::from_str(&line).with_context(|| {
+                            format!("failed to parse entry in {}", path.display())
+                        })?;
                         table.items.insert(row.id().to_string(), row);
                     }
                 }
@@ -98,13 +100,22 @@ impl<T: TableRow> Table<T> {
     pub fn upsert(&mut self, item: T) {
         let id = hash_id(&item.key(), self.id_length);
 
-        if let Some(Row::Live { inner: existing, .. }) = self.items.get(&id)
+        if let Some(Row::Live {
+            inner: existing, ..
+        }) = self.items.get(&id)
             && item == *existing
         {
             return;
         }
 
-        self.items.insert(id.clone(), Row::Live { id, inner: item, updated_at: Some(Utc::now()) });
+        self.items.insert(
+            id.clone(),
+            Row::Live {
+                id,
+                inner: item,
+                updated_at: Some(Utc::now()),
+            },
+        );
     }
 
     pub fn delete(&mut self, key: &str) -> Option<String> {
@@ -112,7 +123,13 @@ impl<T: TableRow> Table<T> {
         if !matches!(self.items.get(&id), Some(Row::Live { .. })) {
             return None;
         }
-        self.items.insert(id.clone(), Row::Tombstone { id: id.clone(), deleted_at: Utc::now() });
+        self.items.insert(
+            id.clone(),
+            Row::Tombstone {
+                id: id.clone(),
+                deleted_at: Utc::now(),
+            },
+        );
         Some(id)
     }
 
@@ -133,7 +150,8 @@ impl<T: TableRow> Table<T> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(fname) = path.file_name().and_then(|f| f.to_str())
-                    && fname.starts_with("items_") && fname.ends_with(".jsonl")
+                    && fname.starts_with("items_")
+                    && fname.ends_with(".jsonl")
                 {
                     fs::remove_file(&path).context("failed to remove old shard file")?;
                 }
@@ -162,10 +180,13 @@ impl<T: TableRow> Table<T> {
     }
 
     pub fn items(&self) -> Vec<T> {
-        self.items.values().filter_map(|r| match r {
-            Row::Live { inner, .. } => Some(inner.clone()),
-            Row::Tombstone { .. } => None,
-        }).collect()
+        self.items
+            .values()
+            .filter_map(|r| match r {
+                Row::Live { inner, .. } => Some(inner.clone()),
+                Row::Tombstone { .. } => None,
+            })
+            .collect()
     }
 }
 
@@ -222,7 +243,13 @@ mod tests {
         let mut table = Table::<TestItem>::load(dir.path()).unwrap();
         let item = make_item("raw-id", "Post");
         table.upsert(item.clone());
-        assert_eq!(table.id_of(&item), hash_id("raw-id", id_length_for_capacity(TestItem::EXPECTED_CAPACITY)));
+        assert_eq!(
+            table.id_of(&item),
+            hash_id(
+                "raw-id",
+                id_length_for_capacity(TestItem::EXPECTED_CAPACITY)
+            )
+        );
         assert_eq!(table.items().len(), 1);
     }
 
@@ -395,18 +422,15 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let mut table = Table::<TestItem>::load(dir.path()).unwrap();
         // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
-        table.items.insert(
-            "aabb11".to_string(),
-            make_row_with_id("aabb11", "Item AA"),
-        );
-        table.items.insert(
-            "aabb22".to_string(),
-            make_row_with_id("aabb22", "Item AA2"),
-        );
-        table.items.insert(
-            "ccdd33".to_string(),
-            make_row_with_id("ccdd33", "Item CC"),
-        );
+        table
+            .items
+            .insert("aabb11".to_string(), make_row_with_id("aabb11", "Item AA"));
+        table
+            .items
+            .insert("aabb22".to_string(), make_row_with_id("aabb22", "Item AA2"));
+        table
+            .items
+            .insert("ccdd33".to_string(), make_row_with_id("ccdd33", "Item CC"));
         table.save().unwrap();
 
         let files = shard_files(&dir, "t");
@@ -467,7 +491,10 @@ mod tests {
             "aabb11".to_string(),
             Row::Live {
                 id: "aabb11".to_string(),
-                inner: UnshardedItem { raw_id: String::new(), title: "Item 1".to_string() },
+                inner: UnshardedItem {
+                    raw_id: String::new(),
+                    title: "Item 1".to_string(),
+                },
                 updated_at: None,
             },
         );
@@ -475,7 +502,10 @@ mod tests {
             "ccdd22".to_string(),
             Row::Live {
                 id: "ccdd22".to_string(),
-                inner: UnshardedItem { raw_id: String::new(), title: "Item 2".to_string() },
+                inner: UnshardedItem {
+                    raw_id: String::new(),
+                    title: "Item 2".to_string(),
+                },
                 updated_at: None,
             },
         );
@@ -502,10 +532,9 @@ mod tests {
         // Load picks up the old item, then we replace all items with a new one
         let mut table = Table::<TestItem>::load(dir.path()).unwrap();
         table.items.clear();
-        table.items.insert(
-            "aabb11".to_string(),
-            make_row_with_id("aabb11", "Item AA"),
-        );
+        table
+            .items
+            .insert("aabb11".to_string(), make_row_with_id("aabb11", "Item AA"));
         table.save().unwrap();
 
         let files = shard_files(&dir, "t");
@@ -658,8 +687,6 @@ mod tests {
         assert!(table.delete("never-added").is_none());
         assert_eq!(table.items().len(), 1);
     }
-
-
 
     #[test]
     fn test_delete_mixed_with_live() {
