@@ -8,7 +8,7 @@ use itertools::Itertools;
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
 
-use super::{compute_shorthands, index_to_shorthand, load_sorted_posts};
+use super::{feed_index, post_index};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GroupKey {
@@ -155,26 +155,24 @@ pub(crate) fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyho
     };
 
     let feeds_table = synctato::Table::<FeedSource>::load(store)?;
-    let mut feeds = feeds_table.items();
-    feeds.sort_by(|a, b| a.url.cmp(&b.url));
-    let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();
-    let shorthands = compute_shorthands(&ids);
+    let fi = feed_index(&feeds_table);
 
     let filter_feed_id = match filter {
         Some(f) if f.starts_with('@') => {
             let shorthand = &f[1..];
-            match shorthands.iter().position(|sh| sh == shorthand) {
-                Some(pos) => Some(ids[pos].clone()),
+            match fi.shorthands.iter().position(|sh| sh == shorthand) {
+                Some(pos) => Some(fi.ids[pos].clone()),
                 None => bail!("Unknown shorthand: {}", f),
             }
         }
         _ => None,
     };
 
-    let feed_labels: HashMap<String, String> = ids
+    let feed_labels: HashMap<String, String> = fi
+        .ids
         .iter()
-        .zip(feeds.iter())
-        .zip(shorthands.iter())
+        .zip(fi.feeds.iter())
+        .zip(fi.shorthands.iter())
         .map(|((id, feed), sh)| {
             let label = if feed.title.is_empty() {
                 format!("@{} {}", sh, feed.url)
@@ -185,24 +183,18 @@ pub(crate) fn cmd_show(store: &Path, group: &str, filter: Option<&str>) -> anyho
         })
         .collect();
 
-    let mut items = load_sorted_posts(store)?;
-
-    let post_shorthands: HashMap<String, String> = items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| (item.raw_id.clone(), index_to_shorthand(i)))
-        .collect();
+    let mut posts = post_index(store)?;
 
     if let Some(ref feed_id) = filter_feed_id {
-        items.retain(|item| item.feed == *feed_id);
+        posts.items.retain(|item| item.feed == *feed_id);
     }
 
-    ensure!(!items.is_empty(), "No matching posts");
+    ensure!(!posts.items.is_empty(), "No matching posts");
 
-    let refs: Vec<&FeedItem> = items.iter().collect();
+    let refs: Vec<&FeedItem> = posts.items.iter().collect();
     print!(
         "{}",
-        render_grouped(&refs, &keys, &post_shorthands, &feed_labels)
+        render_grouped(&refs, &keys, &posts.shorthands, &feed_labels)
     );
     Ok(())
 }

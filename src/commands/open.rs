@@ -1,21 +1,17 @@
 use std::path::Path;
 
-use anyhow::{bail, ensure};
+use anyhow::ensure;
 
 use crate::feed::FeedItem;
 
-use super::{index_to_shorthand, load_sorted_posts};
+use super::{PostIndex, post_index};
 
 fn resolve_post_shorthand(store: &Path, shorthand: &str) -> anyhow::Result<FeedItem> {
-    let items = load_sorted_posts(store)?;
-    let found = items
+    let PostIndex { items, shorthands } = post_index(store)?;
+    items
         .into_iter()
-        .enumerate()
-        .find(|(i, _)| index_to_shorthand(*i) == shorthand);
-    match found {
-        Some((_, item)) => Ok(item),
-        None => bail!("Unknown shorthand: {}", shorthand),
-    }
+        .find(|item| shorthands.get(&item.raw_id).is_some_and(|s| s == shorthand))
+        .ok_or_else(|| anyhow::anyhow!("Unknown shorthand: {}", shorthand))
 }
 
 pub(crate) fn cmd_open(store: &Path, shorthand: &str) -> anyhow::Result<()> {

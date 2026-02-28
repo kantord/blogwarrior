@@ -9,7 +9,7 @@ repos:
       - id: cargo-fmt
         name: cargo fmt
         language: system
-        entry: cargo fmt --check
+        entry: cargo fmt
         files: '\.rs$'
         pass_filenames: false
       - id: cargo-clippy
