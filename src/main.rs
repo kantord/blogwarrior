@@ -292,8 +292,8 @@ fn store_dir() -> PathBuf {
 }
 
 fn cmd_remove(store: &Path, url: &str) {
-    let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
-    let mut posts_table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
+    let mut feeds_table = table::Table::<FeedSource>::load(store);
+    let mut posts_table = table::Table::<FeedItem>::load(store);
 
     let resolved_url;
     let url = if let Some(shorthand) = url.strip_prefix('@') {
@@ -334,7 +334,7 @@ fn cmd_remove(store: &Path, url: &str) {
 }
 
 fn cmd_add(store: &Path, url: &str) {
-    let mut table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let mut table = table::Table::<FeedSource>::load(store);
     table.upsert(FeedSource {
         url: url.to_string(),
         title: String::new(),
@@ -345,7 +345,7 @@ fn cmd_add(store: &Path, url: &str) {
 }
 
 fn cmd_feed_ls(store: &Path) {
-    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let feeds_table = table::Table::<FeedSource>::load(store);
     let mut feeds = feeds_table.items();
     if feeds.is_empty() {
         eprintln!("No matching feeds");
@@ -364,9 +364,9 @@ fn cmd_feed_ls(store: &Path) {
 }
 
 fn cmd_pull(store: &Path) {
-    let mut feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let mut feeds_table = table::Table::<FeedSource>::load(store);
     let sources = feeds_table.items();
-    let mut table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
+    let mut table = table::Table::<FeedItem>::load(store);
     for source in &sources {
         let (meta, items) = match feed::fetch(&source.url) {
             Ok(result) => result,
@@ -391,7 +391,7 @@ fn cmd_pull(store: &Path) {
 }
 
 fn load_sorted_posts(store: &Path) -> Vec<FeedItem> {
-    let table = table::Table::<FeedItem>::load(store, "posts", 1, 100_000_000);
+    let table = table::Table::<FeedItem>::load(store);
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
     items
@@ -476,7 +476,7 @@ fn cmd_show(store: &Path, group: &str, filter: Option<&str>) {
         }
     };
 
-    let feeds_table = table::Table::<FeedSource>::load(store, "feeds", 0, 50_000);
+    let feeds_table = table::Table::<FeedSource>::load(store);
     let mut feeds = feeds_table.items();
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| feeds_table.id_of(f)).collect();

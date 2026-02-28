@@ -17,4 +17,8 @@ impl TableRow for FeedSource {
     fn key(&self) -> String {
         self.url.clone()
     }
+
+    const TABLE_NAME: &'static str = "feeds";
+    const SHARD_CHARACTERS: usize = 0;
+    const EXPECTED_CAPACITY: usize = 50_000;
 }

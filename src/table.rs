@@ -10,6 +10,10 @@ use sha2::{Digest, Sha256};
 
 pub trait TableRow: Clone + PartialEq + Serialize + DeserializeOwned {
     fn key(&self) -> String;
+
+    const TABLE_NAME: &'static str;
+    const SHARD_CHARACTERS: usize;
+    const EXPECTED_CAPACITY: usize;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,13 +63,13 @@ pub struct Table<T: TableRow> {
 }
 
 impl<T: TableRow> Table<T> {
-    pub fn load(store: &Path, name: &str, shard_characters: usize, expected_items: usize) -> Self {
-        let dir = store.join(name);
-        let id_length = id_length_for_capacity(expected_items);
+    pub fn load(store: &Path) -> Self {
+        let dir = store.join(T::TABLE_NAME);
+        let id_length = id_length_for_capacity(T::EXPECTED_CAPACITY);
         let mut table = Self {
             items: HashMap::new(),
             dir,
-            shard_characters,
+            shard_characters: T::SHARD_CHARACTERS,
             id_length,
         };
         if let Ok(entries) = fs::read_dir(&table.dir) {
@@ -180,6 +184,27 @@ mod tests {
         fn key(&self) -> String {
             self.raw_id.clone()
         }
+
+        const TABLE_NAME: &'static str = "t";
+        const SHARD_CHARACTERS: usize = 2;
+        const EXPECTED_CAPACITY: usize = 1000;
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct UnshardedItem {
+        #[serde(default)]
+        raw_id: String,
+        title: String,
+    }
+
+    impl TableRow for UnshardedItem {
+        fn key(&self) -> String {
+            self.raw_id.clone()
+        }
+
+        const TABLE_NAME: &'static str = "t";
+        const SHARD_CHARACTERS: usize = 0;
+        const EXPECTED_CAPACITY: usize = 1000;
     }
 
     fn make_item(raw_id: &str, title: &str) -> TestItem {
@@ -192,17 +217,17 @@ mod tests {
     #[test]
     fn test_upsert_hashes_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         let item = make_item("raw-id", "Post");
         table.upsert(item.clone());
-        assert_eq!(table.id_of(&item), hash_id("raw-id", id_length_for_capacity(1000)));
+        assert_eq!(table.id_of(&item), hash_id("raw-id", id_length_for_capacity(TestItem::EXPECTED_CAPACITY)));
         assert_eq!(table.items().len(), 1);
     }
 
     #[test]
     fn test_upsert_overwrites_existing() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("same-id", "Original"));
         table.upsert(make_item("same-id", "Updated"));
         let items = table.items();
@@ -214,12 +239,12 @@ mod tests {
     fn test_load_save_roundtrip() {
         let dir = TempDir::new().unwrap();
 
-        let mut table = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("id-1", "First"));
         table.upsert(make_item("id-2", "Second"));
         table.save();
 
-        let loaded = Table::<TestItem>::load(dir.path(), "test_table", 2, 1000);
+        let loaded = Table::<TestItem>::load(dir.path());
         assert_eq!(loaded.items().len(), 2);
 
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
@@ -230,7 +255,7 @@ mod tests {
     #[test]
     fn test_load_nonexistent_file() {
         let dir = TempDir::new().unwrap();
-        let table = Table::<TestItem>::load(dir.path(), "nonexistent", 2, 1000);
+        let table = Table::<TestItem>::load(dir.path());
         assert_eq!(table.items().len(), 0);
     }
 
@@ -294,7 +319,7 @@ mod tests {
     #[test]
     fn test_save_sorts_items_by_id() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("zzz", "Last"));
         table.upsert(make_item("aaa", "First"));
         table.upsert(make_item("mmm", "Middle"));
@@ -309,7 +334,7 @@ mod tests {
     #[test]
     fn test_save_sort_order_is_stable_across_roundtrips() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("c", "C"));
         table.upsert(make_item("a", "A"));
         table.upsert(make_item("b", "B"));
@@ -317,7 +342,7 @@ mod tests {
 
         let ids1 = ids_from_lines(&read_lines(&dir, "t"));
 
-        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let loaded = Table::<TestItem>::load(dir.path());
         loaded.save();
 
         let ids2 = ids_from_lines(&read_lines(&dir, "t"));
@@ -327,12 +352,12 @@ mod tests {
     #[test]
     fn test_save_sort_order_preserved_after_upsert() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("b", "B"));
         table.upsert(make_item("a", "A"));
         table.save();
 
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("c", "C"));
         table.save();
 
@@ -345,7 +370,7 @@ mod tests {
     #[test]
     fn test_save_single_item_sorted() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("only", "Only"));
         table.save();
 
@@ -356,7 +381,7 @@ mod tests {
     #[test]
     fn test_save_empty_table() {
         let dir = TempDir::new().unwrap();
-        let table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let table = Table::<TestItem>::load(dir.path());
         table.save();
 
         let lines = read_lines(&dir, "t");
@@ -366,7 +391,7 @@ mod tests {
     #[test]
     fn test_items_land_in_correct_shard_files() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
         table.items.insert(
             "aabb11".to_string(),
@@ -408,7 +433,7 @@ mod tests {
         fs::write(table_dir.join("items_aa.jsonl"), format!("{}\n", item1)).unwrap();
         fs::write(table_dir.join("items_bb.jsonl"), format!("{}\n", item2)).unwrap();
 
-        let table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let table = Table::<TestItem>::load(dir.path());
         assert_eq!(table.items().len(), 2);
         let titles: Vec<String> = table.items().iter().map(|i| i.title.clone()).collect();
         assert!(titles.contains(&"From AA".to_string()));
@@ -418,13 +443,13 @@ mod tests {
     #[test]
     fn test_roundtrip_with_sharding_preserves_all_items() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("alpha", "Alpha"));
         table.upsert(make_item("beta", "Beta"));
         table.upsert(make_item("gamma", "Gamma"));
         table.save();
 
-        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let loaded = Table::<TestItem>::load(dir.path());
         assert_eq!(loaded.items().len(), 3);
         let titles: Vec<String> = loaded.items().iter().map(|i| i.title.clone()).collect();
         assert!(titles.contains(&"Alpha".to_string()));
@@ -435,14 +460,22 @@ mod tests {
     #[test]
     fn test_shard_characters_zero_puts_everything_in_items_empty() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 0, 1000);
+        let mut table = Table::<UnshardedItem>::load(dir.path());
         table.items.insert(
             "aabb11".to_string(),
-            make_row_with_id("aabb11", "Item 1"),
+            Row::Live {
+                id: "aabb11".to_string(),
+                inner: UnshardedItem { raw_id: String::new(), title: "Item 1".to_string() },
+                updated_at: None,
+            },
         );
         table.items.insert(
             "ccdd22".to_string(),
-            make_row_with_id("ccdd22", "Item 2"),
+            Row::Live {
+                id: "ccdd22".to_string(),
+                inner: UnshardedItem { raw_id: String::new(), title: "Item 2".to_string() },
+                updated_at: None,
+            },
         );
         table.save();
 
@@ -465,7 +498,7 @@ mod tests {
         fs::write(table_dir.join("items_zz.jsonl"), format!("{}\n", old_item)).unwrap();
 
         // Load picks up the old item, then we replace all items with a new one
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.items.clear();
         table.items.insert(
             "aabb11".to_string(),
@@ -484,7 +517,7 @@ mod tests {
         // so the second upsert overwrites the first. This is correct
         // table behavior — it's the caller's job to provide distinct IDs.
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("same", "First"));
         table.upsert(make_item("same", "Second"));
         let items = table.items();
@@ -502,7 +535,7 @@ mod tests {
     #[test]
     fn test_upsert_sets_updated_at_on_new_item() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("new", "New Item"));
         assert!(get_updated_at(&table).is_some());
     }
@@ -510,7 +543,7 @@ mod tests {
     #[test]
     fn test_upsert_preserves_updated_at_when_unchanged() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Same"));
         let ts1 = get_updated_at(&table);
 
@@ -523,7 +556,7 @@ mod tests {
     #[test]
     fn test_upsert_updates_updated_at_when_content_changes() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Original"));
         let ts1 = get_updated_at(&table);
 
@@ -536,23 +569,23 @@ mod tests {
     #[test]
     fn test_updated_at_survives_save_load_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Item"));
         let ts = get_updated_at(&table);
         table.save();
 
-        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let loaded = Table::<TestItem>::load(dir.path());
         assert_eq!(get_updated_at(&loaded), ts);
     }
 
     #[test]
     fn test_upsert_unchanged_after_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Item"));
         table.save();
 
-        let mut loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut loaded = Table::<TestItem>::load(dir.path());
         let ts_before = get_updated_at(&loaded);
 
         // Re-upsert same content after loading from disk
@@ -564,7 +597,7 @@ mod tests {
     #[test]
     fn test_delete_removes_from_items() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Item"));
         assert_eq!(table.items().len(), 1);
 
@@ -575,19 +608,19 @@ mod tests {
     #[test]
     fn test_delete_tombstone_survives_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Item"));
         table.delete("x");
         table.save();
 
-        let loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let loaded = Table::<TestItem>::load(dir.path());
         assert_eq!(loaded.items().len(), 0);
     }
 
     #[test]
     fn test_upsert_resurrects_deleted_item() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Original"));
         table.delete("x");
         assert_eq!(table.items().len(), 0);
@@ -601,12 +634,12 @@ mod tests {
     #[test]
     fn test_upsert_resurrects_after_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("x", "Original"));
         table.delete("x");
         table.save();
 
-        let mut loaded = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut loaded = Table::<TestItem>::load(dir.path());
         assert_eq!(loaded.items().len(), 0);
 
         loaded.upsert(make_item("x", "Back"));
@@ -618,7 +651,7 @@ mod tests {
     #[test]
     fn test_delete_nonexistent_key_returns_none() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("a", "Keep"));
         assert!(table.delete("never-added").is_none());
         assert_eq!(table.items().len(), 1);
@@ -629,7 +662,7 @@ mod tests {
     #[test]
     fn test_delete_mixed_with_live() {
         let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path(), "t", 2, 1000);
+        let mut table = Table::<TestItem>::load(dir.path());
         table.upsert(make_item("a", "Keep"));
         table.upsert(make_item("b", "Delete"));
         table.upsert(make_item("c", "Also Keep"));

@@ -26,6 +26,10 @@ impl crate::table::TableRow for FeedItem {
     fn key(&self) -> String {
         self.raw_id.clone()
     }
+
+    const TABLE_NAME: &'static str = "posts";
+    const SHARD_CHARACTERS: usize = 1;
+    const EXPECTED_CAPACITY: usize = 100_000_000;
 }
 
 pub fn fetch(url: &str) -> Result<(FeedMeta, Vec<FeedItem>), Box<dyn std::error::Error>> {
