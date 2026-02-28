@@ -13,6 +13,14 @@ use feed::FeedItem;
 use feed_source::FeedSource;
 use table::TableRow;
 
+fn http_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .user_agent(format!("blogtato/{}", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("failed to build HTTP client")
+}
+
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
 #[command(args_conflicts_with_subcommands = true)]
@@ -368,11 +376,12 @@ fn cmd_feed_ls(store: &Path) {
 }
 
 fn cmd_pull(store: &Path) {
+    let client = http_client();
     let mut feeds_table = table::Table::<FeedSource>::load(store);
     let sources = feeds_table.items();
     let mut table = table::Table::<FeedItem>::load(store);
     for source in &sources {
-        let (meta, items) = match feed::fetch(&source.url) {
+        let (meta, items) = match feed::fetch(&client, &source.url) {
             Ok(result) => result,
             Err(e) => {
                 eprintln!("Error fetching {}: {}", source.url, e);
@@ -434,7 +443,8 @@ fn cmd_read(store: &Path, shorthand: &str) {
         eprintln!("Post has no link");
         std::process::exit(1);
     }
-    let response = match reqwest::blocking::get(&item.link) {
+    let client = http_client();
+    let response = match client.get(&item.link).send() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Could not fetch URL: {}", e);
