@@ -38,13 +38,8 @@ pub fn fetch(
 ) -> anyhow::Result<(FeedMeta, Vec<FeedItem>)> {
     let response = client.get(url).send()?.error_for_status()?;
     let bytes = response.bytes()?;
-    let text = String::from_utf8_lossy(&bytes);
 
-    if text.contains("<rss") {
-        rss::parse(&bytes[..])
-    } else {
-        atom::parse(&bytes[..])
-    }
+    rss::parse(&bytes[..]).or_else(|_| atom::parse(&bytes[..]))
 }
 
 #[cfg(test)]

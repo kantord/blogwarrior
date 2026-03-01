@@ -1020,3 +1020,37 @@ fn test_pull_continues_after_non_utf8_feed() {
         "good feed's post should be present"
     );
 }
+
+#[test]
+fn test_atom_feed_with_rss_in_content_is_parsed_as_atom() {
+    let ctx = TestContext::new();
+
+    // An Atom feed whose entry summary uses CDATA containing the literal "<rss" —
+    // the naive `text.contains("<rss")` check misidentifies this as RSS.
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Blog</title>
+  <id>urn:atom-blog</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <title>How to migrate to Atom</title>
+    <id>urn:post:1</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <published>2024-01-01T00:00:00Z</published>
+    <summary type="html"><![CDATA[Replace <rss version="2.0"> with Atom]]></summary>
+  </entry>
+</feed>"#;
+    ctx.mock_atom_feed("/atom-with-rss-mention.xml", xml);
+
+    let url = ctx.server.url("/atom-with-rss-mention.xml");
+    ctx.write_feeds(&[&url]);
+
+    ctx.run(&["pull"]).success();
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(
+        posts[0]["title"].as_str().unwrap(),
+        "How to migrate to Atom"
+    );
+}
