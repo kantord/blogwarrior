@@ -113,20 +113,42 @@ fn signature(repo: &Repository) -> anyhow::Result<Signature<'static>> {
     }
 }
 
-pub fn has_remote_branch(repo: &Repository, refname: &str) -> bool {
-    repo.find_reference(refname).is_ok()
+/// Find the remote tracking branch for origin (e.g. "refs/remotes/origin/main").
+/// Tries the local HEAD branch name first, then falls back to common defaults.
+fn find_remote_ref(repo: &Repository) -> Option<git2::Reference<'_>> {
+    // Use the local HEAD branch name — if we're on "main", look for "origin/main", etc.
+    if let Ok(head) = repo.head()
+        && let Some(branch) = head.shorthand()
+    {
+        let refname = format!("refs/remotes/origin/{branch}");
+        if let Ok(r) = repo.find_reference(&refname) {
+            return Some(r);
+        }
+    }
+    // Fallback: try common branch names
+    for name in ["main", "master"] {
+        let refname = format!("refs/remotes/origin/{name}");
+        if let Ok(r) = repo.find_reference(&refname) {
+            return Some(r);
+        }
+    }
+    None
 }
 
-/// Returns true if HEAD and origin/main point to the same commit.
+pub fn has_remote_branch(repo: &Repository) -> bool {
+    find_remote_ref(repo).is_some()
+}
+
+/// Returns true if HEAD and the remote tracking branch point to the same commit.
 pub fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
     let head = repo
         .head()
         .context("no HEAD")?
         .peel_to_commit()
         .context("failed to peel HEAD")?;
-    let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
-        Ok(r) => r,
-        Err(_) => return Ok(false),
+    let remote_ref = match find_remote_ref(repo) {
+        Some(r) => r,
+        None => return Ok(false),
     };
     let remote = remote_ref
         .peel_to_commit()
@@ -134,12 +156,12 @@ pub fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
     Ok(head.id() == remote.id())
 }
 
-/// Returns true when `origin/main` is a strict ancestor of HEAD (local is ahead, just push).
+/// Returns true when the remote tracking branch is a strict ancestor of HEAD (local is ahead, just push).
 pub fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
     let head = repo.head()?.peel_to_commit()?;
-    let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
-        Ok(r) => r,
-        Err(_) => return Ok(false),
+    let remote_ref = match find_remote_ref(repo) {
+        Some(r) => r,
+        None => return Ok(false),
     };
     let remote = remote_ref.peel_to_commit()?;
     if head.id() == remote.id() {
@@ -151,9 +173,9 @@ pub fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
 }
 
 pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
-    let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
-        Ok(r) => r,
-        Err(_) => return Ok(()),
+    let remote_ref = match find_remote_ref(repo) {
+        Some(r) => r,
+        None => return Ok(()),
     };
 
     let head_commit = repo
@@ -193,9 +215,9 @@ pub fn read_remote_table<T: TableRow>(
     repo: &Repository,
     table_name: &str,
 ) -> anyhow::Result<HashMap<String, Row<T>>> {
-    let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
-        Ok(r) => r,
-        Err(_) => return Ok(HashMap::new()),
+    let remote_ref = match find_remote_ref(repo) {
+        Some(r) => r,
+        None => return Ok(HashMap::new()),
     };
 
     let commit = remote_ref
@@ -543,7 +565,7 @@ mod tests {
     fn test_has_remote_branch_false() {
         let dir = TempDir::new().unwrap();
         let repo = init_repo(dir.path());
-        assert!(!has_remote_branch(&repo, "refs/remotes/origin/main"));
+        assert!(!has_remote_branch(&repo));
     }
 
     // --- merge_ours tests ---

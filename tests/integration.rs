@@ -1113,7 +1113,7 @@ fn insert_feed(store_dir: &Path, url: &str) {
 
 /// Initialize a git repo, configure user, add remote, and make initial commit.
 fn init_git_store(store_dir: &Path, origin_dir: &Path) {
-    git(store_dir, &["init", "-b", "main"]);
+    git(store_dir, &["init"]);
     git(store_dir, &["config", "user.name", "Test"]);
     git(store_dir, &["config", "user.email", "test@test.com"]);
     git(
@@ -1166,7 +1166,7 @@ fn run_blog(store_dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
 #[test]
 fn test_sync_no_remote_warns() {
     let dir = TempDir::new().unwrap();
-    git(dir.path(), &["init", "-b", "main"]);
+    git(dir.path(), &["init"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@test.com"]);
 
@@ -1182,7 +1182,7 @@ fn test_sync_no_remote_warns() {
 #[test]
 fn test_sync_dirty_repo_fails() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
@@ -1203,11 +1203,11 @@ fn test_sync_dirty_repo_fails() {
 #[test]
 fn test_sync_first_push() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     // Init repo but don't push yet (no remote branch)
-    git(store_dir.path(), &["init", "-b", "main"]);
+    git(store_dir.path(), &["init"]);
     git(store_dir.path(), &["config", "user.name", "Test"]);
     git(store_dir.path(), &["config", "user.email", "test@test.com"]);
     git(
@@ -1240,7 +1240,7 @@ fn test_sync_first_push() {
 #[test]
 fn test_sync_local_ahead_only() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
@@ -1266,7 +1266,7 @@ fn test_sync_local_ahead_only() {
 #[test]
 fn test_sync_remote_ahead_only() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
@@ -1292,7 +1292,7 @@ fn test_sync_remote_ahead_only() {
 #[test]
 fn test_sync_both_diverged() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
@@ -1324,7 +1324,7 @@ fn test_sync_both_diverged() {
 #[test]
 fn test_sync_two_way() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     // Clone 1
     let store1 = TempDir::new().unwrap();
@@ -1414,7 +1414,7 @@ fn test_transact_auto_commits_with_existing_repo() {
     });
     let url = server.url("/feed.xml");
 
-    git(dir.path(), &["init", "-b", "main"]);
+    git(dir.path(), &["init"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@test.com"]);
     // Initial commit so HEAD exists
@@ -1478,7 +1478,7 @@ fn test_transact_dirty_repo_fails() {
     });
     let url = server.url("/feed.xml");
 
-    git(dir.path(), &["init", "-b", "main"]);
+    git(dir.path(), &["init"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@test.com"]);
     fs::write(dir.path().join(".keep"), "").unwrap();
@@ -1512,7 +1512,7 @@ fn commit_count(dir: &Path) -> usize {
 #[test]
 fn test_sync_already_in_sync_creates_no_commits() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
@@ -1547,7 +1547,7 @@ fn test_sync_no_git_repo() {
 #[test]
 fn test_sync_local_ahead_pushes_without_merge() {
     let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare", "-b", "main"]);
+    git(origin_dir.path(), &["init", "--bare"]);
 
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
@@ -1762,7 +1762,7 @@ fn test_clone_into_empty_dir() {
     // Set up a bare origin repo with some feed data
     let origin_dir = TempDir::new().unwrap();
     std::process::Command::new("git")
-        .args(["init", "--bare", "-b", "main"])
+        .args(["init", "--bare"])
         .arg(origin_dir.path())
         .output()
         .unwrap();

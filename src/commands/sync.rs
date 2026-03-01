@@ -61,7 +61,7 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     }
 
     // No remote branch yet → first push
-    if !git::has_remote_branch(&repo, "refs/remotes/origin/main") {
+    if !git::has_remote_branch(&repo) {
         let sp = new_spinner("Pushing to remote (first sync)...");
         git::push(&path)?;
         sp.finish_with_message("Pushing to remote (first sync)... done.");
