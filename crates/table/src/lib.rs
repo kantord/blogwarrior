@@ -9,6 +9,30 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+#[doc(hidden)]
+pub use paste::paste;
+
+pub trait Database {
+    type Transaction<'a>
+    where
+        Self: 'a;
+
+    fn save(&self) -> anyhow::Result<()>;
+    fn begin(&mut self) -> Self::Transaction<'_>;
+
+    fn transaction<F, T>(&mut self, f: F) -> anyhow::Result<T>
+    where
+        F: FnOnce(&mut Self::Transaction<'_>) -> anyhow::Result<T>,
+    {
+        let result = {
+            let mut tx = self.begin();
+            f(&mut tx)?
+        };
+        self.save()?;
+        Ok(result)
+    }
+}
+
 pub trait TableRow: Clone + PartialEq + Serialize + DeserializeOwned {
     fn key(&self) -> String;
 
@@ -225,6 +249,50 @@ impl<T: TableRow> Table<T> {
             })
             .collect()
     }
+}
+
+#[macro_export]
+macro_rules! database {
+    ($vis:vis $name:ident { $($field:ident : $row:ty),* $(,)? }) => {
+        $crate::paste! {
+            $vis struct $name {
+                $($field: $crate::Table<$row>,)*
+            }
+
+            $vis struct [<$name Transaction>]<'a> {
+                $(pub $field: &'a mut $crate::Table<$row>,)*
+            }
+
+            impl $name {
+                pub fn open(path: &::std::path::Path) -> ::anyhow::Result<Self> {
+                    Ok(Self {
+                        $($field: $crate::Table::<$row>::load(path)?,)*
+                    })
+                }
+
+                $(
+                    pub fn $field(&self) -> &$crate::Table<$row> {
+                        &self.$field
+                    }
+                )*
+            }
+
+            impl $crate::Database for $name {
+                type Transaction<'a> = [<$name Transaction>]<'a>;
+
+                fn save(&self) -> ::anyhow::Result<()> {
+                    $(self.$field.save()?;)*
+                    Ok(())
+                }
+
+                fn begin(&mut self) -> [<$name Transaction>]<'_> {
+                    [<$name Transaction>] {
+                        $($field: &mut self.$field,)*
+                    }
+                }
+            }
+        }
+    };
 }
 
 #[cfg(test)]
