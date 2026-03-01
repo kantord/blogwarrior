@@ -31,5 +31,6 @@ pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<()> {
             open::that(&item.link).map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
         }
     }
+    eprintln!("Opened in browser: {}", item.link);
     Ok(())
 }

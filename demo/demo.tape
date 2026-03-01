@@ -1,7 +1,6 @@
 Output demo/demo.gif
 
 Require blog
-Require w3m
 
 Set Shell "bash"
 Set FontFamily "JetBrains Mono"
@@ -17,7 +16,6 @@ Set TypingSpeed 40ms
 
 Hide
 Type `export RSS_STORE=$(mktemp -d)` Enter
-Type `export BROWSER=w3m` Enter
 Sleep 500ms
 Type "clear" Enter
 Sleep 500ms
@@ -33,7 +31,4 @@ Type "blog" Sleep 500ms Enter
 Sleep 3s
 
 Type "blog open a" Sleep 500ms Enter
-Sleep 5s
-
-Type "q"
-Sleep 1s
+Sleep 3s
