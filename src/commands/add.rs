@@ -19,7 +19,7 @@ fn spinner(msg: &str) -> ProgressBar {
 }
 
 pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
-    let client = super::pull::http_client()?;
+    let client = crate::http::http_client()?;
 
     let sp = spinner(&format!("Fetching {url}..."));
     let response = client.get(url).send()?.error_for_status()?;
