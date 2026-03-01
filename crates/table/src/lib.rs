@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -63,6 +62,25 @@ impl<T> Row<T> {
             Row::Live { id, .. } | Row::Tombstone { id, .. } => id,
         }
     }
+
+    pub fn last_modified(&self) -> Option<DateTime<Utc>> {
+        match self {
+            Row::Live { updated_at, .. } => *updated_at,
+            Row::Tombstone { deleted_at, .. } => Some(*deleted_at),
+        }
+    }
+}
+
+pub fn parse_rows<T: TableRow>(content: &str) -> anyhow::Result<HashMap<String, Row<T>>> {
+    let mut items = HashMap::new();
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row: Row<T> = serde_json::from_str(line).context("failed to parse JSONL line")?;
+        items.insert(row.id().to_string(), row);
+    }
+    Ok(items)
 }
 
 fn hash_id(raw: &str, id_length: usize) -> String {
@@ -96,18 +114,12 @@ impl<T: TableRow> Table<T> {
                 if let Some(fname) = path.file_name().and_then(|f| f.to_str())
                     && fname.starts_with("items_")
                     && fname.ends_with(".jsonl")
-                    && let Ok(file) = fs::File::open(&path)
                 {
-                    for line in std::io::BufReader::new(file).lines() {
-                        let line = line.context("failed to read line")?;
-                        if line.trim().is_empty() {
-                            continue;
-                        }
-                        let row: Row<T> = serde_json::from_str(&line).with_context(|| {
-                            format!("failed to parse entry in {}", path.display())
-                        })?;
-                        items.insert(row.id().to_string(), row);
-                    }
+                    let content = fs::read_to_string(&path)
+                        .with_context(|| format!("failed to read {}", path.display()))?;
+                    let parsed: HashMap<String, Row<T>> = parse_rows(&content)
+                        .with_context(|| format!("failed to parse entry in {}", path.display()))?;
+                    items.extend(parsed);
                 }
             }
         }
@@ -240,6 +252,22 @@ impl<T: TableRow> Table<T> {
         Ok(())
     }
 
+    pub fn merge_remote(&mut self, remote: HashMap<String, Row<T>>) {
+        for (id, remote_row) in remote {
+            let dominated = match self.items.get(&id) {
+                None => true,
+                Some(local_row) => match (local_row.last_modified(), remote_row.last_modified()) {
+                    (_, None) => false,
+                    (None, Some(_)) => true,
+                    (Some(local_ts), Some(remote_ts)) => remote_ts > local_ts,
+                },
+            };
+            if dominated {
+                self.items.insert(id, remote_row);
+            }
+        }
+    }
+
     pub fn items(&self) -> Vec<T> {
         self.items
             .values()
@@ -256,6 +284,7 @@ macro_rules! database {
     ($vis:vis $name:ident { $($field:ident : $row:ty),* $(,)? }) => {
         $crate::paste! {
             $vis struct $name {
+                path: ::std::path::PathBuf,
                 $($field: $crate::Table<$row>,)*
             }
 
@@ -266,8 +295,13 @@ macro_rules! database {
             impl $name {
                 pub fn open(path: &::std::path::Path) -> ::anyhow::Result<Self> {
                     Ok(Self {
+                        path: path.to_path_buf(),
                         $($field: $crate::Table::<$row>::load(path)?,)*
                     })
+                }
+
+                pub fn path(&self) -> &::std::path::Path {
+                    &self.path
                 }
 
                 $(
@@ -1004,5 +1038,245 @@ mod tests {
             },
             updated_at: None,
         }
+    }
+
+    fn make_live_row(id: &str, title: &str, ts: DateTime<Utc>) -> Row<TestItem> {
+        Row::Live {
+            id: id.to_string(),
+            inner: TestItem {
+                raw_id: String::new(),
+                title: title.to_string(),
+            },
+            updated_at: Some(ts),
+        }
+    }
+
+    fn make_tombstone_row(id: &str, ts: DateTime<Utc>) -> Row<TestItem> {
+        Row::Tombstone {
+            id: id.to_string(),
+            deleted_at: ts,
+        }
+    }
+
+    #[test]
+    fn test_merge_remote_only_on_remote() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let ts = Utc::now();
+        let mut remote = HashMap::new();
+        remote.insert("aa".to_string(), make_live_row("aa", "Remote", ts));
+        table.merge_remote(remote);
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Remote");
+    }
+
+    #[test]
+    fn test_merge_remote_only_on_local() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        table.upsert(make_item("x", "Local"));
+        let remote = HashMap::new();
+        table.merge_remote(remote);
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Local");
+    }
+
+    #[test]
+    fn test_merge_remote_local_newer() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+
+        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
+        table
+            .items
+            .insert(id.clone(), make_live_row(&id, "Local", new_ts));
+
+        let mut remote = HashMap::new();
+        remote.insert(id.clone(), make_live_row(&id, "Remote", old_ts));
+        table.merge_remote(remote);
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Local");
+    }
+
+    #[test]
+    fn test_merge_remote_remote_newer() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+
+        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
+        table
+            .items
+            .insert(id.clone(), make_live_row(&id, "Local", old_ts));
+
+        let mut remote = HashMap::new();
+        remote.insert(id.clone(), make_live_row(&id, "Remote", new_ts));
+        table.merge_remote(remote);
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Remote");
+    }
+
+    #[test]
+    fn test_merge_remote_tombstone_wins_over_older_live() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+
+        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
+        table
+            .items
+            .insert(id.clone(), make_live_row(&id, "Local", old_ts));
+
+        let mut remote = HashMap::new();
+        remote.insert(id.clone(), make_tombstone_row(&id, new_ts));
+        table.merge_remote(remote);
+        assert!(table.items().is_empty());
+    }
+
+    #[test]
+    fn test_merge_remote_live_wins_over_older_tombstone() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+
+        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
+        table
+            .items
+            .insert(id.clone(), make_tombstone_row(&id, old_ts));
+
+        let mut remote = HashMap::new();
+        remote.insert(id.clone(), make_live_row(&id, "Remote", new_ts));
+        table.merge_remote(remote);
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Remote");
+    }
+
+    #[test]
+    fn test_merge_remote_same_timestamp_local_wins() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+
+        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
+        table
+            .items
+            .insert(id.clone(), make_live_row(&id, "Local", ts));
+
+        let mut remote = HashMap::new();
+        remote.insert(id.clone(), make_live_row(&id, "Remote", ts));
+        table.merge_remote(remote);
+        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.items()[0].title, "Local");
+    }
+
+    #[test]
+    fn test_merge_remote_survives_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let ts = Utc::now();
+
+        let mut remote = HashMap::new();
+        remote.insert("aa11".to_string(), make_live_row("aa11", "Remote", ts));
+        table.merge_remote(remote);
+        table.save().unwrap();
+
+        let loaded = Table::<TestItem>::load(dir.path()).unwrap();
+        assert_eq!(loaded.items().len(), 1);
+        assert_eq!(loaded.items()[0].title, "Remote");
+    }
+
+    #[test]
+    fn test_parse_rows_two_valid_lines() {
+        let content = "{\"id\":\"aa\",\"title\":\"First\"}\n{\"id\":\"bb\",\"title\":\"Second\"}\n";
+        let rows: HashMap<String, Row<TestItem>> = parse_rows(content).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.contains_key("aa"));
+        assert!(rows.contains_key("bb"));
+    }
+
+    #[test]
+    fn test_parse_rows_empty_string() {
+        let rows: HashMap<String, Row<TestItem>> = parse_rows("").unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_parse_rows_blank_lines_skipped() {
+        let content =
+            "{\"id\":\"aa\",\"title\":\"First\"}\n\n\n{\"id\":\"bb\",\"title\":\"Second\"}\n\n";
+        let rows: HashMap<String, Row<TestItem>> = parse_rows(content).unwrap();
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_rows_invalid_json() {
+        let content = "not valid json\n";
+        let result: anyhow::Result<HashMap<String, Row<TestItem>>> = parse_rows(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_rows_duplicate_ids_last_wins() {
+        let content = "{\"id\":\"aa\",\"title\":\"First\"}\n{\"id\":\"aa\",\"title\":\"Second\"}\n";
+        let rows: HashMap<String, Row<TestItem>> = parse_rows(content).unwrap();
+        assert_eq!(rows.len(), 1);
+        match &rows["aa"] {
+            Row::Live { inner, .. } => assert_eq!(inner.title, "Second"),
+            _ => panic!("expected Live row"),
+        }
+    }
+
+    #[test]
+    fn test_last_modified_live_with_updated_at() {
+        let ts = Utc::now();
+        let row: Row<TestItem> = Row::Live {
+            id: "abc".to_string(),
+            inner: make_item("x", "Item"),
+            updated_at: Some(ts),
+        };
+        assert_eq!(row.last_modified(), Some(ts));
+    }
+
+    #[test]
+    fn test_last_modified_tombstone() {
+        let ts = Utc::now();
+        let row: Row<TestItem> = Row::Tombstone {
+            id: "abc".to_string(),
+            deleted_at: ts,
+        };
+        assert_eq!(row.last_modified(), Some(ts));
+    }
+
+    #[test]
+    fn test_last_modified_live_without_updated_at() {
+        let row: Row<TestItem> = Row::Live {
+            id: "abc".to_string(),
+            inner: make_item("x", "Item"),
+            updated_at: None,
+        };
+        assert_eq!(row.last_modified(), None);
     }
 }

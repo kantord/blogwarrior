@@ -1054,3 +1054,392 @@ fn test_atom_feed_with_rss_in_content_is_parsed_as_atom() {
         "How to migrate to Atom"
     );
 }
+
+// --- Sync integration tests ---
+
+/// Helper to run a git command in a directory.
+fn git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("failed to run git");
+    assert!(
+        output.status.success(),
+        "git {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Initialize a git repo, configure user, add remote, and make initial commit.
+fn init_git_store(store_dir: &Path, origin_dir: &Path) {
+    git(store_dir, &["init"]);
+    git(store_dir, &["config", "user.name", "Test"]);
+    git(store_dir, &["config", "user.email", "test@test.com"]);
+    git(
+        store_dir,
+        &[
+            "remote",
+            "add",
+            "origin",
+            &format!("file://{}", origin_dir.display()),
+        ],
+    );
+    // Make an initial commit so we have HEAD
+    fs::write(store_dir.join(".keep"), "").unwrap();
+    git(store_dir, &["add", "."]);
+    git(store_dir, &["commit", "-m", "init"]);
+    git(store_dir, &["push", "-u", "origin", "HEAD"]);
+}
+
+/// Clone from a bare origin into a new temp dir, return its path.
+fn clone_store(origin_dir: &Path) -> (TempDir, std::path::PathBuf) {
+    let dir = TempDir::new().unwrap();
+    let output = std::process::Command::new("git")
+        .args([
+            "clone",
+            &format!("file://{}", origin_dir.display()),
+            &dir.path().to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to clone");
+    assert!(
+        output.status.success(),
+        "clone failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    git(dir.path(), &["config", "user.name", "Test"]);
+    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    let p = dir.path().to_path_buf();
+    (dir, p)
+}
+
+fn run_blog(store_dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(args)
+        .env("RSS_STORE", store_dir)
+        .assert()
+}
+
+#[test]
+fn test_sync_no_remote_fails() {
+    let dir = TempDir::new().unwrap();
+    git(dir.path(), &["init"]);
+    git(dir.path(), &["config", "user.name", "Test"]);
+    git(dir.path(), &["config", "user.email", "test@test.com"]);
+
+    let output = run_blog(dir.path(), &["sync"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("no remote"),
+        "expected 'no remote' error, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_sync_dirty_repo_fails() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Make it dirty
+    fs::write(store_dir.path().join("dirty.txt"), "dirty").unwrap();
+
+    let output = run_blog(store_dir.path(), &["sync"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("uncommitted"),
+        "expected 'uncommitted' error, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_sync_first_push() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    // Init repo but don't push yet (no remote branch)
+    git(store_dir.path(), &["init"]);
+    git(store_dir.path(), &["config", "user.name", "Test"]);
+    git(store_dir.path(), &["config", "user.email", "test@test.com"]);
+    git(
+        store_dir.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            &format!("file://{}", origin_dir.path().display()),
+        ],
+    );
+
+    // Add a feed (transact auto-commits since git repo exists)
+    run_blog(
+        store_dir.path(),
+        &["feed", "add", "https://example.com/feed.xml"],
+    )
+    .success();
+
+    // Sync should push
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    // Verify we can clone and see the data
+    let (clone_td, clone_dir) = clone_store(origin_dir.path());
+    let feeds = read_table(&clone_dir.join("feeds"));
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(
+        feeds[0]["url"].as_str().unwrap(),
+        "https://example.com/feed.xml"
+    );
+    drop(clone_td);
+}
+
+#[test]
+fn test_sync_local_ahead_only() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Add feed locally (transact auto-commits)
+    run_blog(
+        store_dir.path(),
+        &["feed", "add", "https://example.com/a.xml"],
+    )
+    .success();
+
+    // Sync should push
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    // Verify
+    let (clone_td, clone_dir) = clone_store(origin_dir.path());
+    let feeds = read_table(&clone_dir.join("feeds"));
+    assert!(
+        feeds
+            .iter()
+            .any(|f| f["url"].as_str() == Some("https://example.com/a.xml")),
+        "remote should have the feed after sync"
+    );
+    drop(clone_td);
+}
+
+#[test]
+fn test_sync_remote_ahead_only() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Create a second clone, add feed there (auto-committed), push
+    let (other_td, other_dir) = clone_store(origin_dir.path());
+    run_blog(
+        &other_dir,
+        &["feed", "add", "https://example.com/remote.xml"],
+    )
+    .success();
+    git(&other_dir, &["push", "origin", "HEAD"]);
+    drop(other_td);
+
+    // Local sync should merge the remote feed
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    let feeds = read_table(&store_dir.path().join("feeds"));
+    assert!(
+        feeds
+            .iter()
+            .any(|f| f["url"].as_str() == Some("https://example.com/remote.xml")),
+        "local should have remote feed after sync"
+    );
+}
+
+#[test]
+fn test_sync_both_diverged() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Add feed on remote side (auto-committed), push
+    let (other_td, other_dir) = clone_store(origin_dir.path());
+    run_blog(&other_dir, &["feed", "add", "https://example.com/b.xml"]).success();
+    git(&other_dir, &["push", "origin", "HEAD"]);
+    drop(other_td);
+
+    // Add feed on local side (diverged, auto-committed)
+    run_blog(
+        store_dir.path(),
+        &["feed", "add", "https://example.com/a.xml"],
+    )
+    .success();
+
+    // Sync merges both
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    let feeds = read_table(&store_dir.path().join("feeds"));
+    let urls: Vec<&str> = feeds.iter().filter_map(|f| f["url"].as_str()).collect();
+    assert!(
+        urls.contains(&"https://example.com/a.xml"),
+        "should have local feed A"
+    );
+    assert!(
+        urls.contains(&"https://example.com/b.xml"),
+        "should have remote feed B"
+    );
+}
+
+#[test]
+fn test_sync_two_way() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    // Clone 1
+    let store1 = TempDir::new().unwrap();
+    init_git_store(store1.path(), origin_dir.path());
+
+    // Clone 2
+    let (store2_td, store2_dir) = clone_store(origin_dir.path());
+
+    // Clone 1 adds feed A (auto-committed) and syncs
+    run_blog(store1.path(), &["feed", "add", "https://example.com/a.xml"]).success();
+    run_blog(store1.path(), &["sync"]).success();
+
+    // Clone 2 adds feed B (auto-committed) and syncs
+    run_blog(&store2_dir, &["feed", "add", "https://example.com/b.xml"]).success();
+    run_blog(&store2_dir, &["sync"]).success();
+
+    // Clone 1 syncs again to pick up B
+    run_blog(store1.path(), &["sync"]).success();
+
+    // Both should have A and B
+    let feeds1 = read_table(&store1.path().join("feeds"));
+    let urls1: Vec<&str> = feeds1.iter().filter_map(|f| f["url"].as_str()).collect();
+    assert!(urls1.contains(&"https://example.com/a.xml"));
+    assert!(urls1.contains(&"https://example.com/b.xml"));
+
+    let feeds2 = read_table(&store2_dir.join("feeds"));
+    let urls2: Vec<&str> = feeds2.iter().filter_map(|f| f["url"].as_str()).collect();
+    assert!(urls2.contains(&"https://example.com/a.xml"));
+    assert!(urls2.contains(&"https://example.com/b.xml"));
+
+    drop(store2_td);
+}
+
+#[test]
+fn test_git_passthrough() {
+    let dir = TempDir::new().unwrap();
+
+    let output = run_blog(dir.path(), &["git", "init"]).success();
+    let _ = output;
+
+    // Now git status should work
+    run_blog(dir.path(), &["git", "status"]).success();
+}
+
+#[test]
+fn test_git_remote_add() {
+    let dir = TempDir::new().unwrap();
+    run_blog(dir.path(), &["git", "init"]).success();
+    run_blog(
+        dir.path(),
+        &[
+            "git",
+            "remote",
+            "add",
+            "origin",
+            "https://example.com/repo.git",
+        ],
+    )
+    .success();
+
+    // Verify remote was added
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            &dir.path().to_string_lossy(),
+            "remote",
+            "get-url",
+            "origin",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let url = String::from_utf8_lossy(&output.stdout);
+    assert!(url.trim() == "https://example.com/repo.git");
+}
+
+#[test]
+fn test_transact_auto_commits_with_existing_repo() {
+    let dir = TempDir::new().unwrap();
+    git(dir.path(), &["init"]);
+    git(dir.path(), &["config", "user.name", "Test"]);
+    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    // Initial commit so HEAD exists
+    fs::write(dir.path().join(".keep"), "").unwrap();
+    git(dir.path(), &["add", "."]);
+    git(dir.path(), &["commit", "-m", "init"]);
+
+    // Add a feed — should auto-commit because git repo exists
+    run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).success();
+
+    // Check that a commit was made
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            &dir.path().to_string_lossy(),
+            "log",
+            "--oneline",
+            "-1",
+        ])
+        .output()
+        .unwrap();
+    let log = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        log.contains("add feed"),
+        "commit message should contain 'add feed', got: {}",
+        log
+    );
+}
+
+#[test]
+fn test_transact_no_git_repo_still_works() {
+    let dir = TempDir::new().unwrap();
+    // No git init — just add a feed
+    run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).success();
+
+    // Feed should be saved
+    let feeds = read_table(&dir.path().join("feeds"));
+    assert_eq!(feeds.len(), 1);
+}
+
+#[test]
+fn test_transact_dirty_repo_fails() {
+    let dir = TempDir::new().unwrap();
+    git(dir.path(), &["init"]);
+    git(dir.path(), &["config", "user.name", "Test"]);
+    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    fs::write(dir.path().join(".keep"), "").unwrap();
+    git(dir.path(), &["add", "."]);
+    git(dir.path(), &["commit", "-m", "init"]);
+
+    // Make dirty
+    fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
+
+    let output = run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).failure();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains("uncommitted"),
+        "expected 'uncommitted' error, got: {}",
+        stderr
+    );
+}

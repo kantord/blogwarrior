@@ -4,6 +4,7 @@ pub mod open;
 pub mod pull;
 pub mod remove;
 pub mod show;
+pub mod sync;
 
 use std::collections::HashMap;
 

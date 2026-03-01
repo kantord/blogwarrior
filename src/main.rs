@@ -1,6 +1,7 @@
 mod commands;
 mod feed;
 mod feed_source;
+mod git;
 mod store;
 
 use std::path::PathBuf;
@@ -38,6 +39,13 @@ enum Command {
     Feed {
         #[command(subcommand)]
         command: FeedCommand,
+    },
+    /// Sync store with remote git repository
+    Sync,
+    /// Run git commands in the store directory
+    Git {
+        /// Arguments to pass to git
+        args: Vec<String>,
     },
 }
 
@@ -87,13 +95,29 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
+fn transact(
+    store: &mut store::Store,
+    msg: &str,
+    f: impl FnOnce(&mut store::Transaction<'_>) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    let repo = git2::Repository::open(store.path()).ok();
+    if let Some(ref repo) = repo {
+        git::ensure_clean(repo)?;
+    }
+    store.transaction(f)?;
+    if let Some(ref repo) = repo {
+        git::auto_commit(repo, msg)?;
+    }
+    Ok(())
+}
+
 fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let mut store = store::Store::open(&store_dir()?)?;
 
     match args.command {
         Some(Command::Pull) => {
-            store.transaction(commands::pull::cmd_pull)?;
+            transact(&mut store, "pull feeds", commands::pull::cmd_pull)?;
         }
         Some(Command::Show { ref args }) => {
             let (group, filter) = parse_show_args(args)?;
@@ -105,17 +129,27 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
         }) => {
-            store.transaction(|tx| commands::add::cmd_add(tx, url))?;
+            transact(&mut store, &format!("add feed: {url}"), |tx| {
+                commands::add::cmd_add(tx, url)
+            })?;
         }
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },
         }) => {
-            store.transaction(|tx| commands::remove::cmd_remove(tx, url))?;
+            transact(&mut store, &format!("remove feed: {url}"), |tx| {
+                commands::remove::cmd_remove(tx, url)
+            })?;
         }
         Some(Command::Feed {
             command: FeedCommand::Ls,
         }) => {
             commands::feed_ls::cmd_feed_ls(&store)?;
+        }
+        Some(Command::Sync) => {
+            commands::sync::cmd_sync(&mut store)?;
+        }
+        Some(Command::Git { ref args }) => {
+            git::git_passthrough(store.path(), args)?;
         }
         None => {
             let (group, filter) = parse_show_args(&args.args)?;
