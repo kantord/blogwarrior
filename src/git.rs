@@ -300,6 +300,19 @@ mod tests {
         const EXPECTED_CAPACITY: usize = 1000;
     }
 
+    fn init_repo(path: &Path) -> Repository {
+        let mut opts = git2::RepositoryInitOptions::new();
+        opts.initial_head("main");
+        Repository::init_opts(path, &opts).unwrap()
+    }
+
+    fn init_bare_repo(path: &Path) -> Repository {
+        let mut opts = git2::RepositoryInitOptions::new();
+        opts.initial_head("main");
+        opts.bare(true);
+        Repository::init_opts(path, &opts).unwrap()
+    }
+
     fn setup_git_config(repo: &Repository) {
         let mut config = repo.config().unwrap();
         config.set_str("user.name", "Test").unwrap();
@@ -325,7 +338,7 @@ mod tests {
     #[test]
     fn test_open_or_init_existing_repo() {
         let dir = TempDir::new().unwrap();
-        Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         let repo = open_or_init_repo(dir.path()).unwrap();
         assert!(!repo.is_bare());
     }
@@ -346,7 +359,7 @@ mod tests {
     #[test]
     fn test_is_clean_on_clean_repo() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -356,7 +369,7 @@ mod tests {
     #[test]
     fn test_is_clean_with_modified_data_file() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -367,7 +380,7 @@ mod tests {
     #[test]
     fn test_is_clean_with_new_data_file() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -378,7 +391,7 @@ mod tests {
     #[test]
     fn test_is_clean_ignores_lock_files() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -390,7 +403,7 @@ mod tests {
     #[test]
     fn test_is_clean_ignores_unrelated_files() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -404,7 +417,7 @@ mod tests {
     #[test]
     fn test_ensure_clean_on_clean_repo() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -414,7 +427,7 @@ mod tests {
     #[test]
     fn test_ensure_clean_on_dirty_repo() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
@@ -431,7 +444,7 @@ mod tests {
     #[test]
     fn test_auto_commit_with_changes() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "test commit").unwrap();
@@ -444,7 +457,7 @@ mod tests {
     #[test]
     fn test_auto_commit_no_changes() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "first").unwrap();
@@ -459,7 +472,7 @@ mod tests {
     #[test]
     fn test_auto_commit_does_not_stage_lock_files() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
 
         // Simulate what Table::save() does: create a table dir with data + .lock
@@ -497,7 +510,7 @@ mod tests {
     #[test]
     fn test_auto_commit_does_not_stage_unrelated_files() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
 
         // Create a data file and a random unrelated file
@@ -529,7 +542,7 @@ mod tests {
     #[test]
     fn test_has_remote_branch_false() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         assert!(!has_remote_branch(&repo, "refs/remotes/origin/main"));
     }
 
@@ -539,10 +552,10 @@ mod tests {
     fn test_merge_ours_diverged() {
         // Setup: create two repos, diverge them, simulate fetch
         let origin_dir = TempDir::new().unwrap();
-        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+        let _origin = init_bare_repo(origin_dir.path());
 
         let clone_dir = TempDir::new().unwrap();
-        let repo = Repository::init(clone_dir.path()).unwrap();
+        let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
 
         // Add remote
@@ -658,10 +671,10 @@ mod tests {
 
     fn setup_remote_with_table(table_name: &str, files: &[(&str, &str)]) -> (TempDir, Repository) {
         let origin_dir = TempDir::new().unwrap();
-        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+        let _origin = init_bare_repo(origin_dir.path());
 
         let clone_dir = TempDir::new().unwrap();
-        let repo = Repository::init(clone_dir.path()).unwrap();
+        let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
 
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
@@ -684,7 +697,7 @@ mod tests {
         let other_repo = match Repository::open(other_dir.path()) {
             Ok(r) => r,
             Err(_) => {
-                let r = Repository::init(other_dir.path()).unwrap();
+                let r = init_repo(other_dir.path());
                 r.remote("origin", &format!("file://{}", origin_dir.path().display()))
                     .unwrap();
                 r
@@ -738,10 +751,10 @@ mod tests {
     #[test]
     fn test_read_remote_table_missing_dir() {
         let origin_dir = TempDir::new().unwrap();
-        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+        let _origin = init_bare_repo(origin_dir.path());
 
         let clone_dir = TempDir::new().unwrap();
-        let repo = Repository::init(clone_dir.path()).unwrap();
+        let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
 
         // No remote branch at all
@@ -765,14 +778,14 @@ mod tests {
     #[test]
     fn test_has_remote_false() {
         let dir = TempDir::new().unwrap();
-        Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         assert!(!has_remote(dir.path()));
     }
 
     #[test]
     fn test_has_remote_true() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         repo.remote("origin", "https://example.com/repo.git")
             .unwrap();
         assert!(has_remote(dir.path()));
@@ -781,7 +794,7 @@ mod tests {
     #[test]
     fn test_fetch_no_remote() {
         let dir = TempDir::new().unwrap();
-        Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         let result = fetch(dir.path());
         assert!(result.is_err());
     }
@@ -789,7 +802,7 @@ mod tests {
     #[test]
     fn test_git_passthrough_status() {
         let dir = TempDir::new().unwrap();
-        Repository::init(dir.path()).unwrap();
+        init_repo(dir.path());
         let result = git_passthrough(dir.path(), &["status".to_string()]);
         assert!(result.is_ok());
     }
@@ -799,10 +812,10 @@ mod tests {
     #[test]
     fn test_is_remote_ancestor_when_ahead() {
         let origin_dir = TempDir::new().unwrap();
-        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+        let _origin = init_bare_repo(origin_dir.path());
 
         let clone_dir = TempDir::new().unwrap();
-        let repo = Repository::init(clone_dir.path()).unwrap();
+        let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
@@ -833,10 +846,10 @@ mod tests {
     #[test]
     fn test_is_remote_ancestor_when_diverged() {
         let origin_dir = TempDir::new().unwrap();
-        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+        let _origin = init_bare_repo(origin_dir.path());
 
         let clone_dir = TempDir::new().unwrap();
-        let repo = Repository::init(clone_dir.path()).unwrap();
+        let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
@@ -921,10 +934,10 @@ mod tests {
     #[test]
     fn test_is_remote_ancestor_when_equal() {
         let origin_dir = TempDir::new().unwrap();
-        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+        let _origin = init_bare_repo(origin_dir.path());
 
         let clone_dir = TempDir::new().unwrap();
-        let repo = Repository::init(clone_dir.path()).unwrap();
+        let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
@@ -946,7 +959,7 @@ mod tests {
     #[test]
     fn test_is_remote_ancestor_no_remote_branch() {
         let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
+        let repo = init_repo(dir.path());
         setup_git_config(&repo);
 
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
