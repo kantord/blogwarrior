@@ -25,6 +25,11 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     git::fetch(&path)?;
     eprintln!(" done.");
 
+    if git::is_up_to_date(&repo)? {
+        eprintln!("Already up to date.");
+        return Ok(());
+    }
+
     eprint!("Merging remote data...");
     let remote_feeds = git::read_remote_table(&repo, "feeds")?;
     let remote_posts = git::read_remote_table(&repo, "posts")?;

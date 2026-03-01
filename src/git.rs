@@ -100,6 +100,23 @@ pub fn has_remote_branch(repo: &Repository, refname: &str) -> bool {
     repo.find_reference(refname).is_ok()
 }
 
+/// Returns true if HEAD and origin/main point to the same commit.
+pub fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
+    let head = repo
+        .head()
+        .context("no HEAD")?
+        .peel_to_commit()
+        .context("failed to peel HEAD")?;
+    let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
+        Ok(r) => r,
+        Err(_) => return Ok(false),
+    };
+    let remote = remote_ref
+        .peel_to_commit()
+        .context("failed to peel remote ref")?;
+    Ok(head.id() == remote.id())
+}
+
 pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
     let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
         Ok(r) => r,

@@ -1443,3 +1443,42 @@ fn test_transact_dirty_repo_fails() {
         stderr
     );
 }
+
+fn commit_count(dir: &Path) -> usize {
+    let output = std::process::Command::new("git")
+        .args(["-C", &dir.to_string_lossy(), "rev-list", "--count", "HEAD"])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .unwrap()
+}
+
+#[test]
+fn test_sync_already_in_sync_creates_no_commits() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Add a feed and sync
+    run_blog(
+        store_dir.path(),
+        &["feed", "add", "https://example.com/feed.xml"],
+    )
+    .success();
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    let commits_before = commit_count(store_dir.path());
+
+    // Sync again — nothing changed, should not create any new commits
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    let commits_after = commit_count(store_dir.path());
+    assert_eq!(
+        commits_before, commits_after,
+        "sync with no changes should not create new commits"
+    );
+}
