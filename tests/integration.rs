@@ -1149,8 +1149,9 @@ fn test_sync_dirty_repo_fails() {
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
 
-    // Make it dirty
-    fs::write(store_dir.path().join("dirty.txt"), "dirty").unwrap();
+    // Make it dirty with a data file (use a dir the store doesn't read)
+    fs::create_dir_all(store_dir.path().join("extra")).unwrap();
+    fs::write(store_dir.path().join("extra/items_00.jsonl"), "dirty").unwrap();
 
     let output = run_blog(store_dir.path(), &["sync"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
@@ -1432,8 +1433,9 @@ fn test_transact_dirty_repo_fails() {
     git(dir.path(), &["add", "."]);
     git(dir.path(), &["commit", "-m", "init"]);
 
-    // Make dirty
-    fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
+    // Make dirty with a data file (use a dir the store doesn't read)
+    fs::create_dir_all(dir.path().join("extra")).unwrap();
+    fs::write(dir.path().join("extra/items_00.jsonl"), "dirty").unwrap();
 
     let output = run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();

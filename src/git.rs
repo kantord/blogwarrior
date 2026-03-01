@@ -29,8 +29,8 @@ pub fn open_or_init_repo(path: &Path) -> anyhow::Result<Repository> {
         Err(_) => {
             let repo = Repository::init(path)
                 .with_context(|| format!("failed to init git repo at {}", path.display()))?;
-            // If there are already files in the directory, commit them
-            if has_uncommitted_files(&repo)? {
+            // If there are already data files in the directory, commit them
+            if !is_clean(&repo)? {
                 auto_commit(&repo, "init store")?;
             }
             Ok(repo)
@@ -38,13 +38,16 @@ pub fn open_or_init_repo(path: &Path) -> anyhow::Result<Repository> {
     }
 }
 
-fn has_uncommitted_files(repo: &Repository) -> anyhow::Result<bool> {
-    let statuses = repo.statuses(None).context("failed to get repo status")?;
-    Ok(!statuses.is_empty())
+fn is_data_file(path: &str) -> bool {
+    path.contains('/') && path.ends_with(".jsonl")
 }
 
 pub fn is_clean(repo: &Repository) -> anyhow::Result<bool> {
-    Ok(!has_uncommitted_files(repo)?)
+    let statuses = repo.statuses(None).context("failed to get repo status")?;
+    let dirty = statuses
+        .iter()
+        .any(|entry| entry.path().is_some_and(is_data_file));
+    Ok(!dirty)
 }
 
 pub fn ensure_clean(repo: &Repository) -> anyhow::Result<()> {
@@ -61,8 +64,21 @@ pub fn auto_commit(repo: &Repository, message: &str) -> anyhow::Result<()> {
 
     let mut index = repo.index().context("failed to open index")?;
     index
-        .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
+        .add_all(["*/items_*.jsonl"], git2::IndexAddOption::DEFAULT, None)
         .context("failed to stage files")?;
+    // Also stage deletions: remove index entries whose files no longer exist on disk
+    let workdir = repo.workdir().context("bare repo not supported")?;
+    let stale: Vec<Vec<u8>> = index
+        .iter()
+        .filter(|entry| {
+            let path = String::from_utf8_lossy(&entry.path);
+            path.ends_with(".jsonl") && !workdir.join(path.as_ref()).exists()
+        })
+        .map(|entry| entry.path.clone())
+        .collect();
+    for path in stale {
+        index.remove_path(Path::new(std::str::from_utf8(&path).unwrap_or("")))?;
+    }
     index.write().context("failed to write index")?;
 
     let tree_oid = index.write_tree().context("failed to write tree")?;
@@ -273,6 +289,13 @@ mod tests {
         config.set_str("user.email", "test@test.com").unwrap();
     }
 
+    /// Write a data file into a table directory (the kind auto_commit should track).
+    fn write_data(dir: &Path, table: &str, file: &str, content: &str) {
+        let table_dir = dir.join(table);
+        fs::create_dir_all(&table_dir).unwrap();
+        fs::write(table_dir.join(file), content).unwrap();
+    }
+
     // --- open_or_init_repo tests ---
 
     #[test]
@@ -291,19 +314,14 @@ mod tests {
     }
 
     #[test]
-    fn test_open_or_init_commits_existing_files() {
+    fn test_open_or_init_commits_existing_data() {
         let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("data.txt"), "hello").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         let repo = open_or_init_repo(dir.path()).unwrap();
         setup_git_config(&repo);
-        // Re-init to trigger the commit of existing files
-        drop(repo);
-        // Since repo was already opened, let's manually verify or re-open
-        let repo = Repository::open(dir.path()).unwrap();
-        // Check if there's a commit (head should exist after auto_commit)
-        // The first open_or_init_repo should have committed the file
-        let repo2 = open_or_init_repo(dir.path()).unwrap();
-        assert!(repo2.head().is_ok() || is_clean(&repo).unwrap_or(true));
+        // The first open_or_init_repo should have committed the data file
+        assert!(repo.head().is_ok());
+        assert!(is_clean(&repo).unwrap());
     }
 
     // --- is_clean tests ---
@@ -313,31 +331,55 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
         assert!(is_clean(&repo).unwrap());
     }
 
     #[test]
-    fn test_is_clean_with_modified_file() {
+    fn test_is_clean_with_modified_data_file() {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
-        fs::write(dir.path().join("file.txt"), "modified").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"b\"}\n");
         assert!(!is_clean(&repo).unwrap());
     }
 
     #[test]
-    fn test_is_clean_with_untracked_file() {
+    fn test_is_clean_with_new_data_file() {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
-        fs::write(dir.path().join("new.txt"), "new").unwrap();
+        write_data(dir.path(), "posts", "items_a.jsonl", "{\"id\":\"p\"}\n");
         assert!(!is_clean(&repo).unwrap());
+    }
+
+    #[test]
+    fn test_is_clean_ignores_lock_files() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        setup_git_config(&repo);
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
+        auto_commit(&repo, "initial").unwrap();
+        // .lock files should not make repo dirty
+        fs::write(dir.path().join("feeds").join(".lock"), "").unwrap();
+        assert!(is_clean(&repo).unwrap());
+    }
+
+    #[test]
+    fn test_is_clean_ignores_unrelated_files() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        setup_git_config(&repo);
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
+        auto_commit(&repo, "initial").unwrap();
+        // Unrelated files should not make repo dirty
+        fs::write(dir.path().join("random.txt"), "whatever").unwrap();
+        assert!(is_clean(&repo).unwrap());
     }
 
     // --- ensure_clean tests ---
@@ -347,7 +389,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
         assert!(ensure_clean(&repo).is_ok());
     }
@@ -357,9 +399,9 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
-        fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"b\"}\n");
         let err = ensure_clean(&repo).unwrap_err();
         assert!(
             format!("{err}").contains("uncommitted"),
@@ -374,7 +416,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "test commit").unwrap();
         assert!(is_clean(&repo).unwrap());
 
@@ -387,7 +429,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         setup_git_config(&repo);
-        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "first").unwrap();
 
         let head1 = repo.head().unwrap().peel_to_commit().unwrap().id();
@@ -395,6 +437,74 @@ mod tests {
         let head2 = repo.head().unwrap().peel_to_commit().unwrap().id();
 
         assert_eq!(head1, head2, "no new commit when nothing changed");
+    }
+
+    #[test]
+    fn test_auto_commit_does_not_stage_lock_files() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        setup_git_config(&repo);
+
+        // Simulate what Table::save() does: create a table dir with data + .lock
+        let table_dir = dir.path().join("feeds");
+        fs::create_dir_all(&table_dir).unwrap();
+        fs::write(
+            table_dir.join("items_.jsonl"),
+            "{\"id\":\"aa\",\"url\":\"https://example.com\"}\n",
+        )
+        .unwrap();
+        fs::write(table_dir.join(".lock"), "").unwrap();
+
+        auto_commit(&repo, "add data").unwrap();
+
+        // .lock should NOT be in the committed tree
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let tree = head.tree().unwrap();
+        let feeds_tree = tree
+            .get_name("feeds")
+            .unwrap()
+            .to_object(&repo)
+            .unwrap()
+            .peel_to_tree()
+            .unwrap();
+        assert!(
+            feeds_tree.get_name(".lock").is_none(),
+            ".lock file should not be committed"
+        );
+        assert!(
+            feeds_tree.get_name("items_.jsonl").is_some(),
+            "data file should be committed"
+        );
+    }
+
+    #[test]
+    fn test_auto_commit_does_not_stage_unrelated_files() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        setup_git_config(&repo);
+
+        // Create a data file and a random unrelated file
+        let table_dir = dir.path().join("feeds");
+        fs::create_dir_all(&table_dir).unwrap();
+        fs::write(
+            table_dir.join("items_.jsonl"),
+            "{\"id\":\"aa\",\"url\":\"https://example.com\"}\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("random.txt"), "should not be committed").unwrap();
+
+        auto_commit(&repo, "add data").unwrap();
+
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let tree = head.tree().unwrap();
+        assert!(
+            tree.get_name("random.txt").is_none(),
+            "unrelated files should not be committed"
+        );
+        assert!(
+            tree.get_name("feeds").is_some(),
+            "table directory should be committed"
+        );
     }
 
     // --- has_remote_branch tests ---
@@ -423,12 +533,16 @@ mod tests {
             .unwrap();
 
         // Create initial commit and push
-        fs::write(clone_dir.path().join("a.txt"), "a").unwrap();
+        write_data(
+            clone_dir.path(),
+            "feeds",
+            "items_.jsonl",
+            "{\"id\":\"a\"}\n",
+        );
         auto_commit(&repo, "initial").unwrap();
         push(clone_dir.path()).unwrap();
 
-        // Simulate divergence: create a commit in origin directly
-        // We'll do it by creating another clone, committing there, and pushing
+        // Simulate divergence: create a commit in origin via another clone
         let other_dir = TempDir::new().unwrap();
         let other_output = Command::new("git")
             .args([
@@ -466,7 +580,12 @@ mod tests {
             .output()
             .unwrap();
 
-        fs::write(other_dir.path().join("b.txt"), "b").unwrap();
+        write_data(
+            other_dir.path(),
+            "posts",
+            "items_b.jsonl",
+            "{\"id\":\"b\"}\n",
+        );
         Command::new("git")
             .args(["-C", &other_dir.path().to_string_lossy(), "add", "."])
             .output()
@@ -484,7 +603,12 @@ mod tests {
         push(other_dir.path()).unwrap();
 
         // Create local diverging commit
-        fs::write(clone_dir.path().join("c.txt"), "c").unwrap();
+        write_data(
+            clone_dir.path(),
+            "posts",
+            "items_c.jsonl",
+            "{\"id\":\"c\"}\n",
+        );
         auto_commit(&repo, "local commit").unwrap();
 
         // Fetch
@@ -498,8 +622,19 @@ mod tests {
         assert_eq!(head.parent_count(), 2, "merge commit should have 2 parents");
 
         // Tree should be the local tree (ours strategy)
-        let local_tree_has_c = head.tree().unwrap().get_name("c.txt").is_some();
-        assert!(local_tree_has_c, "merge should keep local tree");
+        let posts_tree = head
+            .tree()
+            .unwrap()
+            .get_name("posts")
+            .unwrap()
+            .to_object(&repo)
+            .unwrap()
+            .peel_to_tree()
+            .unwrap();
+        assert!(
+            posts_tree.get_name("items_c.jsonl").is_some(),
+            "merge should keep local tree"
+        );
     }
 
     // --- read_remote_table tests ---
