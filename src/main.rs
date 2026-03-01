@@ -100,7 +100,7 @@ fn transact(
     msg: &str,
     f: impl FnOnce(&mut store::Transaction<'_>) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
-    let repo = git2::Repository::open(store.path()).ok();
+    let repo = git::try_open_repo(store.path());
     if let Some(ref repo) = repo {
         git::ensure_clean(repo)?;
     }

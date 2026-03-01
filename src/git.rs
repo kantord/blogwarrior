@@ -3,13 +3,28 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, bail};
-use git2::{Repository, Signature};
+use git2::{Repository, RepositoryOpenFlags, Signature};
 use synctato::{Row, TableRow, parse_rows};
 
 // --- Local operations (git2) ---
 
+/// Open a git repo at exactly `path`, without searching parent directories.
+fn open_exact(path: &Path) -> Result<Repository, git2::Error> {
+    Repository::open_ext(
+        path,
+        RepositoryOpenFlags::NO_SEARCH,
+        &[] as &[&std::ffi::OsStr],
+    )
+}
+
+/// Try to open a git repo at exactly `path`. Returns None if no repo exists there.
+/// Does NOT search parent directories.
+pub fn try_open_repo(path: &Path) -> Option<Repository> {
+    open_exact(path).ok()
+}
+
 pub fn open_or_init_repo(path: &Path) -> anyhow::Result<Repository> {
-    match Repository::open(path) {
+    match open_exact(path) {
         Ok(repo) => Ok(repo),
         Err(_) => {
             let repo = Repository::init(path)
