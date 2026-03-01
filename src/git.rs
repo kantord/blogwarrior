@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
+use crate::synctato::{Row, TableRow, parse_rows};
 use anyhow::{Context, bail};
 use git2::{Repository, RepositoryOpenFlags, Signature};
-use synctato::{Row, TableRow, parse_rows};
 
 // --- Local operations (git2) ---
 

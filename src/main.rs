@@ -5,12 +5,13 @@ mod git;
 mod http;
 mod progress;
 mod store;
+mod synctato;
 
 use std::path::PathBuf;
 
+use crate::synctato::Database;
 use anyhow::ensure;
 use clap::{Parser, Subcommand};
-use synctato::Database;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]

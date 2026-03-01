@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use synctato::TableRow;
+use crate::synctato::TableRow;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedSource {

@@ -22,7 +22,7 @@ pub struct FeedItem {
     pub raw_id: String,
 }
 
-impl synctato::TableRow for FeedItem {
+impl crate::synctato::TableRow for FeedItem {
     fn key(&self) -> String {
         self.raw_id.clone()
     }
