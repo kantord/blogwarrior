@@ -3,6 +3,7 @@ Output demo/demo.gif
 Require blog
 
 Set Shell "bash"
+Set FontFamily "JetBrains Mono"
 Set FontSize 22
 Set Width 1200
 Set Height 600
