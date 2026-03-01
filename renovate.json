@@ -3,6 +3,7 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests",
-    ":pinDependencies"
+    ":pinDependencies",
+    ":semanticCommits"
   ]
 }
