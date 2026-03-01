@@ -124,9 +124,15 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
         }) => {
-            transact(&mut store, &format!("add feed: {url}"), |tx| {
-                commands::add::cmd_add(tx, url)
+            let resolved = commands::add::resolve_feed_url(url)?;
+            if resolved != *url {
+                eprintln!("Discovered feed: {resolved}");
+            }
+            transact(&mut store, &format!("add feed: {resolved}"), |tx| {
+                commands::add::cmd_add(tx, &resolved)
             })?;
+            eprintln!("Added {resolved}");
+            eprintln!("Run `blog sync` to fetch posts.");
         }
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },

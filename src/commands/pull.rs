@@ -2,7 +2,7 @@ use indicatif::ProgressBar;
 
 use crate::store::Transaction;
 
-fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
+pub(crate) fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
         .user_agent(format!("blogtato/{}", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(30))

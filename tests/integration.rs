@@ -1,6 +1,9 @@
 use std::fs;
 use std::io::BufRead;
+use std::io::Write;
 use std::path::Path;
+
+use sha2::{Digest, Sha256};
 
 use assert_cmd::Command;
 use httpmock::prelude::*;
@@ -50,7 +53,7 @@ impl TestContext {
             fs::remove_dir_all(&feeds_dir).unwrap();
         }
         for url in urls {
-            self.run(&["feed", "add", url]).success();
+            insert_feed(self.dir.path(), url);
         }
     }
 
@@ -439,16 +442,15 @@ fn test_sync_twice_no_duplicates() {
 #[test]
 fn test_add_creates_feed() {
     let ctx = TestContext::new();
+    let xml = rss_xml("Test Feed", &[]);
+    ctx.mock_rss_feed("/feed.xml", &xml);
 
-    ctx.run(&["feed", "add", "https://example.com/feed.xml"])
-        .success();
+    let url = ctx.server.url("/feed.xml");
+    ctx.run(&["feed", "add", &url]).success();
 
     let feeds = ctx.read_feeds();
     assert_eq!(feeds.len(), 1);
-    assert_eq!(
-        feeds[0]["url"].as_str().unwrap(),
-        "https://example.com/feed.xml"
-    );
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), url);
 }
 
 #[test]
@@ -605,10 +607,8 @@ fn test_remove_feed_deletes_its_posts() {
 fn test_feed_ls() {
     let ctx = TestContext::new();
 
-    ctx.run(&["feed", "add", "https://example.com/feed1.xml"])
-        .success();
-    ctx.run(&["feed", "add", "https://example.com/feed2.xml"])
-        .success();
+    insert_feed(ctx.dir.path(), "https://example.com/feed1.xml");
+    insert_feed(ctx.dir.path(), "https://example.com/feed2.xml");
 
     let output = ctx.run(&["feed", "ls"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -795,8 +795,7 @@ fn test_show_filter_by_shorthand() {
 fn test_show_filter_unknown_shorthand() {
     let ctx = TestContext::new();
 
-    ctx.run(&["feed", "add", "https://example.com/feed.xml"])
-        .success();
+    insert_feed(ctx.dir.path(), "https://example.com/feed.xml");
 
     let output = ctx.run(&["show", "@zzz"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
@@ -950,8 +949,7 @@ fn test_open_post_without_link() {
 fn test_remove_nonexistent_feed() {
     let ctx = TestContext::new();
 
-    ctx.run(&["feed", "add", "https://example.com/keep.xml"])
-        .success();
+    insert_feed(ctx.dir.path(), "https://example.com/keep.xml");
 
     let output = ctx
         .run(&["feed", "rm", "https://example.com/nonexistent.xml"])
@@ -1073,6 +1071,41 @@ fn git(dir: &Path, args: &[&str]) {
     );
 }
 
+/// Write a feed URL directly to the store, bypassing the CLI.
+/// Also commits to git if the store directory is a git repository.
+fn insert_feed(store_dir: &Path, url: &str) {
+    let feeds_dir = store_dir.join("feeds");
+    fs::create_dir_all(&feeds_dir).unwrap();
+    let file_path = feeds_dir.join("items_.jsonl");
+    // Replicate synctato's hash_id: SHA-256 of the key, first 11 hex chars
+    // (id_length_for_capacity(50_000) == 11 for FeedSource)
+    let hash = format!("{:x}", Sha256::digest(url.as_bytes()));
+    let id = &hash[..11];
+    let entry = serde_json::json!({
+        "id": id,
+        "url": url,
+        "title": "",
+        "site_url": "",
+        "description": ""
+    });
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file_path)
+        .unwrap();
+    writeln!(file, "{}", entry).unwrap();
+
+    let git_check = std::process::Command::new("git")
+        .args(["-C", &store_dir.to_string_lossy(), "rev-parse", "--git-dir"])
+        .output();
+    if let Ok(output) = git_check {
+        if output.status.success() {
+            git(store_dir, &["add", "feeds/"]);
+            git(store_dir, &["commit", "-m", &format!("add feed: {url}")]);
+        }
+    }
+}
+
 /// Initialize a git repo, configure user, add remote, and make initial commit.
 fn init_git_store(store_dir: &Path, origin_dir: &Path) {
     git(store_dir, &["init"]);
@@ -1182,12 +1215,8 @@ fn test_sync_first_push() {
         ],
     );
 
-    // Add a feed (transact auto-commits since git repo exists)
-    run_blog(
-        store_dir.path(),
-        &["feed", "add", "https://example.com/feed.xml"],
-    )
-    .success();
+    // Add a feed (insert_feed auto-commits since git repo exists)
+    insert_feed(store_dir.path(), "https://example.com/feed.xml");
 
     // Sync should push
     run_blog(store_dir.path(), &["sync"]).success();
@@ -1211,12 +1240,8 @@ fn test_sync_local_ahead_only() {
     let store_dir = TempDir::new().unwrap();
     init_git_store(store_dir.path(), origin_dir.path());
 
-    // Add feed locally (transact auto-commits)
-    run_blog(
-        store_dir.path(),
-        &["feed", "add", "https://example.com/a.xml"],
-    )
-    .success();
+    // Add feed locally (insert_feed auto-commits)
+    insert_feed(store_dir.path(), "https://example.com/a.xml");
 
     // Sync should push
     run_blog(store_dir.path(), &["sync"]).success();
@@ -1243,11 +1268,7 @@ fn test_sync_remote_ahead_only() {
 
     // Create a second clone, add feed there (auto-committed), push
     let (other_td, other_dir) = clone_store(origin_dir.path());
-    run_blog(
-        &other_dir,
-        &["feed", "add", "https://example.com/remote.xml"],
-    )
-    .success();
+    insert_feed(&other_dir, "https://example.com/remote.xml");
     git(&other_dir, &["push", "origin", "HEAD"]);
     drop(other_td);
 
@@ -1273,16 +1294,12 @@ fn test_sync_both_diverged() {
 
     // Add feed on remote side (auto-committed), push
     let (other_td, other_dir) = clone_store(origin_dir.path());
-    run_blog(&other_dir, &["feed", "add", "https://example.com/b.xml"]).success();
+    insert_feed(&other_dir, "https://example.com/b.xml");
     git(&other_dir, &["push", "origin", "HEAD"]);
     drop(other_td);
 
     // Add feed on local side (diverged, auto-committed)
-    run_blog(
-        store_dir.path(),
-        &["feed", "add", "https://example.com/a.xml"],
-    )
-    .success();
+    insert_feed(store_dir.path(), "https://example.com/a.xml");
 
     // Sync merges both
     run_blog(store_dir.path(), &["sync"]).success();
@@ -1312,11 +1329,11 @@ fn test_sync_two_way() {
     let (store2_td, store2_dir) = clone_store(origin_dir.path());
 
     // Clone 1 adds feed A (auto-committed) and syncs
-    run_blog(store1.path(), &["feed", "add", "https://example.com/a.xml"]).success();
+    insert_feed(store1.path(), "https://example.com/a.xml");
     run_blog(store1.path(), &["sync"]).success();
 
     // Clone 2 adds feed B (auto-committed) and syncs
-    run_blog(&store2_dir, &["feed", "add", "https://example.com/b.xml"]).success();
+    insert_feed(&store2_dir, "https://example.com/b.xml");
     run_blog(&store2_dir, &["sync"]).success();
 
     // Clone 1 syncs again to pick up B
@@ -1382,6 +1399,16 @@ fn test_git_remote_add() {
 #[test]
 fn test_transact_auto_commits_with_existing_repo() {
     let dir = TempDir::new().unwrap();
+    let server = MockServer::start();
+    let xml = rss_xml("Test Feed", &[]);
+    server.mock(|when, then| {
+        when.method(GET).path("/feed.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .body(&xml);
+    });
+    let url = server.url("/feed.xml");
+
     git(dir.path(), &["init"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@test.com"]);
@@ -1391,7 +1418,7 @@ fn test_transact_auto_commits_with_existing_repo() {
     git(dir.path(), &["commit", "-m", "init"]);
 
     // Add a feed — should auto-commit because git repo exists
-    run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).success();
+    run_blog(dir.path(), &["feed", "add", &url]).success();
 
     // Check that a commit was made
     let output = std::process::Command::new("git")
@@ -1415,8 +1442,18 @@ fn test_transact_auto_commits_with_existing_repo() {
 #[test]
 fn test_transact_no_git_repo_still_works() {
     let dir = TempDir::new().unwrap();
+    let server = MockServer::start();
+    let xml = rss_xml("Test Feed", &[]);
+    server.mock(|when, then| {
+        when.method(GET).path("/feed.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .body(&xml);
+    });
+    let url = server.url("/feed.xml");
+
     // No git init — just add a feed
-    run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).success();
+    run_blog(dir.path(), &["feed", "add", &url]).success();
 
     // Feed should be saved
     let feeds = read_table(&dir.path().join("feeds"));
@@ -1426,6 +1463,16 @@ fn test_transact_no_git_repo_still_works() {
 #[test]
 fn test_transact_dirty_repo_fails() {
     let dir = TempDir::new().unwrap();
+    let server = MockServer::start();
+    let xml = rss_xml("Test Feed", &[]);
+    server.mock(|when, then| {
+        when.method(GET).path("/feed.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .body(&xml);
+    });
+    let url = server.url("/feed.xml");
+
     git(dir.path(), &["init"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@test.com"]);
@@ -1437,7 +1484,7 @@ fn test_transact_dirty_repo_fails() {
     fs::create_dir_all(dir.path().join("extra")).unwrap();
     fs::write(dir.path().join("extra/items_00.jsonl"), "dirty").unwrap();
 
-    let output = run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).failure();
+    let output = run_blog(dir.path(), &["feed", "add", &url]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
     assert!(
         stderr.contains("uncommitted"),
@@ -1466,11 +1513,7 @@ fn test_sync_already_in_sync_creates_no_commits() {
     init_git_store(store_dir.path(), origin_dir.path());
 
     // Add a feed and sync
-    run_blog(
-        store_dir.path(),
-        &["feed", "add", "https://example.com/feed.xml"],
-    )
-    .success();
+    insert_feed(store_dir.path(), "https://example.com/feed.xml");
     run_blog(store_dir.path(), &["sync"]).success();
 
     let commits_before = commit_count(store_dir.path());
@@ -1489,7 +1532,7 @@ fn test_sync_already_in_sync_creates_no_commits() {
 fn test_sync_no_git_repo() {
     // sync should work with no git repo at all (pure feed pulling)
     let dir = TempDir::new().unwrap();
-    run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).success();
+    insert_feed(dir.path(), "https://example.com/feed.xml");
     run_blog(dir.path(), &["sync"]).success();
 
     let feeds = read_table(&dir.path().join("feeds"));
@@ -1505,16 +1548,8 @@ fn test_sync_local_ahead_pushes_without_merge() {
     init_git_store(store_dir.path(), origin_dir.path());
 
     // Add two feeds locally (auto-committed each time)
-    run_blog(
-        store_dir.path(),
-        &["feed", "add", "https://example.com/a.xml"],
-    )
-    .success();
-    run_blog(
-        store_dir.path(),
-        &["feed", "add", "https://example.com/b.xml"],
-    )
-    .success();
+    insert_feed(store_dir.path(), "https://example.com/a.xml");
+    insert_feed(store_dir.path(), "https://example.com/b.xml");
 
     // Sync should just push (no merge commit)
     run_blog(store_dir.path(), &["sync"]).success();
@@ -1544,4 +1579,173 @@ fn test_sync_local_ahead_pushes_without_merge() {
 fn test_pull_command_removed() {
     let dir = TempDir::new().unwrap();
     run_blog(dir.path(), &["pull"]).failure();
+}
+
+#[test]
+fn test_add_direct_feed_url_still_works() {
+    let ctx = TestContext::new();
+    let xml = rss_xml(
+        "Direct Feed",
+        &[("Post One", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/feed.xml", &xml);
+
+    let url = ctx.server.url("/feed.xml");
+    ctx.run(&["feed", "add", &url]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), url);
+}
+
+#[test]
+fn test_add_html_page_discovers_feed() {
+    let ctx = TestContext::new();
+
+    let feed_xml = rss_xml(
+        "Discovered Feed",
+        &[("Discovered Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/feed.xml", &feed_xml);
+
+    let feed_url = ctx.server.url("/feed.xml");
+    let html = format!(
+        r#"<html><head>
+        <link rel="alternate" type="application/rss+xml" href="{feed_url}" title="My Blog Feed">
+        </head><body><p>Hello</p></body></html>"#
+    );
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/blog");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body(&html);
+    });
+
+    let blog_url = ctx.server.url("/blog");
+    ctx.run(&["feed", "add", &blog_url]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), feed_url);
+}
+
+#[test]
+fn test_add_html_page_multiple_feeds_fails() {
+    let ctx = TestContext::new();
+
+    let feed1_url = ctx.server.url("/feed1.xml");
+    let feed2_url = ctx.server.url("/feed2.xml");
+    let html = format!(
+        r#"<html><head>
+        <link rel="alternate" type="application/rss+xml" href="{feed1_url}" title="Feed 1">
+        <link rel="alternate" type="application/atom+xml" href="{feed2_url}" title="Feed 2">
+        </head><body></body></html>"#
+    );
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/blog");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body(&html);
+    });
+
+    let blog_url = ctx.server.url("/blog");
+    ctx.run(&["feed", "add", &blog_url]).failure();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 0);
+}
+
+#[test]
+fn test_add_html_page_no_feeds_fails() {
+    let ctx = TestContext::new();
+
+    let html = r#"<html><head><title>No Feeds</title></head><body><p>Hello</p></body></html>"#;
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/blog");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body(html);
+    });
+
+    let blog_url = ctx.server.url("/blog");
+    ctx.run(&["feed", "add", &blog_url]).failure();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 0);
+}
+
+#[test]
+fn test_add_html_page_ignores_non_feed_candidates() {
+    let ctx = TestContext::new();
+
+    // Real feed linked only via <a> tag (no <link rel="alternate">)
+    let feed_xml = rss_xml(
+        "Real Feed",
+        &[("A Post", "Mon, 01 Jan 2024 00:00:00 +0000")],
+    );
+    ctx.mock_rss_feed("/feed.xml", &feed_xml);
+
+    // Non-feed URL with "feed" in the path — feedfinder picks it up from <a> tags
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/buzzfeed");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body("<html><body>not a feed</body></html>");
+    });
+
+    // No <link> tags — feedfinder falls through to <a> tag scanning,
+    // which matches both URLs because they contain "feed" in the href
+    let feed_url = ctx.server.url("/feed.xml");
+    let not_a_feed_url = ctx.server.url("/buzzfeed");
+    let html = format!(
+        r#"<html><head><title>Blog</title></head><body>
+        <a href="{feed_url}">RSS feed</a>
+        <a href="{not_a_feed_url}">BuzzFeed article</a>
+        </body></html>"#
+    );
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/blog");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body(&html);
+    });
+
+    let blog_url = ctx.server.url("/blog");
+    ctx.run(&["feed", "add", &blog_url]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), feed_url);
+}
+
+#[test]
+fn test_add_html_page_deduplicates_feed_candidates() {
+    let ctx = TestContext::new();
+
+    let feed_xml = rss_xml("My Feed", &[("A Post", "Mon, 01 Jan 2024 00:00:00 +0000")]);
+    ctx.mock_rss_feed("/index.xml", &feed_xml);
+
+    // Same feed URL appears in multiple <a> tags (e.g., header + footer)
+    // No <link> tags, so feedfinder falls through to <a> scanning
+    let feed_url = ctx.server.url("/index.xml");
+    let html = format!(
+        r#"<html><head><title>Blog</title></head><body>
+        <nav><a href="{feed_url}">RSS</a></nav>
+        <article><p>Content</p></article>
+        <footer><a href="{feed_url}">RSS feed</a></footer>
+        </body></html>"#
+    );
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/blog");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body(&html);
+    });
+
+    let blog_url = ctx.server.url("/blog");
+    ctx.run(&["feed", "add", &blog_url]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0]["url"].as_str().unwrap(), feed_url);
 }
