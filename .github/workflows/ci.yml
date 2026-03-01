@@ -20,5 +20,4 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo install --locked prek
-      - run: cargo fmt --check
       - run: prek run --all-files
