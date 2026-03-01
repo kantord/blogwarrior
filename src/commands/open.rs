@@ -17,9 +17,19 @@ pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<()> {
     let item = resolve_post_shorthand(store, shorthand)?;
     ensure!(!item.link.is_empty(), "Post has no link");
     match std::env::var("BROWSER") {
-        Ok(browser) => open::with(&item.link, &browser),
-        Err(_) => open::that(&item.link),
+        Ok(browser) => {
+            // Run directly so TUI browsers (w3m, elinks) inherit the terminal
+            let status = std::process::Command::new(&browser)
+                .arg(&item.link)
+                .status()
+                .map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
+            if !status.success() {
+                anyhow::bail!("{} exited with {}", browser, status);
+            }
+        }
+        Err(_) => {
+            open::that(&item.link).map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
+        }
     }
-    .map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
     Ok(())
 }

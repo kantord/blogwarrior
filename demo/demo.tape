@@ -1,7 +1,7 @@
 Output demo/demo.gif
 
 Require blog
-Require elinks
+Require w3m
 
 Set Shell "bash"
 Set FontFamily "JetBrains Mono"
@@ -17,7 +17,7 @@ Set TypingSpeed 40ms
 
 Hide
 Type `export RSS_STORE=$(mktemp -d)` Enter
-Type `export BROWSER=elinks` Enter
+Type `export BROWSER=w3m` Enter
 Sleep 500ms
 Type "clear" Enter
 Sleep 500ms
