@@ -29,8 +29,12 @@ blog show f
 # Filter by feed shorthand
 blog show @hn
 
-# Open a post in the browser
+# Open a post in the default browser
 blog open abc
+
+# Print a post URL (useful with CLI browsers)
+blog read abc
+w3m $(blog read abc)
 
 # List subscriptions
 blog feed ls

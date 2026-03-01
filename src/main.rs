@@ -33,6 +33,11 @@ enum Command {
         /// Post shorthand
         shorthand: String,
     },
+    /// Print the URL of a post to stdout
+    Read {
+        /// Post shorthand
+        shorthand: String,
+    },
     /// Manage feed subscriptions
     Feed {
         #[command(subcommand)]
@@ -131,6 +136,9 @@ fn run() -> anyhow::Result<()> {
         }
         Some(Command::Open { ref shorthand }) => {
             commands::open::cmd_open(&store, shorthand)?;
+        }
+        Some(Command::Read { ref shorthand }) => {
+            commands::open::cmd_read(&store, shorthand)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
