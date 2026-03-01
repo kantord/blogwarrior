@@ -23,6 +23,7 @@ pub fn try_open_repo(path: &Path) -> Option<Repository> {
     open_exact(path).ok()
 }
 
+#[cfg(test)]
 pub fn open_or_init_repo(path: &Path) -> anyhow::Result<Repository> {
     match open_exact(path) {
         Ok(repo) => Ok(repo),
@@ -131,6 +132,22 @@ pub fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
         .peel_to_commit()
         .context("failed to peel remote ref")?;
     Ok(head.id() == remote.id())
+}
+
+/// Returns true when `origin/main` is a strict ancestor of HEAD (local is ahead, just push).
+pub fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
+    let head = repo.head()?.peel_to_commit()?;
+    let remote_ref = match repo.find_reference("refs/remotes/origin/main") {
+        Ok(r) => r,
+        Err(_) => return Ok(false),
+    };
+    let remote = remote_ref.peel_to_commit()?;
+    if head.id() == remote.id() {
+        return Ok(false);
+    }
+    Ok(repo
+        .graph_descendant_of(head.id(), remote.id())
+        .unwrap_or(false))
 }
 
 pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
@@ -775,5 +792,167 @@ mod tests {
         Repository::init(dir.path()).unwrap();
         let result = git_passthrough(dir.path(), &["status".to_string()]);
         assert!(result.is_ok());
+    }
+
+    // --- is_remote_ancestor tests ---
+
+    #[test]
+    fn test_is_remote_ancestor_when_ahead() {
+        let origin_dir = TempDir::new().unwrap();
+        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+
+        let clone_dir = TempDir::new().unwrap();
+        let repo = Repository::init(clone_dir.path()).unwrap();
+        setup_git_config(&repo);
+        repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
+            .unwrap();
+
+        // Initial commit + push
+        write_data(
+            clone_dir.path(),
+            "feeds",
+            "items_.jsonl",
+            "{\"id\":\"a\"}\n",
+        );
+        auto_commit(&repo, "initial").unwrap();
+        push(clone_dir.path()).unwrap();
+        fetch(clone_dir.path()).unwrap();
+
+        // Local extra commit (ahead of remote)
+        write_data(
+            clone_dir.path(),
+            "feeds",
+            "items_.jsonl",
+            "{\"id\":\"b\"}\n",
+        );
+        auto_commit(&repo, "local ahead").unwrap();
+
+        assert!(is_remote_ancestor(&repo).unwrap());
+    }
+
+    #[test]
+    fn test_is_remote_ancestor_when_diverged() {
+        let origin_dir = TempDir::new().unwrap();
+        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+
+        let clone_dir = TempDir::new().unwrap();
+        let repo = Repository::init(clone_dir.path()).unwrap();
+        setup_git_config(&repo);
+        repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
+            .unwrap();
+
+        // Initial commit + push
+        write_data(
+            clone_dir.path(),
+            "feeds",
+            "items_.jsonl",
+            "{\"id\":\"a\"}\n",
+        );
+        auto_commit(&repo, "initial").unwrap();
+        push(clone_dir.path()).unwrap();
+
+        // Remote commit via another clone
+        let other_dir = TempDir::new().unwrap();
+        let other_output = Command::new("git")
+            .args([
+                "clone",
+                &format!("file://{}", origin_dir.path().display()),
+                &other_dir.path().to_string_lossy().as_ref(),
+            ])
+            .output()
+            .unwrap();
+        assert!(other_output.status.success());
+        Command::new("git")
+            .args([
+                "-C",
+                &other_dir.path().to_string_lossy(),
+                "config",
+                "user.name",
+                "Other",
+            ])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-C",
+                &other_dir.path().to_string_lossy(),
+                "config",
+                "user.email",
+                "o@t.com",
+            ])
+            .output()
+            .unwrap();
+        write_data(
+            other_dir.path(),
+            "posts",
+            "items_b.jsonl",
+            "{\"id\":\"b\"}\n",
+        );
+        Command::new("git")
+            .args(["-C", &other_dir.path().to_string_lossy(), "add", "."])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-C",
+                &other_dir.path().to_string_lossy(),
+                "commit",
+                "-m",
+                "remote",
+            ])
+            .output()
+            .unwrap();
+        push(other_dir.path()).unwrap();
+
+        // Local diverging commit
+        write_data(
+            clone_dir.path(),
+            "posts",
+            "items_c.jsonl",
+            "{\"id\":\"c\"}\n",
+        );
+        auto_commit(&repo, "local diverge").unwrap();
+
+        fetch(clone_dir.path()).unwrap();
+
+        assert!(!is_remote_ancestor(&repo).unwrap());
+    }
+
+    #[test]
+    fn test_is_remote_ancestor_when_equal() {
+        let origin_dir = TempDir::new().unwrap();
+        let _origin = Repository::init_bare(origin_dir.path()).unwrap();
+
+        let clone_dir = TempDir::new().unwrap();
+        let repo = Repository::init(clone_dir.path()).unwrap();
+        setup_git_config(&repo);
+        repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
+            .unwrap();
+
+        write_data(
+            clone_dir.path(),
+            "feeds",
+            "items_.jsonl",
+            "{\"id\":\"a\"}\n",
+        );
+        auto_commit(&repo, "initial").unwrap();
+        push(clone_dir.path()).unwrap();
+        fetch(clone_dir.path()).unwrap();
+
+        // HEAD == origin/main → false
+        assert!(!is_remote_ancestor(&repo).unwrap());
+    }
+
+    #[test]
+    fn test_is_remote_ancestor_no_remote_branch() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        setup_git_config(&repo);
+
+        write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
+        auto_commit(&repo, "initial").unwrap();
+
+        // No remote ref at all → false
+        assert!(!is_remote_ancestor(&repo).unwrap());
     }
 }

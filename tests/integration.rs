@@ -189,7 +189,7 @@ fn atom_xml(title: &str, feed_id: &str, entries: &[(&str, &str, &str)]) -> Strin
 }
 
 #[test]
-fn test_pull_creates_posts_file() {
+fn test_sync_creates_posts_file() {
     let ctx = TestContext::new();
     let xml = rss_xml(
         "Test Blog",
@@ -203,7 +203,7 @@ fn test_pull_creates_posts_file() {
     let url = ctx.server.url("/feed.xml");
     ctx.write_feeds(&[&url]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
@@ -217,7 +217,7 @@ fn test_pull_creates_posts_file() {
 }
 
 #[test]
-fn test_pull_multiple_feeds() {
+fn test_sync_multiple_feeds() {
     let ctx = TestContext::new();
 
     let rss = rss_xml(
@@ -237,7 +237,7 @@ fn test_pull_multiple_feeds() {
     let atom_url = ctx.server.url("/atom.xml");
     ctx.write_feeds(&[&rss_url, &atom_url]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
@@ -318,7 +318,7 @@ fn test_show_default_no_subcommand() {
 }
 
 #[test]
-fn test_pull_then_show() {
+fn test_sync_then_show() {
     let ctx = TestContext::new();
     let xml = rss_xml(
         "Roundtrip Blog",
@@ -329,7 +329,7 @@ fn test_pull_then_show() {
     let url = ctx.server.url("/feed.xml");
     ctx.write_feeds(&[&url]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -353,7 +353,7 @@ fn test_serde_roundtrip() {
     let url = ctx.server.url("/feed.xml");
     ctx.write_feeds(&[&url]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
@@ -383,7 +383,7 @@ fn test_serde_roundtrip() {
 }
 
 #[test]
-fn test_pull_twice_no_duplicates() {
+fn test_sync_twice_no_duplicates() {
     let ctx = TestContext::new();
 
     let xml1 = rss_xml_with_guids(
@@ -398,7 +398,7 @@ fn test_pull_twice_no_duplicates() {
     let url = ctx.server.url("/feed.xml");
     ctx.write_feeds(&[&url]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
     let posts1 = ctx.read_posts();
     assert_eq!(posts1.len(), 2);
 
@@ -419,7 +419,7 @@ fn test_pull_twice_no_duplicates() {
     let url2 = ctx.server.url("/feed2.xml");
     ctx.write_feeds(&[&url2]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
     let posts2 = ctx.read_posts();
 
     // Should have 3 items: A (from first pull, preserved), B (updated), C (new)
@@ -452,7 +452,7 @@ fn test_add_creates_feed() {
 }
 
 #[test]
-fn test_add_then_pull() {
+fn test_add_then_sync() {
     let ctx = TestContext::new();
     let xml = rss_xml(
         "Added Blog",
@@ -462,7 +462,7 @@ fn test_add_then_pull() {
 
     let url = ctx.server.url("/added.xml");
     ctx.run(&["feed", "add", &url]).success();
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
@@ -470,7 +470,7 @@ fn test_add_then_pull() {
 }
 
 #[test]
-fn test_pull_continues_after_feed_failure() {
+fn test_sync_continues_after_feed_failure() {
     let ctx = TestContext::new();
 
     // One feed returns a 500 error
@@ -490,7 +490,7 @@ fn test_pull_continues_after_feed_failure() {
     let good_url = ctx.server.url("/good.xml");
     ctx.write_feeds(&[&broken_url, &good_url]);
 
-    let output = ctx.run(&["pull"]).success();
+    let output = ctx.run(&["sync"]).success();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
 
     // Error message should mention the HTTP status, not a confusing XML parse error
@@ -506,7 +506,7 @@ fn test_pull_continues_after_feed_failure() {
 }
 
 #[test]
-fn test_pull_reports_http_404_clearly() {
+fn test_sync_reports_http_404_clearly() {
     let ctx = TestContext::new();
 
     ctx.server.mock(|when, then| {
@@ -524,7 +524,7 @@ fn test_pull_reports_http_404_clearly() {
     let good_url = ctx.server.url("/good.xml");
     ctx.write_feeds(&[&gone_url, &good_url]);
 
-    let output = ctx.run(&["pull"]).success();
+    let output = ctx.run(&["sync"]).success();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
 
     assert!(
@@ -549,7 +549,7 @@ fn test_remove_feed() {
 
     let url = ctx.server.url("/removable.xml");
     ctx.run(&["feed", "add", &url]).success();
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -558,7 +558,7 @@ fn test_remove_feed() {
     ctx.run(&["feed", "rm", &url]).success();
 
     // Pull should no longer fetch the removed feed
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     // Feed and its posts should be gone — show should report no posts
     let output = ctx.run(&["show"]).failure();
@@ -589,7 +589,7 @@ fn test_remove_feed_deletes_its_posts() {
     let keep_url = ctx.server.url("/keep.xml");
     let remove_url = ctx.server.url("/remove.xml");
     ctx.write_feeds(&[&keep_url, &remove_url]);
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 2);
@@ -679,7 +679,7 @@ fn test_feed_remove_by_shorthand() {
     let keep_url = ctx.server.url("/keep.xml");
     let remove_url = ctx.server.url("/remove.xml");
     ctx.write_feeds(&[&keep_url, &remove_url]);
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     // Run feed ls and parse the shorthand for the remove_url
     let output = ctx.run(&["feed", "ls"]).success();
@@ -741,7 +741,7 @@ fn test_show_filter_by_shorthand() {
     let alpha_url = ctx.server.url("/alpha.xml");
     let beta_url = ctx.server.url("/beta.xml");
     ctx.write_feeds(&[&alpha_url, &beta_url]);
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     // Get shorthand for alpha feed
     let output = ctx.run(&["feed", "ls"]).success();
@@ -818,12 +818,12 @@ fn test_remove_then_readd_feed() {
 
     let url = ctx.server.url("/returning.xml");
     ctx.run(&["feed", "add", &url]).success();
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
     ctx.run(&["feed", "rm", &url]).success();
 
     // Re-add and pull again
     ctx.run(&["feed", "add", &url]).success();
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -850,7 +850,7 @@ fn test_show_displays_post_shorthands() {
 
     let url = ctx.server.url("/shorthand.xml");
     ctx.write_feeds(&[&url]);
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
@@ -910,7 +910,7 @@ fn test_open_valid_shorthand() {
 
     let url = ctx.server.url("/open.xml");
     ctx.write_feeds(&[&url]);
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     // Running `open a` should resolve the shorthand without error.
     // We can't verify the browser actually opens in CI, but we verify
@@ -973,7 +973,7 @@ fn test_remove_nonexistent_feed() {
 }
 
 #[test]
-fn test_pull_continues_after_non_utf8_feed() {
+fn test_sync_continues_after_non_utf8_feed() {
     let ctx = TestContext::new();
 
     // Build an RSS feed with a non-UTF8 byte (0xe9 for Latin-1 'é') in the title
@@ -1009,7 +1009,7 @@ fn test_pull_continues_after_non_utf8_feed() {
     ctx.write_feeds(&[&bad_url, &good_url]);
 
     // Pull should succeed overall — the bad feed errors but doesn't crash
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     // At minimum the good feed's post should be present
     let posts = ctx.read_posts();
@@ -1045,7 +1045,7 @@ fn test_atom_feed_with_rss_in_content_is_parsed_as_atom() {
     let url = ctx.server.url("/atom-with-rss-mention.xml");
     ctx.write_feeds(&[&url]);
 
-    ctx.run(&["pull"]).success();
+    ctx.run(&["sync"]).success();
 
     let posts = ctx.read_posts();
     assert_eq!(posts.len(), 1);
@@ -1126,17 +1126,17 @@ fn run_blog(store_dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
 }
 
 #[test]
-fn test_sync_no_remote_fails() {
+fn test_sync_no_remote_warns() {
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@test.com"]);
 
-    let output = run_blog(dir.path(), &["sync"]).failure();
+    let output = run_blog(dir.path(), &["sync"]).success();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
     assert!(
         stderr.contains("no remote"),
-        "expected 'no remote' error, got: {}",
+        "expected 'no remote' warning, got: {}",
         stderr
     );
 }
@@ -1483,4 +1483,65 @@ fn test_sync_already_in_sync_creates_no_commits() {
         commits_before, commits_after,
         "sync with no changes should not create new commits"
     );
+}
+
+#[test]
+fn test_sync_no_git_repo() {
+    // sync should work with no git repo at all (pure feed pulling)
+    let dir = TempDir::new().unwrap();
+    run_blog(dir.path(), &["feed", "add", "https://example.com/feed.xml"]).success();
+    run_blog(dir.path(), &["sync"]).success();
+
+    let feeds = read_table(&dir.path().join("feeds"));
+    assert_eq!(feeds.len(), 1);
+}
+
+#[test]
+fn test_sync_local_ahead_pushes_without_merge() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Add two feeds locally (auto-committed each time)
+    run_blog(
+        store_dir.path(),
+        &["feed", "add", "https://example.com/a.xml"],
+    )
+    .success();
+    run_blog(
+        store_dir.path(),
+        &["feed", "add", "https://example.com/b.xml"],
+    )
+    .success();
+
+    // Sync should just push (no merge commit)
+    run_blog(store_dir.path(), &["sync"]).success();
+
+    // Verify no merge commits (all commits should have at most 1 parent)
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            &store_dir.path().to_string_lossy(),
+            "log",
+            "--format=%P",
+        ])
+        .output()
+        .unwrap();
+    let parents = String::from_utf8_lossy(&output.stdout);
+    for line in parents.lines() {
+        let parent_count = line.split_whitespace().count();
+        assert!(
+            parent_count <= 1,
+            "expected no merge commits, but found a commit with {} parents",
+            parent_count
+        );
+    }
+}
+
+#[test]
+fn test_pull_command_removed() {
+    let dir = TempDir::new().unwrap();
+    run_blog(dir.path(), &["pull"]).failure();
 }

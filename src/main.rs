@@ -23,8 +23,6 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Fetch feeds and save items to posts.jsonl
-    Pull,
     /// Display items from posts.jsonl
     Show {
         /// Positional arguments: grouping mode (d, f, df, fd) and/or @shorthand filter
@@ -40,7 +38,7 @@ enum Command {
         #[command(subcommand)]
         command: FeedCommand,
     },
-    /// Sync store with remote git repository
+    /// Fetch feeds and sync with remote
     Sync,
     /// Run git commands in the store directory
     Git {
@@ -116,9 +114,6 @@ fn run() -> anyhow::Result<()> {
     let mut store = store::Store::open(&store_dir()?)?;
 
     match args.command {
-        Some(Command::Pull) => {
-            transact(&mut store, "pull feeds", commands::pull::cmd_pull)?;
-        }
         Some(Command::Show { ref args }) => {
             let (group, filter) = parse_show_args(args)?;
             commands::show::cmd_show(&store, &group, filter.as_deref())?;
