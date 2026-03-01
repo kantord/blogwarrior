@@ -34,10 +34,12 @@ Sleep 3s
 Type "blog open a" Sleep 500ms Enter
 Sleep 3s
 
-Type "w3m $(blog read a)" Sleep 500ms Enter
+Type "w3m $(blog read s)" Sleep 500ms Enter
 Sleep 5s
 
 Type "q"
+Sleep 500ms
+Type "y"
 Sleep 1s
 
 Type "blog feed add https://michael.stapelberg.ch/feed.xml" Sleep 500ms Enter
