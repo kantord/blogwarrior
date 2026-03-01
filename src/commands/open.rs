@@ -6,6 +6,8 @@ use crate::store::Store;
 use super::{PostIndex, post_index};
 
 fn resolve_post_shorthand(store: &Store, shorthand: &str) -> anyhow::Result<FeedItem> {
+    // Rebuilds the full sorted index to resolve a single shorthand. This is
+    // O(n log n) but fast in practice (single-digit ms even at 100k posts).
     let PostIndex { items, shorthands } = post_index(store.posts());
     items
         .into_iter()

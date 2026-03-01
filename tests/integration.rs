@@ -1755,6 +1755,44 @@ fn test_add_html_page_deduplicates_feed_candidates() {
     assert_eq!(feeds[0]["url"].as_str().unwrap(), feed_url);
 }
 
+#[test]
+fn test_add_html_page_caps_candidate_validation() {
+    let ctx = TestContext::new();
+
+    // Create 25 valid RSS feeds — more than the cap of 20
+    let feed_xml = rss_xml("Feed", &[("Post", "Mon, 01 Jan 2024 00:00:00 +0000")]);
+    let mut link_tags = String::new();
+    for i in 0..25 {
+        let path = format!("/feed{i}.xml");
+        ctx.mock_rss_feed(&path, &feed_xml);
+        let url = ctx.server.url(&path);
+        link_tags.push_str(&format!(
+            r#"<link rel="alternate" type="application/rss+xml" href="{url}" title="Feed {i}">"#
+        ));
+    }
+
+    let html = format!(r#"<html><head>{link_tags}</head><body><p>Hello</p></body></html>"#);
+    ctx.server.mock(|when, then| {
+        when.method(GET).path("/blog");
+        then.status(200)
+            .header("Content-Type", "text/html")
+            .body(&html);
+    });
+
+    // With 25 valid feeds discovered, the command should fail (multiple feeds found).
+    // The key assertion: it should report at most 20 candidates, not all 25.
+    let blog_url = ctx.server.url("/blog");
+    let output = ctx.run(&["feed", "add", &blog_url]).failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+
+    // Count how many feed URLs appear in the "Multiple feeds found" listing
+    let listed_feeds = stderr.lines().filter(|l| l.contains("/feed")).count();
+    assert!(
+        listed_feeds <= 20,
+        "Expected at most 20 validated candidates, but found {listed_feeds}"
+    );
+}
+
 // --- clone command tests ---
 
 #[test]

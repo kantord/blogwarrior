@@ -29,6 +29,7 @@ pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
     let feeds: Vec<_> = candidates
         .iter()
         .filter(|f| seen.insert(f.url().to_string()))
+        .take(20)
         .filter(|f| {
             sp.set_message(format!("Checking {}...", f.url()));
             is_valid_feed(&client, f.url().as_str())
