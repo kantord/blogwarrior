@@ -16,6 +16,10 @@ fn resolve_post_shorthand(store: &Store, shorthand: &str) -> anyhow::Result<Feed
 pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<()> {
     let item = resolve_post_shorthand(store, shorthand)?;
     ensure!(!item.link.is_empty(), "Post has no link");
-    open::that(&item.link).map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
+    match std::env::var("BROWSER") {
+        Ok(browser) => open::with(&item.link, &browser),
+        Err(_) => open::that(&item.link),
+    }
+    .map_err(|e| anyhow::anyhow!("Could not open URL: {}", e))?;
     Ok(())
 }

@@ -912,9 +912,14 @@ fn test_open_valid_shorthand() {
     ctx.run(&["sync"]).success();
 
     // Running `open a` should resolve the shorthand without error.
-    // We can't verify the browser actually opens in CI, but we verify
-    // it doesn't fail with "Unknown shorthand" or "Post has no link".
-    let output = ctx.run(&["open", "a"]);
+    // Use BROWSER=true to prevent actually opening a browser.
+    #[allow(deprecated)]
+    let output = Command::cargo_bin("blog")
+        .unwrap()
+        .args(["open", "a"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
     assert!(
         !stderr.contains("Unknown shorthand"),
