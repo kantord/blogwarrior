@@ -84,34 +84,49 @@ fn format_item(
     };
     let fixed_width = date_width + shorthand_width + 1; // +1 for space after shorthand
 
-    // Compute title and meta, potentially truncated
-    let meta_plain = if show_feed {
-        format!(" ({feed_label})")
+    // Split feed_label "@tag Blog Name" into fixed tag and truncatable blog name.
+    // Labels from cmd_show always have "@shorthand title" format, but tests may
+    // pass bare names like "Alice" — treat those as blog name only.
+    let (tag, blog_name) = if show_feed {
+        match feed_label.split_once(' ') {
+            Some((t, b)) if t.starts_with('@') => (Some(t), b),
+            _ => (None, feed_label),
+        }
     } else {
-        String::new()
+        (None, "")
     };
 
-    let (title, meta) = match content_width {
-        Some(w) if fixed_width < w => {
-            let remaining = w - fixed_width;
-            let title_len = item.title.chars().count();
-            let meta_len = meta_plain.chars().count();
+    // Fixed meta overhead: parts that never truncate
+    let meta_fixed_width = if show_feed {
+        match tag {
+            Some(t) => 2 + t.chars().count() + 1 + 1, // " (@tag " + ")"
+            None => 2 + 1,                            // " (" + ")"
+        }
+    } else {
+        0
+    };
 
-            if title_len + meta_len <= remaining {
-                (item.title.clone(), meta_plain)
-            } else if meta_plain.is_empty() {
+    let (title, blog) = match content_width {
+        Some(w) if fixed_width + meta_fixed_width < w => {
+            let remaining = w - fixed_width - meta_fixed_width;
+            let title_len = item.title.chars().count();
+            let blog_len = blog_name.chars().count();
+
+            if title_len + blog_len <= remaining {
+                (item.title.clone(), blog_name.to_string())
+            } else if !show_feed {
                 (truncate_str(&item.title, remaining), String::new())
             } else {
-                // Meta gets at most 40% of remaining, title gets the rest
-                let meta_budget = (remaining * 2 / 5).clamp(5, meta_len);
-                let title_budget = remaining.saturating_sub(meta_budget);
+                // Blog name gets at most 35% of remaining, post title gets the rest
+                let blog_budget = (remaining * 35 / 100).max(3).min(blog_len);
+                let title_budget = remaining.saturating_sub(blog_budget);
                 (
                     truncate_str(&item.title, title_budget),
-                    truncate_str(&meta_plain, meta_budget),
+                    truncate_str(blog_name, blog_budget),
                 )
             }
         }
-        _ => (item.title.clone(), meta_plain),
+        _ => (item.title.clone(), blog_name.to_string()),
     };
 
     // Apply ANSI styling after truncation
@@ -121,10 +136,13 @@ fn format_item(
         ("", "", "", "", "")
     };
 
-    let styled_meta = if meta.is_empty() {
-        String::new()
+    let styled_meta = if show_feed {
+        match tag {
+            Some(t) => format!("{dim}{italic} ({t} {blog}){reset}"),
+            None => format!("{dim}{italic} ({blog}){reset}"),
+        }
     } else {
-        format!("{dim}{italic}{meta}{reset}")
+        String::new()
     };
 
     let date_part = if show_date {
