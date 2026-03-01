@@ -101,8 +101,10 @@ fn store_dir() -> anyhow::Result<PathBuf> {
     if let Ok(val) = std::env::var("RSS_STORE") {
         return Ok(PathBuf::from(val));
     }
+    // Only one store ("default") is supported for now. The stores/ nesting
+    // keeps the door open for multiple named stores in the future.
     dirs::data_dir()
-        .map(|d| d.join("blogtato"))
+        .map(|d| d.join("blogtato").join("stores").join("default"))
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
