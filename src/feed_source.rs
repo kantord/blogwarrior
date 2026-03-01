@@ -20,5 +20,8 @@ impl TableRow for FeedSource {
 
     const TABLE_NAME: &'static str = "feeds";
     const SHARD_CHARACTERS: usize = 0;
+    // Conservative upper bound; drives hash ID length (11 hex chars) via the
+    // birthday-problem formula in synctato. Changing this value would alter ID
+    // lengths and orphan rows in existing databases, so leave it stable.
     const EXPECTED_CAPACITY: usize = 50_000;
 }

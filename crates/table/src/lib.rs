@@ -43,6 +43,9 @@ pub trait TableRow: Clone + PartialEq + Serialize + DeserializeOwned {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Row<T> {
+    // Tombstone must come first: with untagged deserialization serde tries
+    // variants in declaration order, and Tombstone's required `deleted_at`
+    // field distinguishes it from Live.
     Tombstone {
         id: String,
         deleted_at: DateTime<Utc>,
@@ -83,12 +86,18 @@ pub fn parse_rows<T: TableRow>(content: &str) -> anyhow::Result<HashMap<String, 
     Ok(items)
 }
 
+/// Truncated SHA-256 used as a content-addressed ID. Two different keys that
+/// collide on the truncated hash will silently overwrite each other; the
+/// birthday-problem sizing in [`id_length_for_capacity`] keeps collision
+/// probability well below 0.1% for the declared capacity.
 fn hash_id(raw: &str, id_length: usize) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw.as_bytes());
     format!("{:x}", hasher.finalize())[..id_length].to_string()
 }
 
+/// Choose a hex ID length that keeps collision probability < 0.1% for up to
+/// `expected_items` entries (birthday-problem formula with a 500x safety factor).
 fn id_length_for_capacity(expected_items: usize) -> usize {
     if expected_items <= 1 {
         return 4;

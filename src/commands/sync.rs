@@ -4,21 +4,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use synctato::Database;
 
 use crate::git;
+use crate::progress::spinner;
 use crate::store::Store;
 
 use super::pull::cmd_pull;
-
-fn new_spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .unwrap(),
-    );
-    pb.set_message(msg.to_string());
-    pb.enable_steady_tick(Duration::from_millis(100));
-    pb
-}
 
 pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     let path = store.path().to_path_buf();
@@ -62,14 +51,14 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
 
     // No remote branch yet → first push
     if !git::has_remote_branch(&repo) {
-        let sp = new_spinner("Pushing to remote (first sync)...");
+        let sp = spinner("Pushing to remote (first sync)...");
         git::push(&path)?;
         sp.finish_with_message("Pushing to remote (first sync)... done.");
         return Ok(());
     }
 
     // Fetch
-    let sp = new_spinner("Fetching...");
+    let sp = spinner("Fetching...");
     git::fetch(&path)?;
     sp.finish_with_message("Fetching... done.");
 
@@ -81,14 +70,14 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
 
     // Local is strictly ahead (remote is ancestor) → just push, no merge needed
     if git::is_remote_ancestor(&repo)? {
-        let sp = new_spinner("Pushing...");
+        let sp = spinner("Pushing...");
         git::push(&path)?;
         sp.finish_with_message("Pushing... done.");
         return Ok(());
     }
 
     // Diverged → merge remote data
-    let sp = new_spinner("Merging remote data...");
+    let sp = spinner("Merging remote data...");
     let remote_feeds = git::read_remote_table(&repo, "feeds")?;
     let remote_posts = git::read_remote_table(&repo, "posts")?;
 
@@ -110,7 +99,7 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     // Data is already merged above; this just records both git parents
     git::merge_ours(&repo)?;
 
-    let sp = new_spinner("Pushing...");
+    let sp = spinner("Pushing...");
     git::push(&path)?;
     sp.finish_with_message("Pushing... done.");
 
