@@ -3,10 +3,13 @@ Output demo/demo.gif
 Require blog
 
 Set Shell "bash"
-Set FontSize 16
-Set Width 900
-Set Height 500
-Set Padding 20
+Set FontSize 22
+Set Width 1200
+Set Height 600
+Set Padding 40
+Set Margin 20
+Set MarginFill "#1e1e2e"
+Set BorderRadius 10
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 40ms
 
@@ -23,5 +26,5 @@ Sleep 3s
 Type "blog sync" Sleep 500ms Enter
 Sleep 8s
 
-Type "blog show" Sleep 500ms Enter
+Type "blog" Sleep 500ms Enter
 Sleep 5s
