@@ -4,6 +4,7 @@ use std::io::IsTerminal;
 
 use anyhow::{bail, ensure};
 use itertools::Itertools;
+use unicode_width::UnicodeWidthStr;
 
 use crate::feed::FeedItem;
 use crate::store::Store;
@@ -48,16 +49,25 @@ fn format_date(item: &FeedItem) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn truncate_str(s: &str, max_len: usize) -> String {
-    let count = s.chars().count();
-    if count <= max_len {
+fn truncate_str(s: &str, max_cols: usize) -> String {
+    if s.width() <= max_cols {
         return s.to_string();
     }
-    if max_len == 0 {
+    if max_cols == 0 {
         return String::new();
     }
-    let truncated: String = s.chars().take(max_len - 1).collect();
-    format!("{truncated}\u{2026}")
+    let budget = max_cols - 1; // reserve 1 column for '…'
+    let mut used = 0;
+    let mut end = 0;
+    for (i, c) in s.char_indices() {
+        let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+        if used + cw > budget {
+            break;
+        }
+        used += cw;
+        end = i + c.len_utf8();
+    }
+    format!("{}\u{2026}", &s[..end])
 }
 
 fn format_item(
@@ -78,7 +88,7 @@ fn format_item(
 
     // Compute plain-text widths for fixed parts
     let date_width = if show_date {
-        format_date(item).chars().count() + 2 // "YYYY-MM-DD  "
+        format_date(item).width() + 2 // "YYYY-MM-DD  "
     } else {
         0
     };
@@ -99,8 +109,8 @@ fn format_item(
     // Fixed meta overhead: parts that never truncate
     let meta_fixed_width = if show_feed {
         match tag {
-            Some(t) => 2 + t.chars().count() + 1 + 1, // " (@tag " + ")"
-            None => 2 + 1,                            // " (" + ")"
+            Some(t) => 2 + t.width() + 1 + 1, // " (@tag " + ")"
+            None => 2 + 1,                    // " (" + ")"
         }
     } else {
         0
@@ -109,8 +119,8 @@ fn format_item(
     let (title, blog) = match content_width {
         Some(w) if fixed_width + meta_fixed_width < w => {
             let remaining = w - fixed_width - meta_fixed_width;
-            let title_len = item.title.chars().count();
-            let blog_len = blog_name.chars().count();
+            let title_len = item.title.width();
+            let blog_len = blog_name.width();
 
             if title_len + blog_len <= remaining {
                 (item.title.clone(), blog_name.to_string())
@@ -715,6 +725,69 @@ mod tests {
         shorthands.insert("id-a".to_string(), "sDf".to_string());
         let output = render_grouped(&refs, &[], &shorthands, &no_labels(), false, None);
         assert_eq!(output, "2024-01-02  sDf Post A (Alice)\n");
+    }
+
+    /// Approximate display width: CJK ideographs count as 2 columns, everything else as 1.
+    fn display_width(s: &str) -> usize {
+        s.chars()
+            .map(|c| {
+                if ('\u{4E00}'..='\u{9FFF}').contains(&c)
+                    || ('\u{3400}'..='\u{4DBF}').contains(&c)
+                    || ('\u{F900}'..='\u{FAFF}').contains(&c)
+                    || ('\u{3040}'..='\u{309F}').contains(&c)
+                    || ('\u{30A0}'..='\u{30FF}').contains(&c)
+                    || ('\u{FF01}'..='\u{FF60}').contains(&c)
+                {
+                    2
+                } else {
+                    1
+                }
+            })
+            .sum()
+    }
+
+    #[test]
+    fn test_cjk_characters_respect_display_width() {
+        // "你好世界测试标题很长" = 10 chars but 20 display columns.
+        // Current code uses chars().count() which sees 10 and thinks it fits,
+        // but the actual display width is 20, blowing past max_width.
+        let cjk_title = "你好世界测试标题很长";
+        let items = [FeedItem {
+            title: cjk_title.to_string(),
+            date: Some(
+                NaiveDate::parse_from_str("2024-01-15", "%Y-%m-%d")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: "feed1".to_string(),
+            link: String::new(),
+            raw_id: "id1".to_string(),
+        }];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+        let mut shorthands = HashMap::new();
+        shorthands.insert("id1".to_string(), "a".to_string());
+        let mut labels = HashMap::new();
+        labels.insert("feed1".to_string(), "@x Blog".to_string());
+
+        // max_width = 40.  Fixed: date(12) + shorthand(1) + space(1) = 14.
+        // Meta fixed: " (@x " + ")" = 6.  remaining = 40 - 14 - 6 = 20.
+        // chars().count() of title = 10, blog = 4 → total 14 ≤ 20 → no truncation.
+        // But display width of title = 20, so actual line = 45 columns. Must fail.
+        let max_width = 40;
+        let output = render_grouped(&refs, &[], &shorthands, &labels, false, Some(max_width));
+
+        for line in output.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let width = display_width(line);
+            assert!(
+                width <= max_width,
+                "line display width ({width}) exceeds max_width ({max_width}): {line}"
+            );
+        }
     }
 
     #[test]
