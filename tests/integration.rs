@@ -1207,7 +1207,7 @@ fn test_sync_first_push() {
 
     let store_dir = TempDir::new().unwrap();
     // Init repo but don't push yet (no remote branch)
-    git(store_dir.path(), &["init"]);
+    git(store_dir.path(), &["init", "-b", "main"]);
     git(store_dir.path(), &["config", "user.name", "Test"]);
     git(store_dir.path(), &["config", "user.email", "test@test.com"]);
     git(
