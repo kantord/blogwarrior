@@ -1,22 +1,8 @@
-use std::time::Duration;
-
 use anyhow::bail;
-use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::feed_source::FeedSource;
+use crate::progress::spinner;
 use crate::store::Transaction;
-
-fn spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .unwrap(),
-    );
-    pb.set_message(msg.to_string());
-    pb.enable_steady_tick(Duration::from_millis(100));
-    pb
-}
 
 pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
     let client = crate::http::http_client()?;

@@ -2,7 +2,7 @@ pub mod add;
 pub mod clone;
 pub mod feed_ls;
 pub mod open;
-pub mod pull;
+mod pull;
 pub mod remove;
 pub mod show;
 pub mod sync;

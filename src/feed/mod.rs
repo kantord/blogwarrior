@@ -29,6 +29,9 @@ impl synctato::TableRow for FeedItem {
 
     const TABLE_NAME: &'static str = "posts";
     const SHARD_CHARACTERS: usize = 2;
+    // Conservative upper bound; drives hash ID length (16 hex chars) via the
+    // birthday-problem formula in synctato. Changing this value would alter ID
+    // lengths and orphan rows in existing databases, so leave it stable.
     const EXPECTED_CAPACITY: usize = 100_000_000;
 }
 
