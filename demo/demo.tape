@@ -1,6 +1,7 @@
 Output demo/demo.gif
 
 Require blog
+Require w3m
 
 Set Shell "bash"
 Set FontFamily "JetBrains Mono"
@@ -32,3 +33,21 @@ Sleep 3s
 
 Type "blog open a" Sleep 500ms Enter
 Sleep 3s
+
+Type "w3m $(blog read a)" Sleep 500ms Enter
+Sleep 5s
+
+Type "q"
+Sleep 1s
+
+Type "blog feed add https://michael.stapelberg.ch/feed.xml" Sleep 500ms Enter
+Sleep 3s
+
+Type "blog feed add https://www.justinmklam.com/index.xml" Sleep 500ms Enter
+Sleep 3s
+
+Type "blog sync" Sleep 500ms Enter
+Sleep 3s
+
+Type "blog" Sleep 500ms Enter
+Sleep 5s
