@@ -27,6 +27,7 @@ feedfinder = "=0.4.0"
 dirs = "=6.0.0"
 indicatif = "=0.17.11"
 open = "=5.3.3"
+rayon = "1.11.0"
 
 [dev-dependencies]
 httpmock = "0.7"
