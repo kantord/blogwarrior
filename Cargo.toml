@@ -12,23 +12,23 @@ name = "blog"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1"
-atom_syndication = "0.12"
-clap = { version = "4", features = ["derive"] }
-chrono = { version = "0.4", features = ["serde"] }
-git2 = "0.20"
-reqwest = { version = "0.13", features = ["blocking"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-itertools = "0.14"
-rss = "2"
+anyhow = "=1.0.102"
+atom_syndication = "=0.12.7"
+clap = { version = "=4.5.60", features = ["derive"] }
+chrono = { version = "=0.4.44", features = ["serde"] }
+git2 = "=0.20.4"
+reqwest = { version = "=0.13.2", features = ["blocking"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+itertools = "=0.14.0"
+rss = "=2.0.12"
 synctato = { path = "crates/table" }
-url = "2"
-feedfinder = "0.4"
-dirs = "6"
-indicatif = "0.18"
-open = "5"
-rayon = "1"
+url = "=2.5.8"
+feedfinder = "=0.4.0"
+dirs = "=6.0.0"
+indicatif = "=0.18.4"
+open = "=5.3.3"
+rayon = "=1.11.0"
 
 [dev-dependencies]
 httpmock = "0.8"
