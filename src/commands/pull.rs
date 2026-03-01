@@ -1,3 +1,5 @@
+use indicatif::ProgressBar;
+
 use crate::store::Transaction;
 
 fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
@@ -8,14 +10,17 @@ fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
         .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {}", e))
 }
 
-pub(crate) fn cmd_pull(tx: &mut Transaction) -> anyhow::Result<()> {
+pub(crate) fn cmd_pull(tx: &mut Transaction, pb: &ProgressBar) -> anyhow::Result<()> {
     let client = http_client()?;
     let sources = tx.feeds.items();
+    pb.set_length(sources.len() as u64);
     for source in &sources {
+        pb.set_message(source.url.clone());
         let (meta, items) = match crate::feed::fetch(&client, &source.url) {
             Ok(result) => result,
             Err(e) => {
-                eprintln!("Error fetching {}: {}", source.url, e);
+                pb.suspend(|| eprintln!("Error fetching {}: {}", source.url, e));
+                pb.inc(1);
                 continue;
             }
         };
@@ -29,6 +34,7 @@ pub(crate) fn cmd_pull(tx: &mut Transaction) -> anyhow::Result<()> {
         updated.site_url = meta.site_url;
         updated.description = meta.description;
         tx.feeds.upsert(updated);
+        pb.inc(1);
     }
     Ok(())
 }

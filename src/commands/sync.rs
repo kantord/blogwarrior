@@ -1,9 +1,24 @@
+use std::time::Duration;
+
+use indicatif::{ProgressBar, ProgressStyle};
 use synctato::Database;
 
 use crate::git;
 use crate::store::Store;
 
 use super::pull::cmd_pull;
+
+fn new_spinner(msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap(),
+    );
+    pb.set_message(msg.to_string());
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb
+}
 
 pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     let path = store.path().to_path_buf();
@@ -15,9 +30,16 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     }
 
     // Always pull feeds
-    eprint!("Pulling feeds...");
-    store.transaction(cmd_pull)?;
-    eprintln!(" done.");
+    let pb = ProgressBar::new(0);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.cyan} Pulling feeds [{bar:20.cyan/dim}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=> "),
+    );
+    pb.enable_steady_tick(Duration::from_millis(100));
+    store.transaction(|tx| cmd_pull(tx, &pb))?;
+    pb.finish_and_clear();
 
     // Auto-commit pulled data (if git exists)
     if let Some(ref repo) = repo {
@@ -40,16 +62,16 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
 
     // No remote branch yet → first push
     if !git::has_remote_branch(&repo, "refs/remotes/origin/main") {
-        eprintln!("First sync — pushing to remote...");
+        let sp = new_spinner("Pushing to remote (first sync)...");
         git::push(&path)?;
-        eprintln!("Done.");
+        sp.finish_with_message("Pushing to remote (first sync)... done.");
         return Ok(());
     }
 
     // Fetch
-    eprint!("Fetching...");
+    let sp = new_spinner("Fetching...");
     git::fetch(&path)?;
-    eprintln!(" done.");
+    sp.finish_with_message("Fetching... done.");
 
     // Already up-to-date
     if git::is_up_to_date(&repo)? {
@@ -59,14 +81,14 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
 
     // Local is strictly ahead (remote is ancestor) → just push, no merge needed
     if git::is_remote_ancestor(&repo)? {
-        eprint!("Pushing...");
+        let sp = new_spinner("Pushing...");
         git::push(&path)?;
-        eprintln!(" done.");
+        sp.finish_with_message("Pushing... done.");
         return Ok(());
     }
 
     // Diverged → merge remote data
-    eprint!("Merging remote data...");
+    let sp = new_spinner("Merging remote data...");
     let remote_feeds = git::read_remote_table(&repo, "feeds")?;
     let remote_posts = git::read_remote_table(&repo, "posts")?;
 
@@ -79,17 +101,17 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
         tx.posts.merge_remote(remote_posts);
     }
     store.save()?;
-    eprintln!(
-        " done ({} feeds, {} posts from remote).",
+    sp.finish_with_message(format!(
+        "Merging remote data... done ({} feeds, {} posts from remote).",
         feeds_count, posts_count
-    );
+    ));
 
     git::auto_commit(&repo, "sync")?;
     git::merge_ours(&repo)?;
 
-    eprint!("Pushing...");
+    let sp = new_spinner("Pushing...");
     git::push(&path)?;
-    eprintln!(" done.");
+    sp.finish_with_message("Pushing... done.");
 
     Ok(())
 }

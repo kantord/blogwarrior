@@ -24,6 +24,7 @@ rss = "2"
 synctato = { path = "crates/table" }
 url = "2"
 dirs = "6"
+indicatif = "0.17"
 open = "5"
 
 [dev-dependencies]
