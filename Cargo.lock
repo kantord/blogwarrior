@@ -233,6 +233,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "terminal_size",
+ "unicode-width",
  "url",
 ]
 

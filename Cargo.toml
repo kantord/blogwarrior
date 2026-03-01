@@ -30,6 +30,7 @@ indicatif = "=0.18.4"
 open = "=5.3.3"
 rayon = "=1.11.0"
 terminal_size = "=0.4.1"
+unicode-width = "=0.2.2"
 
 [dev-dependencies]
 httpmock = "0.8"
