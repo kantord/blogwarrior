@@ -54,6 +54,7 @@ fn format_item(
     shorthand: &str,
     feed_labels: &HashMap<String, String>,
     color: bool,
+    shorthand_width: usize,
 ) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_feed = !grouped_keys.contains(&GroupKey::Feed);
@@ -76,7 +77,19 @@ fn format_item(
     } else {
         String::new()
     };
-    format!("{date_part}{bold}{shorthand}{reset} {}{meta}", item.title)
+    format!(
+        "{date_part}{bold}{shorthand:<sw$}{reset} {}{meta}",
+        item.title,
+        sw = shorthand_width
+    )
+}
+
+struct RenderCtx<'a> {
+    all_keys: &'a [GroupKey],
+    shorthands: &'a HashMap<String, String>,
+    feed_labels: &'a HashMap<String, String>,
+    color: bool,
+    shorthand_width: usize,
 }
 
 fn render_grouped(
@@ -86,28 +99,28 @@ fn render_grouped(
     feed_labels: &HashMap<String, String>,
     color: bool,
 ) -> String {
-    fn recurse(
-        out: &mut String,
-        items: &[&FeedItem],
-        remaining: &[GroupKey],
-        all_keys: &[GroupKey],
-        shorthands: &HashMap<String, String>,
-        feed_labels: &HashMap<String, String>,
-        color: bool,
-    ) {
-        let depth = all_keys.len() - remaining.len();
+    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], ctx: &RenderCtx) {
+        let depth = ctx.all_keys.len() - remaining.len();
         let indent = "  ".repeat(depth);
 
         if remaining.is_empty() {
             for item in items {
-                let sh = shorthands
+                let sh = ctx
+                    .shorthands
                     .get(&item.raw_id)
                     .map(|s| s.as_str())
                     .unwrap_or("");
                 writeln!(
                     out,
                     "{indent}{}",
-                    format_item(item, all_keys, sh, feed_labels, color)
+                    format_item(
+                        item,
+                        ctx.all_keys,
+                        sh,
+                        ctx.feed_labels,
+                        ctx.color,
+                        ctx.shorthand_width
+                    )
                 )
                 .unwrap();
             }
@@ -118,9 +131,9 @@ fn render_grouped(
         let rest = &remaining[1..];
 
         let mut sorted = items.to_vec();
-        sorted.sort_by(|a, b| key.compare(a, b, feed_labels));
+        sorted.sort_by(|a, b| key.compare(a, b, ctx.feed_labels));
 
-        let (bold, reset) = if color {
+        let (bold, reset) = if ctx.color {
             ("\x1b[1m", "\x1b[0m")
         } else {
             ("", "")
@@ -134,22 +147,14 @@ fn render_grouped(
 
         for (group_val, group) in &sorted
             .iter()
-            .chunk_by(|item| key.extract(item, feed_labels))
+            .chunk_by(|item| key.extract(item, ctx.feed_labels))
         {
             let group_items: Vec<&FeedItem> = group.copied().collect();
             writeln!(out, "{indent}{bold}{prefix}{group_val}{suffix}{reset}").unwrap();
             if depth == 0 {
                 writeln!(out).unwrap();
             }
-            recurse(
-                out,
-                &group_items,
-                rest,
-                all_keys,
-                shorthands,
-                feed_labels,
-                color,
-            );
+            recurse(out, &group_items, rest, ctx);
             if depth == 0 {
                 writeln!(out).unwrap();
                 writeln!(out).unwrap();
@@ -159,8 +164,23 @@ fn render_grouped(
         }
     }
 
+    let shorthand_width = items
+        .iter()
+        .filter_map(|item| shorthands.get(&item.raw_id))
+        .map(|s| s.len())
+        .max()
+        .unwrap_or(0);
+
+    let ctx = RenderCtx {
+        all_keys: keys,
+        shorthands,
+        feed_labels,
+        color,
+        shorthand_width,
+    };
+
     let mut out = String::new();
-    recurse(&mut out, items, keys, keys, shorthands, feed_labels, color);
+    recurse(&mut out, items, keys, &ctx);
     out
 }
 
@@ -296,7 +316,7 @@ mod tests {
     fn test_format_item_no_grouping() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[], "abc", &no_labels(), false),
+            format_item(&i, &[], "abc", &no_labels(), false, 3),
             "2024-01-15  abc Post (Alice)"
         );
     }
@@ -305,7 +325,7 @@ mod tests {
     fn test_format_item_grouped_by_date() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Date], "abc", &no_labels(), false),
+            format_item(&i, &[GroupKey::Date], "abc", &no_labels(), false, 3),
             "abc Post (Alice)"
         );
     }
@@ -314,7 +334,7 @@ mod tests {
     fn test_format_item_grouped_by_feed() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Feed], "abc", &no_labels(), false),
+            format_item(&i, &[GroupKey::Feed], "abc", &no_labels(), false, 3),
             "2024-01-15  abc Post"
         );
     }
@@ -328,7 +348,8 @@ mod tests {
                 &[GroupKey::Date, GroupKey::Feed],
                 "abc",
                 &no_labels(),
-                false
+                false,
+                3
             ),
             "abc Post"
         );
