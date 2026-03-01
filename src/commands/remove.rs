@@ -1,5 +1,5 @@
+use crate::synctato::TableRow;
 use anyhow::bail;
-use synctato::TableRow;
 
 use crate::store::Transaction;
 

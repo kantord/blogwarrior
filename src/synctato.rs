@@ -292,21 +292,21 @@ impl<T: TableRow> Table<T> {
 #[macro_export]
 macro_rules! database {
     ($vis:vis $name:ident { $($field:ident : $row:ty),* $(,)? }) => {
-        $crate::paste! {
+        $crate::synctato::paste! {
             $vis struct $name {
                 path: ::std::path::PathBuf,
-                $($field: $crate::Table<$row>,)*
+                $($field: $crate::synctato::Table<$row>,)*
             }
 
             $vis struct [<$name Transaction>]<'a> {
-                $(pub $field: &'a mut $crate::Table<$row>,)*
+                $(pub $field: &'a mut $crate::synctato::Table<$row>,)*
             }
 
             impl $name {
                 pub fn open(path: &::std::path::Path) -> ::anyhow::Result<Self> {
                     Ok(Self {
                         path: path.to_path_buf(),
-                        $($field: $crate::Table::<$row>::load(path)?,)*
+                        $($field: $crate::synctato::Table::<$row>::load(path)?,)*
                     })
                 }
 
@@ -315,13 +315,13 @@ macro_rules! database {
                 }
 
                 $(
-                    pub fn $field(&self) -> &$crate::Table<$row> {
+                    pub fn $field(&self) -> &$crate::synctato::Table<$row> {
                         &self.$field
                     }
                 )*
             }
 
-            impl $crate::Database for $name {
+            impl $crate::synctato::Database for $name {
                 type Transaction<'a> = [<$name Transaction>]<'a>;
 
                 fn save(&self) -> ::anyhow::Result<()> {

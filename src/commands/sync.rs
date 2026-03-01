@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use crate::synctato::Database;
 use indicatif::{ProgressBar, ProgressStyle};
-use synctato::Database;
 
 use crate::git;
 use crate::progress::spinner;

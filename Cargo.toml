@@ -1,11 +1,10 @@
-[workspace]
-members = [".", "crates/table"]
-
 [package]
 name = "blogtato"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+description = "A CLI RSS/Atom feed reader inspired by Taskwarrior"
+repository = "https://github.com/kantord/blogtato"
 
 [[bin]]
 name = "blog"
@@ -22,7 +21,8 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
 itertools = "=0.14.0"
 rss = "=2.0.12"
-synctato = { path = "crates/table" }
+paste = "=1.0.15"
+sha2 = "=0.10.9"
 url = "=2.5.8"
 feedfinder = "=0.4.0"
 dirs = "=6.0.0"
@@ -35,4 +35,3 @@ httpmock = "0.8"
 tempfile = "3"
 assert_cmd = "2"
 libc = "0.2"
-sha2 = "0.10"

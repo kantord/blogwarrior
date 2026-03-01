@@ -1,7 +1,7 @@
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
 
-synctato::database!(pub(crate) Store {
+crate::database!(pub(crate) Store {
     feeds: FeedSource,
     posts: FeedItem,
 });
