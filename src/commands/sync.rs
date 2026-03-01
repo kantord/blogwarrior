@@ -107,6 +107,7 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     ));
 
     git::auto_commit(&repo, "sync")?;
+    // Data is already merged above; this just records both git parents
     git::merge_ours(&repo)?;
 
     let sp = new_spinner("Pushing...");

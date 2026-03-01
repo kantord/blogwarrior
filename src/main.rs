@@ -2,6 +2,7 @@ mod commands;
 mod feed;
 mod feed_source;
 mod git;
+mod http;
 mod store;
 
 use std::path::PathBuf;

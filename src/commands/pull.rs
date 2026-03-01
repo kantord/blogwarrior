@@ -5,18 +5,10 @@ use crate::feed::{FeedItem, FeedMeta};
 use crate::feed_source::FeedSource;
 use crate::store::Transaction;
 
-pub(crate) fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
-        .user_agent(format!("blogtato/{}", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {}", e))
-}
-
 type FetchResult = (FeedSource, Result<(FeedMeta, Vec<FeedItem>), String>);
 
 pub(crate) fn cmd_pull(tx: &mut Transaction, pb: &ProgressBar) -> anyhow::Result<()> {
-    let client = http_client()?;
+    let client = crate::http::http_client()?;
     let sources = tx.feeds.items();
     pb.set_length(sources.len() as u64);
 

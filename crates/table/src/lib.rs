@@ -188,6 +188,7 @@ impl<T: TableRow> Table<T> {
 
         let lock_file =
             fs::File::create(self.dir.join(".lock")).context("failed to create lock file")?;
+        // std::fs::File::lock() — exclusive advisory lock (stable since Rust 1.89)
         lock_file.lock().context("failed to acquire lock")?;
 
         // Re-read disk state and merge: preserve items added by other processes

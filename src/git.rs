@@ -172,6 +172,11 @@ pub fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
         .unwrap_or(false))
 }
 
+/// Record a merge commit using the local tree (git "ours" strategy).
+///
+/// The actual data merge (CRDT last-writer-wins) has already happened at
+/// the application layer via `Table::merge_remote` before this is called.
+/// This commit just unifies the git history so future pulls see both lineages.
 pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
     let remote_ref = match find_remote_ref(repo) {
         Some(r) => r,

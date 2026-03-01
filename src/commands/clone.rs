@@ -6,9 +6,13 @@ use anyhow::{Context, bail};
 use indicatif::{ProgressBar, ProgressStyle};
 
 fn expand_url(url: &str) -> String {
-    if url.contains(':') || url.contains('/') && url.starts_with('.') {
+    let is_full_url = url.contains(':'); // https://, git@host:, file://
+    let is_relative_path = url.starts_with('.'); // ./repo, ../dir/repo
+
+    if is_full_url || is_relative_path {
         return url.to_string();
     }
+
     if let Some((user, repo)) = url.split_once('/')
         && !repo.contains('/')
     {
