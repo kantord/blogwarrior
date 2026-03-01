@@ -1749,3 +1749,115 @@ fn test_add_html_page_deduplicates_feed_candidates() {
     assert_eq!(feeds.len(), 1);
     assert_eq!(feeds[0]["url"].as_str().unwrap(), feed_url);
 }
+
+// --- clone command tests ---
+
+#[test]
+fn test_clone_into_empty_dir() {
+    // Set up a bare origin repo with some feed data
+    let origin_dir = TempDir::new().unwrap();
+    std::process::Command::new("git")
+        .args(["init", "--bare"])
+        .arg(origin_dir.path())
+        .output()
+        .unwrap();
+
+    // Create a temporary working repo, add data, push to origin
+    let work_dir = TempDir::new().unwrap();
+    std::process::Command::new("git")
+        .args(["clone", &format!("file://{}", origin_dir.path().display())])
+        .arg(work_dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &work_dir.path().to_string_lossy(),
+            "config",
+            "user.name",
+            "Test",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &work_dir.path().to_string_lossy(),
+            "config",
+            "user.email",
+            "t@t.com",
+        ])
+        .output()
+        .unwrap();
+
+    insert_feed(work_dir.path(), "https://example.com/feed.xml");
+
+    std::process::Command::new("git")
+        .args(["-C", &work_dir.path().to_string_lossy(), "add", "."])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &work_dir.path().to_string_lossy(),
+            "commit",
+            "-m",
+            "add feed",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &work_dir.path().to_string_lossy(),
+            "push",
+            "origin",
+            "HEAD",
+        ])
+        .output()
+        .unwrap();
+
+    // Clone into a fresh store dir using the blog clone command
+    let store_dir = TempDir::new().unwrap();
+    let target = store_dir.path().join("store");
+
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["clone", &format!("file://{}", origin_dir.path().display())])
+        .env("RSS_STORE", &target)
+        .assert()
+        .success();
+
+    // Verify feed data is present
+    let feeds = read_table(&target.join("feeds"));
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(
+        feeds[0]["url"].as_str().unwrap(),
+        "https://example.com/feed.xml"
+    );
+}
+
+#[test]
+fn test_clone_existing_store_fails() {
+    let store_dir = TempDir::new().unwrap();
+    insert_feed(store_dir.path(), "https://example.com/feed.xml");
+
+    #[allow(deprecated)]
+    let output = Command::cargo_bin("blog")
+        .unwrap()
+        .args(["clone", "https://example.com/repo.git"])
+        .env("RSS_STORE", store_dir.path())
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("already exists"),
+        "error should mention existing database: {stderr}"
+    );
+    assert!(
+        stderr.contains(&store_dir.path().display().to_string()),
+        "error should include the store path: {stderr}"
+    );
+}

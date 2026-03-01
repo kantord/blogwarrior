@@ -45,6 +45,11 @@ enum Command {
         /// Arguments to pass to git
         args: Vec<String>,
     },
+    /// Clone an existing feed database from a git remote
+    Clone {
+        /// Git-clonable URL
+        url: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -111,7 +116,13 @@ fn transact(
 
 fn run() -> anyhow::Result<()> {
     let args = Args::parse();
-    let mut store = store::Store::open(&store_dir()?)?;
+    let store_dir = store_dir()?;
+
+    if let Some(Command::Clone { ref url }) = args.command {
+        return commands::clone::cmd_clone(&store_dir, url);
+    }
+
+    let mut store = store::Store::open(&store_dir)?;
 
     match args.command {
         Some(Command::Show { ref args }) => {
@@ -152,6 +163,7 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Git { ref args }) => {
             git::git_passthrough(store.path(), args)?;
         }
+        Some(Command::Clone { .. }) => unreachable!(),
         None => {
             let (group, filter) = parse_show_args(&args.args)?;
             commands::show::cmd_show(&store, &group, filter.as_deref())?;
