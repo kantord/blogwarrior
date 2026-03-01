@@ -48,6 +48,18 @@ fn format_date(item: &FeedItem) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+fn truncate_str(s: &str, max_len: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_len {
+        return s.to_string();
+    }
+    if max_len == 0 {
+        return String::new();
+    }
+    let truncated: String = s.chars().take(max_len - 1).collect();
+    format!("{truncated}\u{2026}")
+}
+
 fn format_item(
     item: &FeedItem,
     grouped_keys: &[GroupKey],
@@ -55,6 +67,7 @@ fn format_item(
     feed_labels: &HashMap<String, String>,
     color: bool,
     shorthand_width: usize,
+    content_width: Option<usize>,
 ) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_feed = !grouped_keys.contains(&GroupKey::Feed);
@@ -62,24 +75,84 @@ fn format_item(
         .get(&item.feed)
         .map(|s| s.as_str())
         .unwrap_or(&item.feed);
+
+    // Compute plain-text widths for fixed parts
+    let date_width = if show_date {
+        format_date(item).chars().count() + 2 // "YYYY-MM-DD  "
+    } else {
+        0
+    };
+    let fixed_width = date_width + shorthand_width + 1; // +1 for space after shorthand
+
+    // Split feed_label "@tag Blog Name" into fixed tag and truncatable blog name.
+    // Labels from cmd_show always have "@shorthand title" format, but tests may
+    // pass bare names like "Alice" — treat those as blog name only.
+    let (tag, blog_name) = if show_feed {
+        match feed_label.split_once(' ') {
+            Some((t, b)) if t.starts_with('@') => (Some(t), b),
+            _ => (None, feed_label),
+        }
+    } else {
+        (None, "")
+    };
+
+    // Fixed meta overhead: parts that never truncate
+    let meta_fixed_width = if show_feed {
+        match tag {
+            Some(t) => 2 + t.chars().count() + 1 + 1, // " (@tag " + ")"
+            None => 2 + 1,                            // " (" + ")"
+        }
+    } else {
+        0
+    };
+
+    let (title, blog) = match content_width {
+        Some(w) if fixed_width + meta_fixed_width < w => {
+            let remaining = w - fixed_width - meta_fixed_width;
+            let title_len = item.title.chars().count();
+            let blog_len = blog_name.chars().count();
+
+            if title_len + blog_len <= remaining {
+                (item.title.clone(), blog_name.to_string())
+            } else if !show_feed {
+                (truncate_str(&item.title, remaining), String::new())
+            } else {
+                // Blog name gets at most 35% of remaining, post title gets the rest
+                let blog_budget = (remaining * 35 / 100).max(3).min(blog_len);
+                let title_budget = remaining.saturating_sub(blog_budget);
+                (
+                    truncate_str(&item.title, title_budget),
+                    truncate_str(blog_name, blog_budget),
+                )
+            }
+        }
+        _ => (item.title.clone(), blog_name.to_string()),
+    };
+
+    // Apply ANSI styling after truncation
     let (bold, dim, italic, date_color, reset) = if color {
         ("\x1b[1m", "\x1b[2m", "\x1b[3m", "\x1b[36m", "\x1b[0m")
     } else {
         ("", "", "", "", "")
     };
-    let meta = if show_feed {
-        format!(" {dim}{italic}({feed_label}){reset}")
+
+    let styled_meta = if show_feed {
+        match tag {
+            Some(t) => format!("{dim}{italic} ({t} {blog}){reset}"),
+            None => format!("{dim}{italic} ({blog}){reset}"),
+        }
     } else {
         String::new()
     };
+
     let date_part = if show_date {
         format!("{date_color}{}{reset}  ", format_date(item))
     } else {
         String::new()
     };
+
     format!(
-        "{date_part}{bold}{shorthand:<sw$}{reset} {}{meta}",
-        item.title,
+        "{date_part}{bold}{shorthand:<sw$}{reset} {title}{styled_meta}",
         sw = shorthand_width
     )
 }
@@ -90,6 +163,7 @@ struct RenderCtx<'a> {
     feed_labels: &'a HashMap<String, String>,
     color: bool,
     shorthand_width: usize,
+    max_width: Option<usize>,
 }
 
 fn render_grouped(
@@ -98,12 +172,15 @@ fn render_grouped(
     shorthands: &HashMap<String, String>,
     feed_labels: &HashMap<String, String>,
     color: bool,
+    max_width: Option<usize>,
 ) -> String {
     fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], ctx: &RenderCtx) {
         let depth = ctx.all_keys.len() - remaining.len();
         let indent = "  ".repeat(depth);
 
         if remaining.is_empty() {
+            let indent_width = depth * 2;
+            let content_width = ctx.max_width.map(|w| w.saturating_sub(indent_width));
             for item in items {
                 let sh = ctx
                     .shorthands
@@ -119,7 +196,8 @@ fn render_grouped(
                         sh,
                         ctx.feed_labels,
                         ctx.color,
-                        ctx.shorthand_width
+                        ctx.shorthand_width,
+                        content_width
                     )
                 )
                 .unwrap();
@@ -177,6 +255,7 @@ fn render_grouped(
         feed_labels,
         color,
         shorthand_width,
+        max_width,
     };
 
     let mut out = String::new();
@@ -238,10 +317,18 @@ pub(crate) fn cmd_show(store: &Store, group: &str, filter: Option<&str>) -> anyh
     ensure!(!posts.items.is_empty(), "No matching posts");
 
     let color = std::io::stdout().is_terminal();
+    let max_width = terminal_size::terminal_size().map(|(w, _)| w.0 as usize);
     let refs: Vec<&FeedItem> = posts.items.iter().collect();
     print!(
         "{}",
-        render_grouped(&refs, &keys, &posts.shorthands, &feed_labels, color)
+        render_grouped(
+            &refs,
+            &keys,
+            &posts.shorthands,
+            &feed_labels,
+            color,
+            max_width
+        )
     );
     Ok(())
 }
@@ -316,7 +403,7 @@ mod tests {
     fn test_format_item_no_grouping() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[], "abc", &no_labels(), false, 3),
+            format_item(&i, &[], "abc", &no_labels(), false, 3, None),
             "2024-01-15  abc Post (Alice)"
         );
     }
@@ -325,7 +412,7 @@ mod tests {
     fn test_format_item_grouped_by_date() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Date], "abc", &no_labels(), false, 3),
+            format_item(&i, &[GroupKey::Date], "abc", &no_labels(), false, 3, None),
             "abc Post (Alice)"
         );
     }
@@ -334,7 +421,7 @@ mod tests {
     fn test_format_item_grouped_by_feed() {
         let i = item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[GroupKey::Feed], "abc", &no_labels(), false, 3),
+            format_item(&i, &[GroupKey::Feed], "abc", &no_labels(), false, 3, None),
             "2024-01-15  abc Post"
         );
     }
@@ -349,7 +436,8 @@ mod tests {
                 "abc",
                 &no_labels(),
                 false,
-                3
+                3,
+                None
             ),
             "abc Post"
         );
@@ -381,7 +469,7 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[], &no_labels(), &no_labels(), false);
+        let output = render_grouped(&refs, &[], &no_labels(), &no_labels(), false, None);
         assert_eq!(
             output,
             "2024-01-02   Post A (Alice)\n2024-01-01   Post B (Bob)\n"
@@ -397,7 +485,14 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels(), false);
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Date],
+            &no_labels(),
+            &no_labels(),
+            false,
+            None,
+        );
         assert_eq!(
             output,
             "\
@@ -424,7 +519,14 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[GroupKey::Feed], &no_labels(), &no_labels(), false);
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Feed],
+            &no_labels(),
+            &no_labels(),
+            false,
+            None,
+        );
         assert_eq!(
             output,
             "\
@@ -457,6 +559,7 @@ mod tests {
             &no_labels(),
             &no_labels(),
             false,
+            None,
         );
         assert_eq!(
             output,
@@ -497,6 +600,7 @@ mod tests {
             &no_labels(),
             &no_labels(),
             false,
+            None,
         );
         assert_eq!(
             output,
@@ -527,7 +631,14 @@ mod tests {
         let refs: Vec<&FeedItem> = vec![];
 
         assert_eq!(
-            render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels(), false),
+            render_grouped(
+                &refs,
+                &[GroupKey::Date],
+                &no_labels(),
+                &no_labels(),
+                false,
+                None
+            ),
             ""
         );
     }
@@ -541,7 +652,14 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[GroupKey::Date], &no_labels(), &no_labels(), false);
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Date],
+            &no_labels(),
+            &no_labels(),
+            false,
+            None,
+        );
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -562,7 +680,14 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[GroupKey::Feed], &no_labels(), &no_labels(), false);
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Feed],
+            &no_labels(),
+            &no_labels(),
+            false,
+            None,
+        );
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -588,7 +713,52 @@ mod tests {
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id-a".to_string(), "sDf".to_string());
-        let output = render_grouped(&refs, &[], &shorthands, &no_labels(), false);
+        let output = render_grouped(&refs, &[], &shorthands, &no_labels(), false, None);
         assert_eq!(output, "2024-01-02  sDf Post A (Alice)\n");
+    }
+
+    #[test]
+    fn test_long_lines_are_truncated_to_max_width() {
+        let long_title =
+            "An extremely long post title that should definitely be truncated to fit the width";
+        let items = [FeedItem {
+            title: long_title.to_string(),
+            date: Some(
+                NaiveDate::parse_from_str("2024-01-15", "%Y-%m-%d")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: "feed1".to_string(),
+            link: String::new(),
+            raw_id: "id1".to_string(),
+        }];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+        let mut shorthands = HashMap::new();
+        shorthands.insert("id1".to_string(), "a".to_string());
+        let mut labels = HashMap::new();
+        labels.insert(
+            "feed1".to_string(),
+            "@x A Fairly Long Blog Name".to_string(),
+        );
+
+        let max_width = 60;
+        let output = render_grouped(&refs, &[], &shorthands, &labels, false, Some(max_width));
+
+        for line in output.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let width = line.chars().count();
+            assert!(
+                width <= max_width,
+                "line exceeds {max_width} columns ({width} chars): {line}",
+            );
+            assert!(
+                line.contains('\u{2026}'),
+                "truncated line should contain \u{2026}: {line}"
+            );
+        }
     }
 }
