@@ -863,17 +863,19 @@ fn test_show_displays_post_shorthands() {
         if line.trim().is_empty() {
             continue;
         }
-        // Each post line should start with a shorthand of POST_ALPHABET characters
-        let first_word: String = line.chars().take_while(|c| !c.is_whitespace()).collect();
+        // Lines are: "YYYY-MM-DD  shorthand title (meta)"
+        // Skip the date column and trailing spaces to find the shorthand.
+        let words: Vec<&str> = line.split_whitespace().collect();
         assert!(
-            !first_word.is_empty(),
-            "line should start with a shorthand: {}",
+            words.len() >= 2,
+            "line should have at least a date and shorthand: {}",
             line
         );
+        let shorthand = words[1];
         assert!(
-            first_word.chars().all(|c| post_alphabet.contains(&c)),
+            shorthand.chars().all(|c| post_alphabet.contains(&c)),
             "shorthand '{}' should only contain POST_ALPHABET characters in line: {}",
-            first_word,
+            shorthand,
             line,
         );
     }
