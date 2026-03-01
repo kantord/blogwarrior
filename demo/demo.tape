@@ -4,9 +4,9 @@ Require blog
 
 Set Shell "bash"
 Set FontFamily "JetBrains Mono"
-Set FontSize 22
-Set Width 1200
-Set Height 600
+Set FontSize 28
+Set Width 1600
+Set Height 800
 Set Padding 40
 Set Margin 20
 Set MarginFill "#1e1e2e"
@@ -25,7 +25,7 @@ Type "blog feed add https://news.ycombinator.com/rss" Sleep 500ms Enter
 Sleep 3s
 
 Type "blog sync" Sleep 500ms Enter
-Sleep 8s
+Sleep 3s
 
 Type "blog" Sleep 500ms Enter
 Sleep 5s

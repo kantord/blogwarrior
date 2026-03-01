@@ -1,6 +1,6 @@
 # blogtato
 
-A simple RSS/Atom feed reader for the terminal.
+A CLI RSS/Atom feed reader inspired by Taskwarrior.
 
 ![demo](demo/demo.gif)
 
