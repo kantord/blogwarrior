@@ -28,7 +28,7 @@ impl synctato::TableRow for FeedItem {
     }
 
     const TABLE_NAME: &'static str = "posts";
-    const SHARD_CHARACTERS: usize = 1;
+    const SHARD_CHARACTERS: usize = 2;
     const EXPECTED_CAPACITY: usize = 100_000_000;
 }
 
