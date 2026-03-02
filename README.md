@@ -58,18 +58,21 @@ blog feed rm https://news.ycombinator.com/rss
 
 blogtato is built around the idea of subscription detox. You shouldn't need to
 create yet another account or pay for yet another service just to read some
-blogs. If you're comfortable with the command line, you almost certainly already
-have access to a git host - like GitHub, GitLab, a self-hosted Forgejo - where you
-can store a private repo for free.
+blogs. If you're comfortable with the command line, you almost certainly
+already have access to a git host - GitHub, GitLab, a self-hosted Forgejo -
+where you can store a private repo for free.
 
-Is git the ideal database for an RSS reader? No - but it is a pragmatic one for these design goals.
-Your feeds and posts live as simple JSONL files in a repo, and when two machines
-diverge, blogtato merges them automatically based on timestamps. You never have
-to resolve conflicts or touch git yourself - `blog sync` handles everything.
-There's no additional server to run, no account to create, no continuous network dependency.
+Is git the ideal database for an RSS reader? No - but it is a pragmatic one for
+these design goals. Your feeds and posts live as simple JSONL files in a repo,
+and when two machines diverge, blogtato merges them automatically based on
+timestamps. You never have to resolve conflicts or touch git yourself -
+`blog sync` handles everything. There's no additional server to run, no account
+to create, no continuous network dependency.
 
-Even though `git` was not design to store databases, to anyone who uses `blogtato` as intended (a personal RSS client)
-the repo stays small and syncs are fast. It is not scalable to large archives at not technically optimal - but the trad-off is worth it.
+Even though `git` was not design to store databases, to anyone who uses
+`blogtato` as intended (a personal RSS client) the repo stays small and syncs
+are fast. It is not scalable to large archives at not technically optimal - but
+the trad-off is worth it.
 
 ### How to enable `git` based sync
 
@@ -83,4 +86,5 @@ blog clone user/repo
 blog sync
 ```
 
-On another machine, run the same `blog clone` to pull down your feeds and posts.
+On another machine, run the same `blog clone` to pull down your feeds and
+posts.
