@@ -20,7 +20,7 @@ struct Args {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Positional arguments: grouping mode (d, f, df, fd) and/or @shorthand filter
+    /// Positional arguments: /d /f grouping and/or @shorthand filter
     args: Vec<String>,
 }
 
@@ -28,7 +28,7 @@ struct Args {
 enum Command {
     /// Display items from posts.jsonl
     Show {
-        /// Positional arguments: grouping mode (d, f, df, fd) and/or @shorthand filter
+        /// Positional arguments: /d /f grouping and/or @shorthand filter
         args: Vec<String>,
     },
     /// Open a post in the default browser
@@ -76,25 +76,22 @@ enum FeedCommand {
     Ls,
 }
 
-fn parse_show_args(args: &[String]) -> anyhow::Result<(String, Option<String>)> {
-    let mut group = String::new();
+fn parse_show_args(
+    args: &[String],
+) -> anyhow::Result<(Vec<commands::show::GroupKey>, Option<String>)> {
+    let mut keys = Vec::new();
     let mut filter = None;
     for arg in args {
         if arg.starts_with('@') {
             filter = Some(arg.clone());
+        } else if arg.starts_with('/') {
+            ensure!(keys.len() < 2, "Too many grouping arguments (max 2).");
+            keys.push(commands::show::parse_group_arg(arg)?);
         } else {
-            ensure!(
-                group.is_empty(),
-                "Multiple grouping arguments: '{}' and '{}'. Use a single argument like '{}{}'.",
-                group,
-                arg,
-                group,
-                arg
-            );
-            group = arg.clone();
+            anyhow::bail!("Unknown argument: {arg}");
         }
     }
-    Ok((group, filter))
+    Ok((keys, filter))
 }
 
 fn store_dir() -> anyhow::Result<PathBuf> {
@@ -136,8 +133,8 @@ fn run() -> anyhow::Result<()> {
 
     match args.command {
         Some(Command::Show { ref args }) => {
-            let (group, filter) = parse_show_args(args)?;
-            commands::show::cmd_show(&store, &group, filter.as_deref())?;
+            let (keys, filter) = parse_show_args(args)?;
+            commands::show::cmd_show(&store, &keys, filter.as_deref())?;
         }
         Some(Command::Open { ref shorthand }) => {
             commands::open::cmd_open(&store, shorthand)?;
@@ -178,8 +175,8 @@ fn run() -> anyhow::Result<()> {
         }
         Some(Command::Clone { .. }) => unreachable!(),
         None => {
-            let (group, filter) = parse_show_args(&args.args)?;
-            commands::show::cmd_show(&store, &group, filter.as_deref())?;
+            let (keys, filter) = parse_show_args(&args.args)?;
+            commands::show::cmd_show(&store, &keys, filter.as_deref())?;
         }
     }
     Ok(())
