@@ -7,6 +7,8 @@ mod progress;
 mod query;
 mod store;
 mod synctato;
+#[cfg(test)]
+mod test_helpers;
 
 use std::path::PathBuf;
 

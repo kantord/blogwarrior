@@ -223,30 +223,26 @@ pub(crate) fn parse_show_args(args: &[String]) -> anyhow::Result<ShowQuery> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|s| s.to_string()).collect()
+    }
 
     // --- parse_group tests ---
 
-    #[test]
-    fn test_parse_group_arg_date() {
-        let q = parse_show_args(&["/d".to_string()]).unwrap();
-        assert_eq!(q.keys, vec![GroupKey::Date]);
-    }
-
-    #[test]
-    fn test_parse_group_arg_week() {
-        let q = parse_show_args(&["/w".to_string()]).unwrap();
-        assert_eq!(q.keys, vec![GroupKey::Week]);
-    }
-
-    #[test]
-    fn test_parse_group_arg_feed() {
-        let q = parse_show_args(&["/f".to_string()]).unwrap();
-        assert_eq!(q.keys, vec![GroupKey::Feed]);
+    #[rstest]
+    #[case::date("/d", GroupKey::Date)]
+    #[case::week("/w", GroupKey::Week)]
+    #[case::feed("/f", GroupKey::Feed)]
+    fn test_parse_group_arg(#[case] input: &str, #[case] expected: GroupKey) {
+        let q = parse_show_args(&args(&[input])).unwrap();
+        assert_eq!(q.keys, vec![expected]);
     }
 
     #[test]
     fn test_parse_group_arg_invalid() {
-        let result = parse_show_args(&["/x".to_string()]);
+        let result = parse_show_args(&args(&["/x"]));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("Failed to parse argument"), "got: {msg}");
@@ -254,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_too_many_groups() {
-        let result = parse_show_args(&["/d".to_string(), "/f".to_string(), "/w".to_string()]);
+        let result = parse_show_args(&args(&["/d", "/f", "/w"]));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("Too many grouping arguments"), "got: {msg}");
@@ -262,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_unknown_argument() {
-        let result = parse_show_args(&["d".to_string()]);
+        let result = parse_show_args(&args(&["d"]));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("Failed to parse argument"), "got: {msg}");
@@ -270,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_feed_filter() {
-        let q = parse_show_args(&["@myblog".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["@myblog"])).unwrap();
         assert_eq!(q.filter, Some("@myblog".to_string()));
     }
 
@@ -296,41 +292,17 @@ mod tests {
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-04-01");
     }
 
-    #[test]
-    fn test_parse_date_value_one_week() {
-        let dt = parse_date("1w").unwrap();
-        let expected = Utc::now() - chrono::Duration::weeks(1);
-        let diff = (dt - expected).num_seconds().abs();
-        assert!(diff < 2, "1w should be ~1 week ago, diff={diff}s");
-    }
-
-    #[test]
-    fn test_parse_date_value_two_days() {
-        let dt = parse_date("2d").unwrap();
-        let expected = Utc::now() - chrono::Duration::days(2);
-        let diff = (dt - expected).num_seconds().abs();
-        assert!(diff < 2, "2d should be ~2 days ago, diff={diff}s");
-    }
-
-    #[test]
-    fn test_parse_date_value_three_months() {
-        let dt = parse_date("3months").unwrap();
-        let now = Utc::now();
-        let diff_days = (now - dt).num_days();
+    #[rstest]
+    #[case::one_week("1w", 6, 8)]
+    #[case::two_days("2d", 1, 3)]
+    #[case::three_months("3months", 85, 95)]
+    #[case::three_months_short("3m", 85, 95)]
+    fn test_parse_date_relative(#[case] input: &str, #[case] min_days: i64, #[case] max_days: i64) {
+        let dt = parse_date(input).unwrap();
+        let diff_days = (Utc::now() - dt).num_days();
         assert!(
-            (85..=95).contains(&diff_days),
-            "3months should be ~90 days ago, got {diff_days} days"
-        );
-    }
-
-    #[test]
-    fn test_parse_date_value_three_months_short() {
-        let dt = parse_date("3m").unwrap();
-        let now = Utc::now();
-        let diff_days = (now - dt).num_days();
-        assert!(
-            (85..=95).contains(&diff_days),
-            "3m should be ~90 days ago, got {diff_days} days"
+            (min_days..=max_days).contains(&diff_days),
+            "{input} should be ~{min_days}-{max_days} days ago, got {diff_days} days"
         );
     }
 
@@ -371,26 +343,21 @@ mod tests {
 
     #[test]
     fn test_since_arg() {
-        let q = parse_show_args(&["since:2024-01-15".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["since:2024-01-15"])).unwrap();
         let dt = q.date_filter.since.unwrap();
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-01-15");
     }
 
     #[test]
     fn test_until_arg() {
-        let q = parse_show_args(&["until:2024-06-01".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["until:2024-06-01"])).unwrap();
         let dt = q.date_filter.until.unwrap();
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-06-01");
     }
 
     #[test]
     fn test_combined_args() {
-        let q = parse_show_args(&[
-            "/d".to_string(),
-            "@blog".to_string(),
-            "since:2024-01-15".to_string(),
-        ])
-        .unwrap();
+        let q = parse_show_args(&args(&["/d", "@blog", "since:2024-01-15"])).unwrap();
         assert_eq!(q.keys, vec![GroupKey::Date]);
         assert_eq!(q.filter, Some("@blog".to_string()));
         assert!(q.date_filter.since.is_some());
@@ -400,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_range_both() {
-        let q = parse_show_args(&["2024-01-15..2024-02-01".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["2024-01-15..2024-02-01"])).unwrap();
         assert_eq!(
             q.date_filter.since.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-15"
@@ -413,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_range_open_end() {
-        let q = parse_show_args(&["2024-01-15..".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["2024-01-15.."])).unwrap();
         assert_eq!(
             q.date_filter.since.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-15"
@@ -423,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_range_open_start() {
-        let q = parse_show_args(&["..2024-02-01".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["..2024-02-01"])).unwrap();
         assert!(q.date_filter.since.is_none());
         assert_eq!(
             q.date_filter.until.unwrap().format("%Y-%m-%d").to_string(),
@@ -433,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_range_relative() {
-        let q = parse_show_args(&["3w..1w".to_string()]).unwrap();
+        let q = parse_show_args(&args(&["3w..1w"])).unwrap();
         assert!(q.date_filter.since.is_some());
         assert!(q.date_filter.until.is_some());
         assert!(q.date_filter.since.unwrap() < q.date_filter.until.unwrap());

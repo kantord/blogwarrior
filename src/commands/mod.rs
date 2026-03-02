@@ -155,14 +155,16 @@ pub(crate) fn resolve_shorthand(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    #[test]
-    fn test_hex_to_base9() {
-        assert_eq!(hex_to_base9("0"), "a");
-        assert_eq!(hex_to_base9("9"), "sa");
-        assert_eq!(hex_to_base9("ff"), "fsf");
-        assert_eq!(hex_to_base9("1"), "s");
-        assert_eq!(hex_to_base9("a"), "ss");
+    #[rstest]
+    #[case::zero("0", "a")]
+    #[case::nine("9", "sa")]
+    #[case::ff("ff", "fsf")]
+    #[case::one("1", "s")]
+    #[case::a("a", "ss")]
+    fn test_hex_to_base9(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(hex_to_base9(input), expected);
     }
 
     #[test]
@@ -199,12 +201,17 @@ mod tests {
         assert!(shorthands.is_empty());
     }
 
+    #[rstest]
+    #[case::zero(0, "a")]
+    #[case::one(1, "s")]
+    #[case::thirty_three(33, "m")]
+    #[case::thirty_four(34, "sa")]
+    fn test_index_to_shorthand(#[case] index: usize, #[case] expected: &str) {
+        assert_eq!(index_to_shorthand(index), expected);
+    }
+
     #[test]
-    fn test_index_to_shorthand() {
-        assert_eq!(index_to_shorthand(0), "a");
-        assert_eq!(index_to_shorthand(1), "s");
-        assert_eq!(index_to_shorthand(33), "m");
-        assert_eq!(index_to_shorthand(34), "sa");
+    fn test_index_to_shorthand_uses_valid_chars() {
         for i in 0..200 {
             let sh = index_to_shorthand(i);
             assert!(sh.chars().all(|c| POST_ALPHABET.contains(&c)));

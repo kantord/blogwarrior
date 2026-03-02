@@ -342,6 +342,8 @@ macro_rules! database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::utc_rfc3339;
+    use rstest::rstest;
     use serde::Deserialize;
     use tempfile::TempDir;
 
@@ -379,6 +381,12 @@ mod tests {
         const EXPECTED_CAPACITY: usize = 1000;
     }
 
+    fn new_test_table() -> (TempDir, Table<TestItem>) {
+        let dir = TempDir::new().unwrap();
+        let table = Table::<TestItem>::load(dir.path()).unwrap();
+        (dir, table)
+    }
+
     fn make_item(raw_id: &str, title: &str) -> TestItem {
         TestItem {
             raw_id: raw_id.to_string(),
@@ -388,8 +396,7 @@ mod tests {
 
     #[test]
     fn test_upsert_hashes_id() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         let item = make_item("raw-id", "Post");
         table.upsert(item.clone());
         assert_eq!(
@@ -404,8 +411,7 @@ mod tests {
 
     #[test]
     fn test_upsert_overwrites_existing() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("same-id", "Original"));
         table.upsert(make_item("same-id", "Updated"));
         let items = table.items();
@@ -415,9 +421,7 @@ mod tests {
 
     #[test]
     fn test_load_save_roundtrip() {
-        let dir = TempDir::new().unwrap();
-
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("id-1", "First"));
         table.upsert(make_item("id-2", "Second"));
         table.save().unwrap();
@@ -432,8 +436,7 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_file() {
-        let dir = TempDir::new().unwrap();
-        let table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, table) = new_test_table();
         assert_eq!(table.items().len(), 0);
     }
 
@@ -496,8 +499,7 @@ mod tests {
 
     #[test]
     fn test_save_sorts_items_by_id() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("zzz", "Last"));
         table.upsert(make_item("aaa", "First"));
         table.upsert(make_item("mmm", "Middle"));
@@ -511,8 +513,7 @@ mod tests {
 
     #[test]
     fn test_save_sort_order_is_stable_across_roundtrips() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("c", "C"));
         table.upsert(make_item("a", "A"));
         table.upsert(make_item("b", "B"));
@@ -529,8 +530,7 @@ mod tests {
 
     #[test]
     fn test_save_sort_order_preserved_after_upsert() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("b", "B"));
         table.upsert(make_item("a", "A"));
         table.save().unwrap();
@@ -547,8 +547,7 @@ mod tests {
 
     #[test]
     fn test_save_single_item_sorted() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("only", "Only"));
         table.save().unwrap();
 
@@ -558,8 +557,7 @@ mod tests {
 
     #[test]
     fn test_save_empty_table() {
-        let dir = TempDir::new().unwrap();
-        let table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, table) = new_test_table();
         table.save().unwrap();
 
         let lines = read_lines(&dir, "t");
@@ -568,8 +566,7 @@ mod tests {
 
     #[test]
     fn test_items_land_in_correct_shard_files() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
         table
             .items
@@ -617,8 +614,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_with_sharding_preserves_all_items() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("alpha", "Alpha"));
         table.upsert(make_item("beta", "Beta"));
         table.upsert(make_item("gamma", "Gamma"));
@@ -708,8 +704,7 @@ mod tests {
         // Two items with the same raw ID should produce the same hash,
         // so the second upsert overwrites the first. This is correct
         // table behavior — it's the caller's job to provide distinct IDs.
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("same", "First"));
         table.upsert(make_item("same", "Second"));
         let items = table.items();
@@ -726,16 +721,14 @@ mod tests {
 
     #[test]
     fn test_upsert_sets_updated_at_on_new_item() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("new", "New Item"));
         assert!(get_updated_at(&table).is_some());
     }
 
     #[test]
     fn test_upsert_preserves_updated_at_when_unchanged() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Same"));
         let ts1 = get_updated_at(&table);
 
@@ -747,8 +740,7 @@ mod tests {
 
     #[test]
     fn test_upsert_updates_updated_at_when_content_changes() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Original"));
         let ts1 = get_updated_at(&table);
 
@@ -760,8 +752,7 @@ mod tests {
 
     #[test]
     fn test_updated_at_survives_save_load_roundtrip() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Item"));
         let ts = get_updated_at(&table);
         table.save().unwrap();
@@ -772,8 +763,7 @@ mod tests {
 
     #[test]
     fn test_upsert_unchanged_after_roundtrip() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Item"));
         table.save().unwrap();
 
@@ -788,8 +778,7 @@ mod tests {
 
     #[test]
     fn test_delete_removes_from_items() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Item"));
         assert_eq!(table.items().len(), 1);
 
@@ -799,8 +788,7 @@ mod tests {
 
     #[test]
     fn test_delete_tombstone_survives_roundtrip() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Item"));
         table.delete("x");
         table.save().unwrap();
@@ -811,8 +799,7 @@ mod tests {
 
     #[test]
     fn test_upsert_resurrects_deleted_item() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Original"));
         table.delete("x");
         assert_eq!(table.items().len(), 0);
@@ -825,8 +812,7 @@ mod tests {
 
     #[test]
     fn test_upsert_resurrects_after_roundtrip() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Original"));
         table.delete("x");
         table.save().unwrap();
@@ -842,8 +828,7 @@ mod tests {
 
     #[test]
     fn test_delete_nonexistent_key_returns_none() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("a", "Keep"));
         assert!(table.delete("never-added").is_none());
         assert_eq!(table.items().len(), 1);
@@ -851,8 +836,7 @@ mod tests {
 
     #[test]
     fn test_delete_mixed_with_live() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("a", "Keep"));
         table.upsert(make_item("b", "Delete"));
         table.upsert(make_item("c", "Also Keep"));
@@ -866,38 +850,27 @@ mod tests {
         assert!(!titles.contains(&"Delete"));
     }
 
-    #[test]
-    fn test_load_truncated_json_returns_error() {
+    #[rstest]
+    #[case::truncated_json("{\"id\":\"abc\",\"title\":\"tr\n", Some("items_aa.jsonl"))]
+    #[case::completely_invalid("not json at all\n", None)]
+    #[case::mixed_valid_and_invalid(
+        "{\"id\":\"aa1111\",\"title\":\"Valid\"}\ncorrupted line\n",
+        None
+    )]
+    fn test_load_invalid_content(#[case] content: &str, #[case] error_contains: Option<&str>) {
         let dir = TempDir::new().unwrap();
         let table_dir = dir.path().join("t");
         fs::create_dir_all(&table_dir).unwrap();
-
-        fs::write(
-            table_dir.join("items_aa.jsonl"),
-            "{\"id\":\"abc\",\"title\":\"tr\n",
-        )
-        .unwrap();
-
+        fs::write(table_dir.join("items_aa.jsonl"), content).unwrap();
         let result = Table::<TestItem>::load(dir.path());
         assert!(result.is_err());
-        let err_msg = format!("{:#}", result.err().unwrap());
-        assert!(
-            err_msg.contains("items_aa.jsonl"),
-            "error should mention file path, got: {}",
-            err_msg
-        );
-    }
-
-    #[test]
-    fn test_load_completely_invalid_content_returns_error() {
-        let dir = TempDir::new().unwrap();
-        let table_dir = dir.path().join("t");
-        fs::create_dir_all(&table_dir).unwrap();
-
-        fs::write(table_dir.join("items_aa.jsonl"), "not json at all\n").unwrap();
-
-        let result = Table::<TestItem>::load(dir.path());
-        assert!(result.is_err());
+        if let Some(substr) = error_contains {
+            let err_msg = format!("{:#}", result.err().unwrap());
+            assert!(
+                err_msg.contains(substr),
+                "error should contain '{substr}', got: {err_msg}"
+            );
+        }
     }
 
     #[test]
@@ -914,22 +887,6 @@ mod tests {
 
         let table = Table::<TestItem>::load(dir.path()).unwrap();
         assert_eq!(table.items().len(), 2);
-    }
-
-    #[test]
-    fn test_load_mixed_valid_and_invalid_lines_returns_error() {
-        let dir = TempDir::new().unwrap();
-        let table_dir = dir.path().join("t");
-        fs::create_dir_all(&table_dir).unwrap();
-
-        let content = format!(
-            "{}\n{}\n",
-            r#"{"id":"aa1111","title":"Valid"}"#, "corrupted line",
-        );
-        fs::write(table_dir.join("items_aa.jsonl"), content).unwrap();
-
-        let result = Table::<TestItem>::load(dir.path());
-        assert!(result.is_err());
     }
 
     #[test]
@@ -1070,8 +1027,7 @@ mod tests {
 
     #[test]
     fn test_merge_remote_only_on_remote() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         let ts = Utc::now();
         let mut remote = HashMap::new();
         remote.insert("aa".to_string(), make_live_row("aa", "Remote", ts));
@@ -1082,8 +1038,7 @@ mod tests {
 
     #[test]
     fn test_merge_remote_only_on_local() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (_dir, mut table) = new_test_table();
         table.upsert(make_item("x", "Local"));
         let remote = HashMap::new();
         table.merge_remote(remote);
@@ -1091,121 +1046,75 @@ mod tests {
         assert_eq!(table.items()[0].title, "Local");
     }
 
-    #[test]
-    fn test_merge_remote_local_newer() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-
+    #[rstest]
+    #[case::local_newer(
+        Some("Local"),
+        "2024-06-01T00:00:00Z",
+        Some("Remote"),
+        "2024-01-01T00:00:00Z",
+        Some("Local")
+    )]
+    #[case::remote_newer(
+        Some("Local"),
+        "2024-01-01T00:00:00Z",
+        Some("Remote"),
+        "2024-06-01T00:00:00Z",
+        Some("Remote")
+    )]
+    #[case::tombstone_wins(
+        Some("Local"),
+        "2024-01-01T00:00:00Z",
+        None,
+        "2024-06-01T00:00:00Z",
+        None
+    )]
+    #[case::live_wins(
+        None,
+        "2024-01-01T00:00:00Z",
+        Some("Remote"),
+        "2024-06-01T00:00:00Z",
+        Some("Remote")
+    )]
+    #[case::same_ts_local_wins(
+        Some("Local"),
+        "2024-01-01T00:00:00Z",
+        Some("Remote"),
+        "2024-01-01T00:00:00Z",
+        Some("Local")
+    )]
+    fn test_merge_remote_lww(
+        #[case] local_title: Option<&str>,
+        #[case] local_ts: &str,
+        #[case] remote_title: Option<&str>,
+        #[case] remote_ts: &str,
+        #[case] expected_title: Option<&str>,
+    ) {
+        let (_dir, mut table) = new_test_table();
         let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
-        table
-            .items
-            .insert(id.clone(), make_live_row(&id, "Local", new_ts));
-
+        let local_row = match local_title {
+            Some(t) => make_live_row(&id, t, utc_rfc3339(local_ts)),
+            None => make_tombstone_row(&id, utc_rfc3339(local_ts)),
+        };
+        table.items.insert(id.clone(), local_row);
+        let remote_row = match remote_title {
+            Some(t) => make_live_row(&id, t, utc_rfc3339(remote_ts)),
+            None => make_tombstone_row(&id, utc_rfc3339(remote_ts)),
+        };
         let mut remote = HashMap::new();
-        remote.insert(id.clone(), make_live_row(&id, "Remote", old_ts));
+        remote.insert(id.clone(), remote_row);
         table.merge_remote(remote);
-        assert_eq!(table.items().len(), 1);
-        assert_eq!(table.items()[0].title, "Local");
-    }
-
-    #[test]
-    fn test_merge_remote_remote_newer() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-
-        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
-        table
-            .items
-            .insert(id.clone(), make_live_row(&id, "Local", old_ts));
-
-        let mut remote = HashMap::new();
-        remote.insert(id.clone(), make_live_row(&id, "Remote", new_ts));
-        table.merge_remote(remote);
-        assert_eq!(table.items().len(), 1);
-        assert_eq!(table.items()[0].title, "Remote");
-    }
-
-    #[test]
-    fn test_merge_remote_tombstone_wins_over_older_live() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-
-        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
-        table
-            .items
-            .insert(id.clone(), make_live_row(&id, "Local", old_ts));
-
-        let mut remote = HashMap::new();
-        remote.insert(id.clone(), make_tombstone_row(&id, new_ts));
-        table.merge_remote(remote);
-        assert!(table.items().is_empty());
-    }
-
-    #[test]
-    fn test_merge_remote_live_wins_over_older_tombstone() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        let old_ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-        let new_ts = DateTime::parse_from_rfc3339("2024-06-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-
-        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
-        table
-            .items
-            .insert(id.clone(), make_tombstone_row(&id, old_ts));
-
-        let mut remote = HashMap::new();
-        remote.insert(id.clone(), make_live_row(&id, "Remote", new_ts));
-        table.merge_remote(remote);
-        assert_eq!(table.items().len(), 1);
-        assert_eq!(table.items()[0].title, "Remote");
-    }
-
-    #[test]
-    fn test_merge_remote_same_timestamp_local_wins() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        let ts = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
-            .unwrap()
-            .to_utc();
-
-        let id = hash_id("x", id_length_for_capacity(TestItem::EXPECTED_CAPACITY));
-        table
-            .items
-            .insert(id.clone(), make_live_row(&id, "Local", ts));
-
-        let mut remote = HashMap::new();
-        remote.insert(id.clone(), make_live_row(&id, "Remote", ts));
-        table.merge_remote(remote);
-        assert_eq!(table.items().len(), 1);
-        assert_eq!(table.items()[0].title, "Local");
+        match expected_title {
+            Some(title) => {
+                assert_eq!(table.items().len(), 1);
+                assert_eq!(table.items()[0].title, title);
+            }
+            None => assert!(table.items().is_empty()),
+        }
     }
 
     #[test]
     fn test_merge_remote_survives_roundtrip() {
-        let dir = TempDir::new().unwrap();
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+        let (dir, mut table) = new_test_table();
         let ts = Utc::now();
 
         let mut remote = HashMap::new();
@@ -1218,27 +1127,19 @@ mod tests {
         assert_eq!(loaded.items()[0].title, "Remote");
     }
 
-    #[test]
-    fn test_parse_rows_two_valid_lines() {
-        let content = "{\"id\":\"aa\",\"title\":\"First\"}\n{\"id\":\"bb\",\"title\":\"Second\"}\n";
+    #[rstest]
+    #[case::two_valid(
+        "{\"id\":\"aa\",\"title\":\"First\"}\n{\"id\":\"bb\",\"title\":\"Second\"}\n",
+        2
+    )]
+    #[case::empty("", 0)]
+    #[case::blank_lines_skipped(
+        "{\"id\":\"aa\",\"title\":\"First\"}\n\n\n{\"id\":\"bb\",\"title\":\"Second\"}\n\n",
+        2
+    )]
+    fn test_parse_rows_valid(#[case] content: &str, #[case] expected_len: usize) {
         let rows: HashMap<String, Row<TestItem>> = parse_rows(content).unwrap();
-        assert_eq!(rows.len(), 2);
-        assert!(rows.contains_key("aa"));
-        assert!(rows.contains_key("bb"));
-    }
-
-    #[test]
-    fn test_parse_rows_empty_string() {
-        let rows: HashMap<String, Row<TestItem>> = parse_rows("").unwrap();
-        assert!(rows.is_empty());
-    }
-
-    #[test]
-    fn test_parse_rows_blank_lines_skipped() {
-        let content =
-            "{\"id\":\"aa\",\"title\":\"First\"}\n\n\n{\"id\":\"bb\",\"title\":\"Second\"}\n\n";
-        let rows: HashMap<String, Row<TestItem>> = parse_rows(content).unwrap();
-        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.len(), expected_len);
     }
 
     #[test]

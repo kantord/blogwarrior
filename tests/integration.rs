@@ -6,8 +6,23 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use assert_cmd::Command;
+use assert_cmd::assert::Assert;
 use httpmock::prelude::*;
 use tempfile::TempDir;
+
+trait AssertExt {
+    fn stderr_str(&self) -> String;
+    fn stdout_str(&self) -> String;
+}
+
+impl AssertExt for Assert {
+    fn stderr_str(&self) -> String {
+        String::from_utf8(self.get_output().stderr.clone()).unwrap()
+    }
+    fn stdout_str(&self) -> String {
+        String::from_utf8(self.get_output().stdout.clone()).unwrap()
+    }
+}
 
 fn read_table(dir: &Path) -> Vec<serde_json::Value> {
     let mut items = Vec::new();
@@ -260,7 +275,7 @@ fn test_show_displays_posts() {
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(stdout.contains("Hello World"));
     assert!(stdout.contains("Second Post"));
@@ -277,7 +292,7 @@ fn test_show_rejects_too_many_grouping_args() {
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show", "/d", "/f", "/d"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("Too many grouping arguments"),
         "expected error about too many grouping args, got: {}",
@@ -294,7 +309,7 @@ fn test_show_rejects_unknown_argument() {
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show", "d"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("Failed to parse argument"),
         "expected error about failed to parse argument, got: {}",
@@ -313,7 +328,7 @@ fn test_show_with_grouping() {
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["show", "/d"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(stdout.contains("=== 2024-01-15 ==="));
     assert!(stdout.contains("=== 2024-01-14 ==="));
@@ -331,7 +346,7 @@ fn test_show_default_no_subcommand() {
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&[]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(stdout.contains("Default Show"));
     assert!(stdout.contains("Alice"));
@@ -352,7 +367,7 @@ fn test_sync_then_show() {
     ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(stdout.contains("Roundtrip Post"));
     assert!(stdout.contains("Roundtrip Blog"));
@@ -510,7 +525,7 @@ fn test_sync_continues_after_feed_failure() {
     ctx.write_feeds(&[&broken_url, &good_url]);
 
     let output = ctx.run(&["sync"]).success();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
 
     // Error message should mention the HTTP status, not a confusing XML parse error
     assert!(
@@ -544,7 +559,7 @@ fn test_sync_reports_http_404_clearly() {
     ctx.write_feeds(&[&gone_url, &good_url]);
 
     let output = ctx.run(&["sync"]).success();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
 
     assert!(
         stderr.contains("404"),
@@ -571,7 +586,7 @@ fn test_remove_feed() {
     ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
     assert!(stdout.contains("Blog to Remove"));
 
     ctx.run(&["feed", "rm", &url]).success();
@@ -581,7 +596,7 @@ fn test_remove_feed() {
 
     // Feed and its posts should be gone — show should report no posts
     let output = ctx.run(&["show"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(stderr.contains("No matching posts"));
 }
 
@@ -628,7 +643,7 @@ fn test_feed_ls() {
     insert_feed(ctx.dir.path(), "https://example.com/feed2.xml");
 
     let output = ctx.run(&["feed", "ls"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(stdout.contains("https://example.com/feed1.xml"));
     assert!(stdout.contains("https://example.com/feed2.xml"));
@@ -665,7 +680,7 @@ fn test_feed_ls_no_feeds_prints_error() {
     let ctx = TestContext::new();
 
     let output = ctx.run(&["feed", "ls"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("No matching feeds"),
         "expected 'No matching feeds' on stderr, got: {}",
@@ -700,7 +715,7 @@ fn test_feed_remove_by_shorthand() {
 
     // Run feed ls and parse the shorthand for the remove_url
     let output = ctx.run(&["feed", "ls"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     let shorthand = stdout
         .lines()
@@ -728,7 +743,7 @@ fn test_show_no_posts_prints_error() {
     let ctx = TestContext::new();
 
     let output = ctx.run(&["show"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("No matching posts"),
         "expected 'No matching posts' on stderr, got: {}",
@@ -762,7 +777,7 @@ fn test_show_filter_by_shorthand() {
 
     // Get shorthand for alpha feed
     let output = ctx.run(&["feed", "ls"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     let alpha_shorthand = stdout
         .lines()
@@ -775,7 +790,7 @@ fn test_show_filter_by_shorthand() {
 
     // Filter with `show @shorthand` — should only show alpha posts
     let output = ctx.run(&["show", &alpha_shorthand]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(
         stdout.contains("Alpha Post 1"),
@@ -792,7 +807,7 @@ fn test_show_filter_by_shorthand() {
 
     // Also test with no subcommand: `blog @shorthand`
     let output = ctx.run(&[&alpha_shorthand]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(
         stdout.contains("Alpha Post 1"),
@@ -815,7 +830,7 @@ fn test_show_filter_unknown_shorthand() {
     insert_feed(ctx.dir.path(), "https://example.com/feed.xml");
 
     let output = ctx.run(&["show", "@zzz"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("Unknown feed shorthand"),
         "expected unknown shorthand error, got: {}",
@@ -842,7 +857,7 @@ fn test_remove_then_readd_feed() {
     ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
     assert!(stdout.contains("Returning Blog"));
     assert!(stdout.contains("Old Post"));
 }
@@ -869,7 +884,7 @@ fn test_show_displays_post_shorthands() {
     ctx.run(&["sync"]).success();
 
     let output = ctx.run(&["show"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     let post_alphabet: &[char] = &[
         'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
@@ -903,7 +918,7 @@ fn test_open_unknown_shorthand() {
     let ctx = TestContext::new();
 
     let output = ctx.run(&["open", "zzzzz"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("Unknown shorthand"),
         "expected 'Unknown shorthand' on stderr, got: {}",
@@ -939,7 +954,7 @@ fn test_open_valid_shorthand() {
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         !stderr.contains("Unknown shorthand"),
         "should resolve shorthand 'a', got: {}",
@@ -961,7 +976,7 @@ fn test_open_post_without_link() {
     std::fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
     let output = ctx.run(&["open", "a"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("Post has no link"),
         "expected 'Post has no link' on stderr, got: {}",
@@ -978,7 +993,7 @@ fn test_remove_nonexistent_feed() {
     let output = ctx
         .run(&["feed", "rm", "https://example.com/nonexistent.xml"])
         .failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("Feed not found"),
         "expected 'Feed not found' on stderr, got: {}",
@@ -1095,6 +1110,11 @@ fn git(dir: &Path, args: &[&str]) {
     );
 }
 
+fn git_config_test_user(dir: &Path) {
+    git(dir, &["config", "user.name", "Test"]);
+    git(dir, &["config", "user.email", "test@test.com"]);
+}
+
 /// Write a feed URL directly to the store, bypassing the CLI.
 /// Also commits to git if the store directory is a git repository.
 fn insert_feed(store_dir: &Path, url: &str) {
@@ -1133,8 +1153,7 @@ fn insert_feed(store_dir: &Path, url: &str) {
 /// Initialize a git repo, configure user, add remote, and make initial commit.
 fn init_git_store(store_dir: &Path, origin_dir: &Path) {
     git(store_dir, &["init"]);
-    git(store_dir, &["config", "user.name", "Test"]);
-    git(store_dir, &["config", "user.email", "test@test.com"]);
+    git_config_test_user(store_dir);
     git(
         store_dir,
         &[
@@ -1167,8 +1186,7 @@ fn clone_store(origin_dir: &Path) -> (TempDir, std::path::PathBuf) {
         "clone failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    git(dir.path(), &["config", "user.name", "Test"]);
-    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    git_config_test_user(dir.path());
     let p = dir.path().to_path_buf();
     (dir, p)
 }
@@ -1186,11 +1204,10 @@ fn run_blog(store_dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
 fn test_sync_no_remote_warns() {
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init"]);
-    git(dir.path(), &["config", "user.name", "Test"]);
-    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    git_config_test_user(dir.path());
 
     let output = run_blog(dir.path(), &["sync"]).success();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("no remote"),
         "expected 'no remote' warning, got: {}",
@@ -1211,7 +1228,7 @@ fn test_sync_dirty_repo_fails() {
     fs::write(store_dir.path().join("extra/items_00.jsonl"), "dirty").unwrap();
 
     let output = run_blog(store_dir.path(), &["sync"]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("uncommitted"),
         "expected 'uncommitted' error, got: {}",
@@ -1227,8 +1244,7 @@ fn test_sync_first_push() {
     let store_dir = TempDir::new().unwrap();
     // Init repo but don't push yet (no remote branch)
     git(store_dir.path(), &["init"]);
-    git(store_dir.path(), &["config", "user.name", "Test"]);
-    git(store_dir.path(), &["config", "user.email", "test@test.com"]);
+    git_config_test_user(store_dir.path());
     git(
         store_dir.path(),
         &[
@@ -1434,8 +1450,7 @@ fn test_transact_auto_commits_with_existing_repo() {
     let url = server.url("/feed.xml");
 
     git(dir.path(), &["init"]);
-    git(dir.path(), &["config", "user.name", "Test"]);
-    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    git_config_test_user(dir.path());
     // Initial commit so HEAD exists
     fs::write(dir.path().join(".keep"), "").unwrap();
     git(dir.path(), &["add", "."]);
@@ -1498,8 +1513,7 @@ fn test_transact_dirty_repo_fails() {
     let url = server.url("/feed.xml");
 
     git(dir.path(), &["init"]);
-    git(dir.path(), &["config", "user.name", "Test"]);
-    git(dir.path(), &["config", "user.email", "test@test.com"]);
+    git_config_test_user(dir.path());
     fs::write(dir.path().join(".keep"), "").unwrap();
     git(dir.path(), &["add", "."]);
     git(dir.path(), &["commit", "-m", "init"]);
@@ -1509,7 +1523,7 @@ fn test_transact_dirty_repo_fails() {
     fs::write(dir.path().join("extra/items_00.jsonl"), "dirty").unwrap();
 
     let output = run_blog(dir.path(), &["feed", "add", &url]).failure();
-    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    let stderr = output.stderr_str();
     assert!(
         stderr.contains("uncommitted"),
         "expected 'uncommitted' error, got: {}",
@@ -1831,53 +1845,11 @@ fn test_clone_into_empty_dir() {
         .arg(work_dir.path())
         .output()
         .unwrap();
-    std::process::Command::new("git")
-        .args([
-            "-C",
-            &work_dir.path().to_string_lossy(),
-            "config",
-            "user.name",
-            "Test",
-        ])
-        .output()
-        .unwrap();
-    std::process::Command::new("git")
-        .args([
-            "-C",
-            &work_dir.path().to_string_lossy(),
-            "config",
-            "user.email",
-            "t@t.com",
-        ])
-        .output()
-        .unwrap();
+    git_config_test_user(work_dir.path());
 
     insert_feed(work_dir.path(), "https://example.com/feed.xml");
 
-    std::process::Command::new("git")
-        .args(["-C", &work_dir.path().to_string_lossy(), "add", "."])
-        .output()
-        .unwrap();
-    std::process::Command::new("git")
-        .args([
-            "-C",
-            &work_dir.path().to_string_lossy(),
-            "commit",
-            "-m",
-            "add feed",
-        ])
-        .output()
-        .unwrap();
-    std::process::Command::new("git")
-        .args([
-            "-C",
-            &work_dir.path().to_string_lossy(),
-            "push",
-            "origin",
-            "HEAD",
-        ])
-        .output()
-        .unwrap();
+    git(work_dir.path(), &["push", "origin", "HEAD"]);
 
     // Clone into a fresh store dir using the blog clone command
     let store_dir = TempDir::new().unwrap();
@@ -1938,7 +1910,7 @@ fn test_show_since_filters_posts() {
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
     let output = ctx.run(&["show", "since:2024-01-15"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(
         !stdout.contains("Old Post"),
@@ -1962,7 +1934,7 @@ fn test_show_until_filters_posts() {
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
     let output = ctx.run(&["show", "until:2024-01-14"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(
         stdout.contains("Old Post"),
@@ -1989,7 +1961,7 @@ fn test_show_since_and_until_combined() {
     let output = ctx
         .run(&["show", "since:2024-01-14", "until:2024-01-16"])
         .success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(
         !stdout.contains("Old Post"),
@@ -2017,7 +1989,7 @@ fn test_show_since_with_grouping() {
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
     let output = ctx.run(&["show", "/d", "since:2024-01-15"]).success();
-    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stdout = output.stdout_str();
 
     assert!(
         stdout.contains("=== 2024-01-15 ==="),

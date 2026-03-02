@@ -70,34 +70,15 @@ pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    #[test]
-    fn test_expand_shorthand() {
-        assert_eq!(
-            expand_url("foolorem/newsbar"),
-            "git@github.com:foolorem/newsbar.git"
-        );
-    }
-
-    #[test]
-    fn test_expand_preserves_full_urls() {
-        assert_eq!(
-            expand_url("https://github.com/user/repo.git"),
-            "https://github.com/user/repo.git"
-        );
-        assert_eq!(
-            expand_url("git@github.com:user/repo.git"),
-            "git@github.com:user/repo.git"
-        );
-    }
-
-    #[test]
-    fn test_expand_preserves_relative_paths() {
-        assert_eq!(expand_url("./local/repo"), "./local/repo");
-    }
-
-    #[test]
-    fn test_expand_preserves_bare_name() {
-        assert_eq!(expand_url("something"), "something");
+    #[rstest]
+    #[case::shorthand("foolorem/newsbar", "git@github.com:foolorem/newsbar.git")]
+    #[case::https_url("https://github.com/user/repo.git", "https://github.com/user/repo.git")]
+    #[case::ssh_url("git@github.com:user/repo.git", "git@github.com:user/repo.git")]
+    #[case::relative_path("./local/repo", "./local/repo")]
+    #[case::bare_name("something", "something")]
+    fn test_expand_url(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(expand_url(input), expected);
     }
 }

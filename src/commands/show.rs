@@ -318,86 +318,38 @@ pub(crate) fn cmd_show(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use crate::test_helpers::{feed_item, feed_item_with_raw_id, utc_date};
+    use chrono::{DateTime, Utc};
+    use rstest::rstest;
 
     fn no_labels() -> HashMap<String, String> {
         HashMap::new()
     }
 
-    fn item(title: &str, date: &str, feed: &str) -> FeedItem {
-        FeedItem {
-            title: title.to_string(),
-            date: Some(
-                NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                    .unwrap()
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            feed: feed.to_string(),
-            link: String::new(),
-            raw_id: String::new(),
-        }
-    }
-
-    #[test]
-    fn test_format_item_no_grouping() {
-        let i = item("Post", "2024-01-15", "Alice");
+    #[rstest]
+    #[case::no_grouping(&[], "2024-01-15  abc Post (Alice)")]
+    #[case::grouped_by_date(&[GroupKey::Date], "abc Post (Alice)")]
+    #[case::grouped_by_feed(&[GroupKey::Feed], "2024-01-15  abc Post")]
+    #[case::grouped_by_both(&[GroupKey::Date, GroupKey::Feed], "abc Post")]
+    fn test_format_item_grouping(#[case] keys: &[GroupKey], #[case] expected: &str) {
+        let i = feed_item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, &[], "abc", &no_labels(), false, 3, None),
-            "2024-01-15  abc Post (Alice)"
-        );
-    }
-
-    #[test]
-    fn test_format_item_grouped_by_date() {
-        let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(
-            format_item(&i, &[GroupKey::Date], "abc", &no_labels(), false, 3, None),
-            "abc Post (Alice)"
-        );
-    }
-
-    #[test]
-    fn test_format_item_grouped_by_feed() {
-        let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(
-            format_item(&i, &[GroupKey::Feed], "abc", &no_labels(), false, 3, None),
-            "2024-01-15  abc Post"
-        );
-    }
-
-    #[test]
-    fn test_format_item_grouped_by_both() {
-        let i = item("Post", "2024-01-15", "Alice");
-        assert_eq!(
-            format_item(
-                &i,
-                &[GroupKey::Date, GroupKey::Feed],
-                "abc",
-                &no_labels(),
-                false,
-                3,
-                None
-            ),
-            "abc Post"
+            format_item(&i, keys, "abc", &no_labels(), false, 3, None),
+            expected
         );
     }
 
     #[test]
     fn test_format_date_with_date() {
-        let i = item("Post", "2024-01-15", "Alice");
+        let i = feed_item("Post", "2024-01-15", "Alice");
         assert_eq!(format_date(&i), "2024-01-15");
     }
 
     #[test]
     fn test_format_date_without_date() {
         let i = FeedItem {
-            title: "Post".to_string(),
             date: None,
-            feed: "Alice".to_string(),
-            link: String::new(),
-            raw_id: String::new(),
+            ..feed_item("Post", "2024-01-01", "Alice")
         };
         assert_eq!(format_date(&i), "unknown");
     }
@@ -405,8 +357,8 @@ mod tests {
     #[test]
     fn test_render_flat() {
         let items = [
-            item("Post A", "2024-01-02", "Alice"),
-            item("Post B", "2024-01-01", "Bob"),
+            feed_item("Post A", "2024-01-02", "Alice"),
+            feed_item("Post B", "2024-01-01", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -420,9 +372,9 @@ mod tests {
     #[test]
     fn test_render_grouped_by_date() {
         let items = [
-            item("Post A", "2024-01-02", "Alice"),
-            item("Post B", "2024-01-02", "Bob"),
-            item("Post C", "2024-01-01", "Alice"),
+            feed_item("Post A", "2024-01-02", "Alice"),
+            feed_item("Post B", "2024-01-02", "Bob"),
+            feed_item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -455,8 +407,8 @@ mod tests {
     #[test]
     fn test_render_grouped_by_feed() {
         let items = [
-            item("Post A", "2024-01-02", "Bob"),
-            item("Post B", "2024-01-01", "Alice"),
+            feed_item("Post A", "2024-01-02", "Bob"),
+            feed_item("Post B", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -488,9 +440,9 @@ mod tests {
     #[test]
     fn test_render_grouped_by_date_then_feed() {
         let items = [
-            item("Post A", "2024-01-02", "Bob"),
-            item("Post B", "2024-01-02", "Alice"),
-            item("Post C", "2024-01-01", "Alice"),
+            feed_item("Post A", "2024-01-02", "Bob"),
+            feed_item("Post B", "2024-01-02", "Alice"),
+            feed_item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -529,9 +481,9 @@ mod tests {
     #[test]
     fn test_render_grouped_by_feed_then_date() {
         let items = [
-            item("Post A", "2024-01-02", "Bob"),
-            item("Post B", "2024-01-02", "Alice"),
-            item("Post C", "2024-01-01", "Alice"),
+            feed_item("Post A", "2024-01-02", "Bob"),
+            feed_item("Post B", "2024-01-02", "Alice"),
+            feed_item("Post C", "2024-01-01", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -587,9 +539,9 @@ mod tests {
     #[test]
     fn test_date_ordering_is_descending() {
         let items = [
-            item("Old", "2024-01-01", "Alice"),
-            item("New", "2024-01-03", "Alice"),
-            item("Mid", "2024-01-02", "Alice"),
+            feed_item("Old", "2024-01-01", "Alice"),
+            feed_item("New", "2024-01-03", "Alice"),
+            feed_item("Mid", "2024-01-02", "Alice"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -615,9 +567,9 @@ mod tests {
     #[test]
     fn test_feed_ordering_is_ascending() {
         let items = [
-            item("Post", "2024-01-01", "Charlie"),
-            item("Post", "2024-01-02", "Alice"),
-            item("Post", "2024-01-03", "Bob"),
+            feed_item("Post", "2024-01-01", "Charlie"),
+            feed_item("Post", "2024-01-02", "Alice"),
+            feed_item("Post", "2024-01-03", "Bob"),
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
@@ -638,43 +590,17 @@ mod tests {
 
     #[test]
     fn test_render_grouped_with_shorthands() {
-        let items = [FeedItem {
-            title: "Post A".to_string(),
-            date: Some(
-                NaiveDate::parse_from_str("2024-01-02", "%Y-%m-%d")
-                    .unwrap()
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            feed: "Alice".to_string(),
-            link: String::new(),
-            raw_id: "id-a".to_string(),
-        }];
+        let items = [feed_item_with_raw_id(
+            "Post A",
+            "2024-01-02",
+            "Alice",
+            "id-a",
+        )];
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id-a".to_string(), "sDf".to_string());
         let output = render_grouped(&refs, &[], &shorthands, &no_labels(), false, None);
         assert_eq!(output, "2024-01-02  sDf Post A (Alice)\n");
-    }
-
-    /// Approximate display width: CJK ideographs count as 2 columns, everything else as 1.
-    fn display_width(s: &str) -> usize {
-        s.chars()
-            .map(|c| {
-                if ('\u{4E00}'..='\u{9FFF}').contains(&c)
-                    || ('\u{3400}'..='\u{4DBF}').contains(&c)
-                    || ('\u{F900}'..='\u{FAFF}').contains(&c)
-                    || ('\u{3040}'..='\u{309F}').contains(&c)
-                    || ('\u{30A0}'..='\u{30FF}').contains(&c)
-                    || ('\u{FF01}'..='\u{FF60}').contains(&c)
-                {
-                    2
-                } else {
-                    1
-                }
-            })
-            .sum()
     }
 
     #[test]
@@ -683,19 +609,12 @@ mod tests {
         // Current code uses chars().count() which sees 10 and thinks it fits,
         // but the actual display width is 20, blowing past max_width.
         let cjk_title = "你好世界测试标题很长";
-        let items = [FeedItem {
-            title: cjk_title.to_string(),
-            date: Some(
-                NaiveDate::parse_from_str("2024-01-15", "%Y-%m-%d")
-                    .unwrap()
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            feed: "feed1".to_string(),
-            link: String::new(),
-            raw_id: "id1".to_string(),
-        }];
+        let items = [feed_item_with_raw_id(
+            cjk_title,
+            "2024-01-15",
+            "feed1",
+            "id1",
+        )];
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id1".to_string(), "a".to_string());
@@ -713,7 +632,7 @@ mod tests {
             if line.trim().is_empty() {
                 continue;
             }
-            let width = display_width(line);
+            let width = line.width();
             assert!(
                 width <= max_width,
                 "line display width ({width}) exceeds max_width ({max_width}): {line}"
@@ -725,19 +644,12 @@ mod tests {
     fn test_long_lines_are_truncated_to_max_width() {
         let long_title =
             "An extremely long post title that should definitely be truncated to fit the width";
-        let items = [FeedItem {
-            title: long_title.to_string(),
-            date: Some(
-                NaiveDate::parse_from_str("2024-01-15", "%Y-%m-%d")
-                    .unwrap()
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            feed: "feed1".to_string(),
-            link: String::new(),
-            raw_id: "id1".to_string(),
-        }];
+        let items = [feed_item_with_raw_id(
+            long_title,
+            "2024-01-15",
+            "feed1",
+            "id1",
+        )];
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id1".to_string(), "a".to_string());
@@ -754,7 +666,7 @@ mod tests {
             if line.trim().is_empty() {
                 continue;
             }
-            let width = line.chars().count();
+            let width = line.width();
             assert!(
                 width <= max_width,
                 "line exceeds {max_width} columns ({width} chars): {line}",
@@ -797,155 +709,64 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn test_since_filters_old_posts() {
+    #[rstest]
+    #[case::since_filters_old(Some(utc_date(2024, 1, 15)), None, &["Mid Post", "New Post"], &["Old Post"])]
+    #[case::until_filters_new(None, Some(utc_date(2024, 1, 15)), &["Old Post", "Mid Post"], &["New Post"])]
+    #[case::since_and_until(Some(utc_date(2024, 1, 10)), Some(utc_date(2024, 1, 20)), &["Mid Post"], &["Old Post", "New Post"])]
+    fn test_date_filter(
+        #[case] since: Option<DateTime<Utc>>,
+        #[case] until: Option<DateTime<Utc>>,
+        #[case] present: &[&str],
+        #[case] absent: &[&str],
+    ) {
         let items = [
-            item("Old Post", "2024-01-01", "Alice"),
-            item("Mid Post", "2024-01-15", "Alice"),
-            item("New Post", "2024-02-01", "Alice"),
+            feed_item("Old Post", "2024-01-01", "Alice"),
+            feed_item("Mid Post", "2024-01-15", "Alice"),
+            feed_item("New Post", "2024-02-01", "Alice"),
         ];
-        let since = NaiveDate::from_ymd_opt(2024, 1, 15)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
-        let df = DateFilter {
-            since: Some(since),
-            until: None,
-        };
+        let df = DateFilter { since, until };
         let lines = filter_items(&items, &df);
-        assert!(
-            !lines.iter().any(|l| l.contains("Old Post")),
-            "Old Post should be filtered out"
-        );
-        assert!(
-            lines.iter().any(|l| l.contains("Mid Post")),
-            "Mid Post should be included"
-        );
-        assert!(
-            lines.iter().any(|l| l.contains("New Post")),
-            "New Post should be included"
-        );
+        for title in present {
+            assert!(
+                lines.iter().any(|l| l.contains(title)),
+                "{title} should be included"
+            );
+        }
+        for title in absent {
+            assert!(
+                !lines.iter().any(|l| l.contains(title)),
+                "{title} should be filtered out"
+            );
+        }
     }
 
-    #[test]
-    fn test_until_filters_new_posts() {
+    #[rstest]
+    #[case::since_includes_boundary(Some(utc_date(2024, 1, 15)), None, &["Exact"], &["Before"])]
+    #[case::until_includes_boundary(None, Some(utc_date(2024, 1, 15)), &["Exact"], &["After"])]
+    fn test_boundary_inclusion(
+        #[case] since: Option<DateTime<Utc>>,
+        #[case] until: Option<DateTime<Utc>>,
+        #[case] present: &[&str],
+        #[case] absent: &[&str],
+    ) {
         let items = [
-            item("Old Post", "2024-01-01", "Alice"),
-            item("Mid Post", "2024-01-15", "Alice"),
-            item("New Post", "2024-02-01", "Alice"),
+            feed_item("Before", "2024-01-14", "Alice"),
+            feed_item("Exact", "2024-01-15", "Alice"),
+            feed_item("After", "2024-01-16", "Alice"),
         ];
-        let until = NaiveDate::from_ymd_opt(2024, 1, 15)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
-        let df = DateFilter {
-            since: None,
-            until: Some(until),
-        };
+        let df = DateFilter { since, until };
         let lines = filter_items(&items, &df);
-        assert!(
-            lines.iter().any(|l| l.contains("Old Post")),
-            "Old Post should be included"
-        );
-        assert!(
-            lines.iter().any(|l| l.contains("Mid Post")),
-            "Mid Post should be included"
-        );
-        assert!(
-            !lines.iter().any(|l| l.contains("New Post")),
-            "New Post should be filtered out"
-        );
-    }
-
-    #[test]
-    fn test_since_and_until_combined() {
-        let items = [
-            item("Old Post", "2024-01-01", "Alice"),
-            item("Mid Post", "2024-01-15", "Alice"),
-            item("New Post", "2024-02-01", "Alice"),
-        ];
-        let since = NaiveDate::from_ymd_opt(2024, 1, 10)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
-        let until = NaiveDate::from_ymd_opt(2024, 1, 20)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
-        let df = DateFilter {
-            since: Some(since),
-            until: Some(until),
-        };
-        let lines = filter_items(&items, &df);
-        assert!(
-            !lines.iter().any(|l| l.contains("Old Post")),
-            "Old Post should be filtered out"
-        );
-        assert!(
-            lines.iter().any(|l| l.contains("Mid Post")),
-            "Mid Post should be included"
-        );
-        assert!(
-            !lines.iter().any(|l| l.contains("New Post")),
-            "New Post should be filtered out"
-        );
-    }
-
-    #[test]
-    fn test_since_includes_boundary() {
-        let items = [
-            item("Before", "2024-01-14", "Alice"),
-            item("Exact", "2024-01-15", "Alice"),
-            item("After", "2024-01-16", "Alice"),
-        ];
-        let since = NaiveDate::from_ymd_opt(2024, 1, 15)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
-        let df = DateFilter {
-            since: Some(since),
-            until: None,
-        };
-        let lines = filter_items(&items, &df);
-        assert!(
-            lines.iter().any(|l| l.contains("Exact")),
-            "Item on the since boundary should be included"
-        );
-        assert!(
-            !lines.iter().any(|l| l.contains("Before")),
-            "Item before since should be excluded"
-        );
-    }
-
-    #[test]
-    fn test_until_includes_boundary() {
-        let items = [
-            item("Before", "2024-01-14", "Alice"),
-            item("Exact", "2024-01-15", "Alice"),
-            item("After", "2024-01-16", "Alice"),
-        ];
-        let until = NaiveDate::from_ymd_opt(2024, 1, 15)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
-        let df = DateFilter {
-            since: None,
-            until: Some(until),
-        };
-        let lines = filter_items(&items, &df);
-        assert!(
-            lines.iter().any(|l| l.contains("Exact")),
-            "Item on the until boundary should be included"
-        );
-        assert!(
-            !lines.iter().any(|l| l.contains("After")),
-            "Item after until should be excluded"
-        );
+        for title in present {
+            assert!(
+                lines.iter().any(|l| l.contains(title)),
+                "{title} should be included"
+            );
+        }
+        for title in absent {
+            assert!(
+                !lines.iter().any(|l| l.contains(title)),
+                "{title} should be filtered out"
+            );
+        }
     }
 }
