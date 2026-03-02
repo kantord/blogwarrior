@@ -53,3 +53,15 @@ Sleep 3s
 
 Type "blog" Sleep 500ms Enter
 Sleep 5s
+
+Type "blog show /d" Sleep 500ms Enter
+Sleep 5s
+
+Type "blog show /f" Sleep 500ms Enter
+Sleep 5s
+
+Type "blog show /w" Sleep 500ms Enter
+Sleep 5s
+
+Type "blog show /d /f" Sleep 500ms Enter
+Sleep 5s

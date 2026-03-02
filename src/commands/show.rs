@@ -14,6 +14,7 @@ use super::{feed_index, post_index};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum GroupKey {
     Date,
+    Week,
     Feed,
 }
 
@@ -21,6 +22,7 @@ impl GroupKey {
     fn extract(&self, item: &FeedItem, feed_labels: &HashMap<String, String>) -> String {
         match self {
             GroupKey::Date => format_date(item),
+            GroupKey::Week => format_week(item),
             GroupKey::Feed => feed_labels
                 .get(&item.feed)
                 .cloned()
@@ -35,7 +37,9 @@ impl GroupKey {
         feed_labels: &HashMap<String, String>,
     ) -> std::cmp::Ordering {
         match self {
-            GroupKey::Date => format_date(b).cmp(&format_date(a)),
+            GroupKey::Date | GroupKey::Week => self
+                .extract(b, feed_labels)
+                .cmp(&self.extract(a, feed_labels)),
             GroupKey::Feed => self
                 .extract(a, feed_labels)
                 .cmp(&self.extract(b, feed_labels)),
@@ -46,6 +50,12 @@ impl GroupKey {
 fn format_date(item: &FeedItem) -> String {
     item.date
         .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn format_week(item: &FeedItem) -> String {
+    item.date
+        .map(|d| d.format("%G-W%V").to_string())
         .unwrap_or_else(|| "unknown".to_string())
 }
 
@@ -276,8 +286,9 @@ fn render_grouped(
 pub(crate) fn parse_group_arg(arg: &str) -> anyhow::Result<GroupKey> {
     match arg {
         "/d" => Ok(GroupKey::Date),
+        "/w" => Ok(GroupKey::Week),
         "/f" => Ok(GroupKey::Feed),
-        _ => bail!("Unknown grouping: {arg}. Available: /d (date), /f (feed)"),
+        _ => bail!("Unknown grouping: {arg}. Available: /d (date), /w (week), /f (feed)"),
     }
 }
 
