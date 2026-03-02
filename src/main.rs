@@ -4,31 +4,65 @@ mod feed_source;
 mod git;
 mod http;
 mod progress;
+mod query;
 mod store;
 mod synctato;
 
 use std::path::PathBuf;
 
 use crate::synctato::Database;
-use anyhow::ensure;
 use clap::{Parser, Subcommand};
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
-#[command(args_conflicts_with_subcommands = true)]
+#[command(args_conflicts_with_subcommands = true, after_help = QUERY_HELP)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Positional arguments: /d /f grouping and/or @shorthand filter
+    /// Query arguments (see below)
     args: Vec<String>,
 }
+
+const QUERY_HELP: &str = "\
+QUERY LANGUAGE:
+  Grouping (up to 2):
+    /d          Group by date
+    /w          Group by week
+    /f          Group by feed
+
+  Filtering:
+    @shorthand  Show only posts from a specific feed
+
+  Date range:
+    since:<date>    Show posts from this date onward
+    until:<date>    Show posts up to this date
+    <date>..<date>  Range shorthand (e.g. 3m..1m)
+    <date>..        Open-ended range (from date onward)
+    ..<date>        Open-ended range (up to date)
+
+  Date values:
+    2024-01-15  Absolute date (YYYY-MM-DD)
+    3d          Relative: 3 days ago
+    2w          Relative: 2 weeks ago
+    1m          Relative: 1 month ago
+    today       Start of today
+    yesterday   Start of yesterday
+
+EXAMPLES:
+  blog /d                     Group by date
+  blog /f /d                  Group by feed, then date
+  blog @myblog                Show only posts from @myblog
+  blog since:1w               Posts from the last week
+  blog 3m..1m                 Posts from 1-3 months ago
+  blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date";
 
 #[derive(Subcommand)]
 enum Command {
     /// Display items from posts.jsonl
+    #[command(after_help = QUERY_HELP)]
     Show {
-        /// Positional arguments: /d /f grouping and/or @shorthand filter
+        /// Query arguments (see below)
         args: Vec<String>,
     },
     /// Open a post in the default browser
@@ -76,24 +110,6 @@ enum FeedCommand {
     Ls,
 }
 
-fn parse_show_args(
-    args: &[String],
-) -> anyhow::Result<(Vec<commands::show::GroupKey>, Option<String>)> {
-    let mut keys = Vec::new();
-    let mut filter = None;
-    for arg in args {
-        if arg.starts_with('@') {
-            filter = Some(arg.clone());
-        } else if arg.starts_with('/') {
-            ensure!(keys.len() < 2, "Too many grouping arguments (max 2).");
-            keys.push(commands::show::parse_group_arg(arg)?);
-        } else {
-            anyhow::bail!("Unknown argument: {arg}");
-        }
-    }
-    Ok((keys, filter))
-}
-
 fn store_dir() -> anyhow::Result<PathBuf> {
     if let Ok(val) = std::env::var("RSS_STORE") {
         return Ok(PathBuf::from(val));
@@ -133,8 +149,8 @@ fn run() -> anyhow::Result<()> {
 
     match args.command {
         Some(Command::Show { ref args }) => {
-            let (keys, filter) = parse_show_args(args)?;
-            commands::show::cmd_show(&store, &keys, filter.as_deref())?;
+            let q = query::parse_show_args(args)?;
+            commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
         }
         Some(Command::Open { ref shorthand }) => {
             commands::open::cmd_open(&store, shorthand)?;
@@ -175,8 +191,8 @@ fn run() -> anyhow::Result<()> {
         }
         Some(Command::Clone { .. }) => unreachable!(),
         None => {
-            let (keys, filter) = parse_show_args(&args.args)?;
-            commands::show::cmd_show(&store, &keys, filter.as_deref())?;
+            let q = query::parse_show_args(&args.args)?;
+            commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
         }
     }
     Ok(())

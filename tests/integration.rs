@@ -296,8 +296,8 @@ fn test_show_rejects_unknown_argument() {
     let output = ctx.run(&["show", "d"]).failure();
     let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
     assert!(
-        stderr.contains("Unknown argument"),
-        "expected error about unknown argument, got: {}",
+        stderr.contains("Failed to parse argument"),
+        "expected error about failed to parse argument, got: {}",
         stderr,
     );
 }
@@ -1922,4 +1922,110 @@ fn test_clone_existing_store_fails() {
         stderr.contains(&store_dir.path().display().to_string()),
         "error should include the store path: {stderr}"
     );
+}
+
+// --- Date filtering integration tests ---
+
+#[test]
+fn test_show_since_filters_posts() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Old Post","date":"2024-01-14T00:00:00Z","feed":"Alice","raw_id":"old1","link":""}
+{"id":"2","title":"New Post","date":"2024-01-15T00:00:00Z","feed":"Alice","raw_id":"new1","link":""}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
+
+    let output = ctx.run(&["show", "since:2024-01-15"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(
+        !stdout.contains("Old Post"),
+        "Old Post should be filtered out by since:2024-01-15"
+    );
+    assert!(
+        stdout.contains("New Post"),
+        "New Post should be shown with since:2024-01-15"
+    );
+}
+
+#[test]
+fn test_show_until_filters_posts() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Old Post","date":"2024-01-14T00:00:00Z","feed":"Alice","raw_id":"old1","link":""}
+{"id":"2","title":"New Post","date":"2024-01-15T00:00:00Z","feed":"Alice","raw_id":"new1","link":""}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
+
+    let output = ctx.run(&["show", "until:2024-01-14"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(
+        stdout.contains("Old Post"),
+        "Old Post should be shown with until:2024-01-14"
+    );
+    assert!(
+        !stdout.contains("New Post"),
+        "New Post should be filtered out by until:2024-01-14"
+    );
+}
+
+#[test]
+fn test_show_since_and_until_combined() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Old Post","date":"2024-01-10T00:00:00Z","feed":"Alice","raw_id":"old1","link":""}
+{"id":"2","title":"Mid Post","date":"2024-01-15T00:00:00Z","feed":"Alice","raw_id":"mid1","link":""}
+{"id":"3","title":"New Post","date":"2024-01-20T00:00:00Z","feed":"Alice","raw_id":"new1","link":""}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
+
+    let output = ctx
+        .run(&["show", "since:2024-01-14", "until:2024-01-16"])
+        .success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(
+        !stdout.contains("Old Post"),
+        "Old Post should be filtered out"
+    );
+    assert!(
+        stdout.contains("Mid Post"),
+        "Mid Post should be shown in range"
+    );
+    assert!(
+        !stdout.contains("New Post"),
+        "New Post should be filtered out"
+    );
+}
+
+#[test]
+fn test_show_since_with_grouping() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Old Post","date":"2024-01-10T00:00:00Z","feed":"Alice","raw_id":"old1","link":""}
+{"id":"2","title":"New Post","date":"2024-01-15T00:00:00Z","feed":"Alice","raw_id":"new1","link":""}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
+
+    let output = ctx.run(&["show", "/d", "since:2024-01-15"]).success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    assert!(
+        stdout.contains("=== 2024-01-15 ==="),
+        "Should show date group header for 2024-01-15"
+    );
+    assert!(
+        !stdout.contains("Old Post"),
+        "Old Post should be filtered out"
+    );
+    assert!(stdout.contains("New Post"), "New Post should be shown");
 }

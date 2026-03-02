@@ -2,60 +2,19 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::IsTerminal;
 
-use anyhow::{bail, ensure};
+use anyhow::ensure;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 use crate::feed::FeedItem;
+use crate::query::{DateFilter, GroupKey};
 use crate::store::Store;
 
 use super::{feed_index, post_index};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum GroupKey {
-    Date,
-    Week,
-    Feed,
-}
-
-impl GroupKey {
-    fn extract(&self, item: &FeedItem, feed_labels: &HashMap<String, String>) -> String {
-        match self {
-            GroupKey::Date => format_date(item),
-            GroupKey::Week => format_week(item),
-            GroupKey::Feed => feed_labels
-                .get(&item.feed)
-                .cloned()
-                .unwrap_or_else(|| item.feed.clone()),
-        }
-    }
-
-    fn compare(
-        &self,
-        a: &FeedItem,
-        b: &FeedItem,
-        feed_labels: &HashMap<String, String>,
-    ) -> std::cmp::Ordering {
-        match self {
-            GroupKey::Date | GroupKey::Week => self
-                .extract(b, feed_labels)
-                .cmp(&self.extract(a, feed_labels)),
-            GroupKey::Feed => self
-                .extract(a, feed_labels)
-                .cmp(&self.extract(b, feed_labels)),
-        }
-    }
-}
-
 fn format_date(item: &FeedItem) -> String {
     item.date
         .map(|d| d.format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn format_week(item: &FeedItem) -> String {
-    item.date
-        .map(|d| d.format("%G-W%V").to_string())
         .unwrap_or_else(|| "unknown".to_string())
 }
 
@@ -283,19 +242,11 @@ fn render_grouped(
     out
 }
 
-pub(crate) fn parse_group_arg(arg: &str) -> anyhow::Result<GroupKey> {
-    match arg {
-        "/d" => Ok(GroupKey::Date),
-        "/w" => Ok(GroupKey::Week),
-        "/f" => Ok(GroupKey::Feed),
-        _ => bail!("Unknown grouping: {arg}. Available: /d (date), /w (week), /f (feed)"),
-    }
-}
-
 pub(crate) fn cmd_show(
     store: &Store,
     keys: &[GroupKey],
     filter: Option<&str>,
+    date_filter: &DateFilter,
 ) -> anyhow::Result<()> {
     let fi = feed_index(store.feeds());
 
@@ -330,6 +281,19 @@ pub(crate) fn cmd_show(
 
     if let Some(ref feed_id) = filter_feed_id {
         posts.items.retain(|item| item.feed == *feed_id);
+    }
+
+    if let Some(since) = date_filter.since {
+        posts.items.retain(|item| match item.date {
+            Some(d) => d >= since,
+            None => false,
+        });
+    }
+    if let Some(until) = date_filter.until {
+        posts.items.retain(|item| match item.date {
+            Some(d) => d <= until,
+            None => false,
+        });
     }
 
     ensure!(!posts.items.is_empty(), "No matching posts");
@@ -374,21 +338,6 @@ mod tests {
             link: String::new(),
             raw_id: String::new(),
         }
-    }
-
-    #[test]
-    fn test_parse_group_arg_date() {
-        assert_eq!(parse_group_arg("/d").unwrap(), GroupKey::Date);
-    }
-
-    #[test]
-    fn test_parse_group_arg_feed() {
-        assert_eq!(parse_group_arg("/f").unwrap(), GroupKey::Feed);
-    }
-
-    #[test]
-    fn test_parse_group_arg_invalid() {
-        assert!(parse_group_arg("/x").is_err());
     }
 
     #[test]
@@ -815,5 +764,188 @@ mod tests {
                 "truncated line should contain \u{2026}: {line}"
             );
         }
+    }
+
+    // --- Filtering tests ---
+
+    fn filter_items(items: &[FeedItem], date_filter: &DateFilter) -> Vec<String> {
+        let filtered: Vec<&FeedItem> = items
+            .iter()
+            .filter(|item| {
+                if let Some(since) = date_filter.since {
+                    match item.date {
+                        Some(d) if d < since => return false,
+                        None => return false,
+                        _ => {}
+                    }
+                }
+                if let Some(until) = date_filter.until {
+                    match item.date {
+                        Some(d) if d > until => return false,
+                        None => return false,
+                        _ => {}
+                    }
+                }
+                true
+            })
+            .collect();
+        let output = render_grouped(&filtered, &[], &no_labels(), &no_labels(), false, None);
+        output
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn test_since_filters_old_posts() {
+        let items = [
+            item("Old Post", "2024-01-01", "Alice"),
+            item("Mid Post", "2024-01-15", "Alice"),
+            item("New Post", "2024-02-01", "Alice"),
+        ];
+        let since = NaiveDate::from_ymd_opt(2024, 1, 15)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let df = DateFilter {
+            since: Some(since),
+            until: None,
+        };
+        let lines = filter_items(&items, &df);
+        assert!(
+            !lines.iter().any(|l| l.contains("Old Post")),
+            "Old Post should be filtered out"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("Mid Post")),
+            "Mid Post should be included"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("New Post")),
+            "New Post should be included"
+        );
+    }
+
+    #[test]
+    fn test_until_filters_new_posts() {
+        let items = [
+            item("Old Post", "2024-01-01", "Alice"),
+            item("Mid Post", "2024-01-15", "Alice"),
+            item("New Post", "2024-02-01", "Alice"),
+        ];
+        let until = NaiveDate::from_ymd_opt(2024, 1, 15)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let df = DateFilter {
+            since: None,
+            until: Some(until),
+        };
+        let lines = filter_items(&items, &df);
+        assert!(
+            lines.iter().any(|l| l.contains("Old Post")),
+            "Old Post should be included"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("Mid Post")),
+            "Mid Post should be included"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("New Post")),
+            "New Post should be filtered out"
+        );
+    }
+
+    #[test]
+    fn test_since_and_until_combined() {
+        let items = [
+            item("Old Post", "2024-01-01", "Alice"),
+            item("Mid Post", "2024-01-15", "Alice"),
+            item("New Post", "2024-02-01", "Alice"),
+        ];
+        let since = NaiveDate::from_ymd_opt(2024, 1, 10)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let until = NaiveDate::from_ymd_opt(2024, 1, 20)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let df = DateFilter {
+            since: Some(since),
+            until: Some(until),
+        };
+        let lines = filter_items(&items, &df);
+        assert!(
+            !lines.iter().any(|l| l.contains("Old Post")),
+            "Old Post should be filtered out"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("Mid Post")),
+            "Mid Post should be included"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("New Post")),
+            "New Post should be filtered out"
+        );
+    }
+
+    #[test]
+    fn test_since_includes_boundary() {
+        let items = [
+            item("Before", "2024-01-14", "Alice"),
+            item("Exact", "2024-01-15", "Alice"),
+            item("After", "2024-01-16", "Alice"),
+        ];
+        let since = NaiveDate::from_ymd_opt(2024, 1, 15)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let df = DateFilter {
+            since: Some(since),
+            until: None,
+        };
+        let lines = filter_items(&items, &df);
+        assert!(
+            lines.iter().any(|l| l.contains("Exact")),
+            "Item on the since boundary should be included"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Before")),
+            "Item before since should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_until_includes_boundary() {
+        let items = [
+            item("Before", "2024-01-14", "Alice"),
+            item("Exact", "2024-01-15", "Alice"),
+            item("After", "2024-01-16", "Alice"),
+        ];
+        let until = NaiveDate::from_ymd_opt(2024, 1, 15)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let df = DateFilter {
+            since: None,
+            until: Some(until),
+        };
+        let lines = filter_items(&items, &df);
+        assert!(
+            lines.iter().any(|l| l.contains("Exact")),
+            "Item on the until boundary should be included"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("After")),
+            "Item after until should be excluded"
+        );
     }
 }
