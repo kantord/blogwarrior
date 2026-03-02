@@ -6,6 +6,12 @@ repos:
       - id: check-yaml
   - repo: local
     hooks:
+      - id: dprint
+        name: dprint fmt
+        language: system
+        entry: dprint fmt
+        files: '\.md$'
+        pass_filenames: false
       - id: cargo-fmt
         name: cargo fmt
         language: system
