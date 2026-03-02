@@ -22,12 +22,21 @@ blog sync
 # Read posts
 blog show
 
-# Group by date or feed
-blog show d
-blog show f
+# Group by date, week, or feed
+blog show /d
+blog show /w
+blog show /f
+
+# Combine groupings
+blog show /d /f
 
 # Filter by feed shorthand
 blog show @hn
+
+# Filter by date
+blog since:1w
+blog 3m..1m
+blog /d since:2w until:1w
 
 # Open a post in the default browser
 blog open abc
