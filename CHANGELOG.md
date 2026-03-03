@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/kantord/blogtato/compare/v0.1.4...v0.1.5) - 2026-03-03
+
+### Added
+
+- track read/unread status for articles ([#41](https://github.com/kantord/blogtato/pull/41))
+
+### Fixed
+
+- avoid making empty commits ([#40](https://github.com/kantord/blogtato/pull/40))
+- support slightly malformed timezones ([#38](https://github.com/kantord/blogtato/pull/38))
+
+### Other
+
+- move git logic into db
+
 ## [0.1.4](https://github.com/kantord/blogtato/compare/v0.1.3...v0.1.4) - 2026-03-03
 
 ### Fixed
