@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/kantord/blogtato/compare/v0.1.3...v0.1.4) - 2026-03-03
+
+### Fixed
+
+- git operations sometimes hang ([#35](https://github.com/kantord/blogtato/pull/35))
+
+### Other
+
+- do not rely on comments to structure code ([#37](https://github.com/kantord/blogtato/pull/37))
+
 ## [0.1.3](https://github.com/kantord/blogtato/compare/v0.1.2...v0.1.3) - 2026-03-02
 
 ### Added
