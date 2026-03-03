@@ -1,22 +1,14 @@
+use std::cell::RefCell;
 use std::time::Duration;
 
-use crate::synctato::Database;
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::git;
 use crate::progress::spinner;
-use crate::store::Store;
+use crate::store::{Store, SyncEvent, SyncResult};
 
 use super::pull::cmd_pull;
 
 pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
-    let path = store.path().to_path_buf();
-    let repo = git::try_open_repo(&path);
-
-    if let Some(ref repo) = repo {
-        git::ensure_clean(repo)?;
-    }
-
     let pb = ProgressBar::new(0);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -25,79 +17,61 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
             .progress_chars("=> "),
     );
     pb.enable_steady_tick(Duration::from_millis(100));
-    store.transaction(|tx| cmd_pull(tx, &pb))?;
+    store.transact("pull feeds", |tx| cmd_pull(tx, &pb))?;
     pb.finish_and_clear();
 
-    if let Some(ref repo) = repo {
-        git::auto_commit(repo, "pull feeds")?;
+    let sp: RefCell<Option<ProgressBar>> = RefCell::new(None);
+    let result = store.sync_remote(|event| match event {
+        SyncEvent::Fetching => {
+            *sp.borrow_mut() = Some(spinner("Fetching..."));
+        }
+        SyncEvent::FetchDone => {
+            if let Some(s) = sp.borrow_mut().take() {
+                s.finish_with_message("Fetching... done.");
+            }
+        }
+        SyncEvent::Pushing { first_push } => {
+            let msg = if first_push {
+                "Pushing to remote (first sync)..."
+            } else {
+                "Pushing..."
+            };
+            *sp.borrow_mut() = Some(spinner(msg));
+        }
+        SyncEvent::PushDone { first_push } => {
+            let msg = if first_push {
+                "Pushing to remote (first sync)... done."
+            } else {
+                "Pushing... done."
+            };
+            if let Some(s) = sp.borrow_mut().take() {
+                s.finish_with_message(msg);
+            }
+        }
+        SyncEvent::MergingRemote => {
+            *sp.borrow_mut() = Some(spinner("Merging remote data..."));
+        }
+        SyncEvent::MergeDone { feeds, posts } => {
+            if let Some(s) = sp.borrow_mut().take() {
+                s.finish_with_message(format!(
+                    "Merging remote data... done ({} feeds, {} posts from remote).",
+                    feeds, posts
+                ));
+            }
+        }
+    })?;
+
+    match result {
+        SyncResult::NoGitRepo | SyncResult::Synced => {}
+        SyncResult::NoRemote => {
+            eprintln!(
+                "warning: no remote configured; run `blog git remote add origin <url>` to enable sync"
+            );
+        }
+        SyncResult::AlreadyUpToDate => {
+            eprintln!("Already up to date.");
+        }
     }
-
-    // No git repo → we're done (offline / no-git usage)
-    let repo = match repo {
-        Some(r) => r,
-        None => return Ok(()),
-    };
-
-    // No remote configured → warn and stop (not an error)
-    if !git::has_remote(&path) {
-        eprintln!(
-            "warning: no remote configured; run `blog git remote add origin <url>` to enable sync"
-        );
-        return Ok(());
-    }
-
-    if !git::has_remote_branch(&repo) {
-        let sp = spinner("Pushing to remote (first sync)...");
-        git::push(&path)?;
-        sp.finish_with_message("Pushing to remote (first sync)... done.");
-        return Ok(());
-    }
-
-    let sp = spinner("Fetching...");
-    git::fetch(&path)?;
-    sp.finish_with_message("Fetching... done.");
-
-    if git::is_up_to_date(&repo)? {
-        eprintln!("Already up to date.");
-        return Ok(());
-    }
-
-    // Local is strictly ahead (remote is ancestor) → just push, no merge needed
-    if git::is_remote_ancestor(&repo)? {
-        let sp = spinner("Pushing...");
-        git::push(&path)?;
-        sp.finish_with_message("Pushing... done.");
-        return Ok(());
-    }
-
-    // Diverged → merge remote data
-    let sp = spinner("Merging remote data...");
-    let remote_feeds = git::read_remote_table(&repo, "feeds")?;
-    let remote_posts = git::read_remote_table(&repo, "posts")?;
-    let remote_reads = git::read_remote_table(&repo, "reads")?;
-
-    let feeds_count = remote_feeds.len();
-    let posts_count = remote_posts.len();
-
-    {
-        let tx = store.begin();
-        tx.feeds.merge_remote(remote_feeds);
-        tx.posts.merge_remote(remote_posts);
-        tx.reads.merge_remote(remote_reads);
-    }
-    store.save()?;
-    sp.finish_with_message(format!(
-        "Merging remote data... done ({} feeds, {} posts from remote).",
-        feeds_count, posts_count
-    ));
-
-    git::auto_commit(&repo, "sync")?;
-    // Data is already merged above; this just records both git parents
-    git::merge_ours(&repo)?;
-
-    let sp = spinner("Pushing...");
-    git::push(&path)?;
-    sp.finish_with_message("Pushing... done.");
 
     Ok(())
 }

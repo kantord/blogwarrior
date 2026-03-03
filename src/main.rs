@@ -13,7 +13,6 @@ mod test_helpers;
 
 use std::path::PathBuf;
 
-use crate::synctato::Database;
 use clap::{Parser, Subcommand};
 
 /// A simple RSS/Atom feed reader
@@ -124,27 +123,11 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
-fn transact(
-    store: &mut store::Store,
-    msg: &str,
-    f: impl FnOnce(&mut store::Transaction<'_>) -> anyhow::Result<()>,
-) -> anyhow::Result<()> {
-    let repo = git::try_open_repo(store.path());
-    if let Some(ref repo) = repo {
-        git::ensure_clean(repo)?;
-    }
-    store.transaction(f)?;
-    if let Some(ref repo) = repo {
-        git::auto_commit(repo, msg)?;
-    }
-    Ok(())
-}
-
 fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
     if store.reads().contains_key(&raw_id) {
         return Ok(());
     }
-    transact(store, "mark read", |tx| {
+    store.transact("mark read", |tx| {
         tx.reads.upsert(read_mark::ReadMark {
             post_id: raw_id,
             read_at: chrono::Utc::now(),
@@ -183,7 +166,7 @@ fn run() -> anyhow::Result<()> {
             if resolved != *url {
                 eprintln!("Discovered feed: {resolved}");
             }
-            transact(&mut store, &format!("add feed: {resolved}"), |tx| {
+            store.transact(&format!("add feed: {resolved}"), |tx| {
                 commands::add::cmd_add(tx, &resolved)
             })?;
             eprintln!("Added {resolved}");
@@ -192,7 +175,7 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },
         }) => {
-            transact(&mut store, &format!("remove feed: {url}"), |tx| {
+            store.transact(&format!("remove feed: {url}"), |tx| {
                 commands::remove::cmd_remove(tx, url)
             })?;
         }
@@ -205,7 +188,7 @@ fn run() -> anyhow::Result<()> {
             commands::sync::cmd_sync(&mut store)?;
         }
         Some(Command::Git { ref args }) => {
-            git::git_passthrough(store.path(), args)?;
+            store.git_passthrough(args)?;
         }
         Some(Command::Clone { .. }) => unreachable!(),
         None => {
