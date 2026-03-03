@@ -1031,7 +1031,7 @@ fn test_open_marks_post_as_read() {
         "expected 1 unread post after opening one, got:\n{after}"
     );
     assert_eq!(
-        after.lines().filter(|l| l.starts_with(' ')).count(),
+        after.lines().filter(|l| l.starts_with("  ")).count(),
         1,
         "expected 1 read post after opening one, got:\n{after}"
     );

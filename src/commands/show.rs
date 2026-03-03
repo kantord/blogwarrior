@@ -350,27 +350,22 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_grouping(&[], "* 2024-01-15  abc Post (Alice)")]
-    #[case::grouped_by_date(&[GroupKey::Date], "* abc Post (Alice)")]
-    #[case::grouped_by_feed(&[GroupKey::Feed], "* 2024-01-15  abc Post")]
-    #[case::grouped_by_both(&[GroupKey::Date, GroupKey::Feed], "* abc Post")]
-    fn test_format_item_unread(#[case] keys: &[GroupKey], #[case] expected: &str) {
+    #[case::unread_no_grouping(&[], false, "* 2024-01-15  abc Post (Alice)")]
+    #[case::unread_grouped_by_date(&[GroupKey::Date], false, "* abc Post (Alice)")]
+    #[case::unread_grouped_by_feed(&[GroupKey::Feed], false, "* 2024-01-15  abc Post")]
+    #[case::unread_grouped_by_both(&[GroupKey::Date, GroupKey::Feed], false, "* abc Post")]
+    #[case::read_no_grouping(&[], true, "  2024-01-15  abc Post (Alice)")]
+    #[case::read_grouped_by_date(&[GroupKey::Date], true, "  abc Post (Alice)")]
+    #[case::read_grouped_by_feed(&[GroupKey::Feed], true, "  2024-01-15  abc Post")]
+    #[case::read_grouped_by_both(&[GroupKey::Date, GroupKey::Feed], true, "  abc Post")]
+    fn test_format_item_read_marker(
+        #[case] keys: &[GroupKey],
+        #[case] is_read: bool,
+        #[case] expected: &str,
+    ) {
         let i = feed_item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, keys, "abc", &no_labels(), false, 3, None, false),
-            expected
-        );
-    }
-
-    #[rstest]
-    #[case::no_grouping(&[], "  2024-01-15  abc Post (Alice)")]
-    #[case::grouped_by_date(&[GroupKey::Date], "  abc Post (Alice)")]
-    #[case::grouped_by_feed(&[GroupKey::Feed], "  2024-01-15  abc Post")]
-    #[case::grouped_by_both(&[GroupKey::Date, GroupKey::Feed], "  abc Post")]
-    fn test_format_item_read(#[case] keys: &[GroupKey], #[case] expected: &str) {
-        let i = feed_item("Post", "2024-01-15", "Alice");
-        assert_eq!(
-            format_item(&i, keys, "abc", &no_labels(), false, 3, None, true),
+            format_item(&i, keys, "abc", &no_labels(), false, 3, None, is_read),
             expected
         );
     }
@@ -434,6 +429,43 @@ mod tests {
         assert_eq!(
             output,
             "  2024-01-02   Post A (Alice)\n* 2024-01-01   Post B (Bob)\n"
+        );
+    }
+
+    #[test]
+    fn test_render_grouped_with_mixed_read_status() {
+        let items = [
+            feed_item_with_raw_id("Post A", "2024-01-02", "Alice", "id-a"),
+            feed_item_with_raw_id("Post B", "2024-01-02", "Bob", "id-b"),
+            feed_item_with_raw_id("Post C", "2024-01-01", "Alice", "id-c"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+        let read_ids: HashSet<String> = ["id-b".to_string()].into();
+
+        let output = render_grouped(
+            &refs,
+            &[GroupKey::Date],
+            &no_labels(),
+            &no_labels(),
+            &read_ids,
+            false,
+            None,
+        );
+        assert_eq!(
+            output,
+            "\
+=== 2024-01-02 ===
+
+  *  Post A (Alice)
+     Post B (Bob)
+
+
+=== 2024-01-01 ===
+
+  *  Post C (Alice)
+
+
+"
         );
     }
 
