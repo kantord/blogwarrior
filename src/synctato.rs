@@ -187,6 +187,11 @@ impl<T: TableRow> Table<T> {
         hash_id(&item.key(), self.id_length)
     }
 
+    pub fn contains_key(&self, key: &str) -> bool {
+        let id = hash_id(key, self.id_length);
+        matches!(self.items.get(&id), Some(Row::Live { .. }))
+    }
+
     fn shard_key(&self, id: &str) -> String {
         let end = self.shard_characters.min(id.len());
         id[..end].to_string()
@@ -344,6 +349,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::utc_rfc3339;
     use rstest::rstest;
+    use rusty_fork::rusty_fork_test;
     use serde::Deserialize;
     use tempfile::TempDir;
 
@@ -827,6 +833,27 @@ mod tests {
     }
 
     #[test]
+    fn test_contains_key_live() {
+        let (_dir, mut table) = new_test_table();
+        table.upsert(make_item("x", "Item"));
+        assert!(table.contains_key("x"));
+    }
+
+    #[test]
+    fn test_contains_key_missing() {
+        let (_dir, table) = new_test_table();
+        assert!(!table.contains_key("x"));
+    }
+
+    #[test]
+    fn test_contains_key_deleted() {
+        let (_dir, mut table) = new_test_table();
+        table.upsert(make_item("x", "Item"));
+        table.delete("x");
+        assert!(!table.contains_key("x"));
+    }
+
+    #[test]
     fn test_delete_nonexistent_key_returns_none() {
         let (_dir, mut table) = new_test_table();
         table.upsert(make_item("a", "Keep"));
@@ -904,65 +931,70 @@ mod tests {
         assert_eq!(table.items()[0].title, "Post");
     }
 
+    // Wrapped in rusty_fork_test! so the inner libc::fork() runs in a
+    // single-threaded subprocess, avoiding deadlocks from forking inside
+    // Cargo's multi-threaded test runner.
     #[cfg(unix)]
-    #[test]
-    fn test_failed_save_preserves_previous_data() {
-        let dir = TempDir::new().unwrap();
+    rusty_fork_test! {
+        #[test]
+        fn test_failed_save_preserves_previous_data() {
+            let dir = TempDir::new().unwrap();
 
-        // Save initial data
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        table
-            .items
-            .insert("aabb11".to_string(), make_row_with_id("aabb11", "Original"));
-        table.save().unwrap();
+            // Save initial data
+            let mut table = Table::<TestItem>::load(dir.path()).unwrap();
+            table
+                .items
+                .insert("aabb11".to_string(), make_row_with_id("aabb11", "Original"));
+            table.save().unwrap();
 
-        // Verify initial data is saved
-        let loaded = Table::<TestItem>::load(dir.path()).unwrap();
-        assert_eq!(loaded.items().len(), 1);
+            // Verify initial data is saved
+            let loaded = Table::<TestItem>::load(dir.path()).unwrap();
+            assert_eq!(loaded.items().len(), 1);
 
-        // Fork a child process to attempt save() with RLIMIT_FSIZE=8.
-        // RLIMIT_FSIZE is process-wide, so we isolate it in a subprocess to
-        // avoid interfering with other tests running in parallel.
-        // The child sets a file size limit of 8 bytes — enough to create a file
-        // but too small for any real JSONL row — then attempts save().
-        // Deletions (unlink) are unaffected by RLIMIT_FSIZE, so save() will
-        // delete old shards but fail writing new ones — simulating disk-full.
-        let dir_path = dir.path().to_path_buf();
-        let child_status = unsafe { libc::fork() };
-        match child_status {
-            -1 => panic!("fork failed"),
-            0 => {
-                // Child process: set RLIMIT_FSIZE and attempt save()
-                unsafe {
-                    libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
-                    let limit = libc::rlimit {
-                        rlim_cur: 8,
-                        rlim_max: libc::RLIM_INFINITY,
-                    };
-                    libc::setrlimit(libc::RLIMIT_FSIZE, &limit);
+            // Fork a child process to attempt save() with RLIMIT_FSIZE=8.
+            // RLIMIT_FSIZE is process-wide, so we isolate it in a subprocess to
+            // avoid interfering with other tests running in parallel.
+            // The child sets a file size limit of 8 bytes — enough to create a file
+            // but too small for any real JSONL row — then attempts save().
+            // Deletions (unlink) are unaffected by RLIMIT_FSIZE, so save() will
+            // delete old shards but fail writing new ones — simulating disk-full.
+            let dir_path = dir.path().to_path_buf();
+            let child_status = unsafe { libc::fork() };
+            match child_status {
+                -1 => panic!("fork failed"),
+                0 => {
+                    // Child process: set RLIMIT_FSIZE and attempt save()
+                    unsafe {
+                        libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+                        let limit = libc::rlimit {
+                            rlim_cur: 8,
+                            rlim_max: libc::RLIM_INFINITY,
+                        };
+                        libc::setrlimit(libc::RLIMIT_FSIZE, &limit);
+                    }
+                    let table = Table::<TestItem>::load(&dir_path).unwrap();
+                    let _ = table.save();
+                    std::process::exit(0);
                 }
-                let table = Table::<TestItem>::load(&dir_path).unwrap();
-                let _ = table.save();
-                std::process::exit(0);
-            }
-            child_pid => {
-                // Parent: wait for child
-                let mut wstatus: libc::c_int = 0;
-                unsafe {
-                    libc::waitpid(child_pid, &mut wstatus, 0);
+                child_pid => {
+                    // Parent: wait for child
+                    let mut wstatus: libc::c_int = 0;
+                    unsafe {
+                        libc::waitpid(child_pid, &mut wstatus, 0);
+                    }
                 }
             }
+
+            // Original data should still be loadable after the child's failed save
+            let recovered =
+                Table::<TestItem>::load(dir.path()).expect("load should not fail after a failed save");
+            assert_eq!(
+                recovered.items().len(),
+                1,
+                "original data should survive a failed save()"
+            );
+            assert_eq!(recovered.items()[0].title, "Original");
         }
-
-        // Original data should still be loadable after the child's failed save
-        let recovered =
-            Table::<TestItem>::load(dir.path()).expect("load should not fail after a failed save");
-        assert_eq!(
-            recovered.items().len(),
-            1,
-            "original data should survive a failed save()"
-        );
-        assert_eq!(recovered.items()[0].title, "Original");
     }
 
     #[test]

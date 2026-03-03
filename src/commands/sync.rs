@@ -74,6 +74,7 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     let sp = spinner("Merging remote data...");
     let remote_feeds = git::read_remote_table(&repo, "feeds")?;
     let remote_posts = git::read_remote_table(&repo, "posts")?;
+    let remote_reads = git::read_remote_table(&repo, "reads")?;
 
     let feeds_count = remote_feeds.len();
     let posts_count = remote_posts.len();
@@ -82,6 +83,7 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
         let tx = store.begin();
         tx.feeds.merge_remote(remote_feeds);
         tx.posts.merge_remote(remote_posts);
+        tx.reads.merge_remote(remote_reads);
     }
     store.save()?;
     sp.finish_with_message(format!(

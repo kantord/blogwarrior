@@ -5,6 +5,7 @@ mod git;
 mod http;
 mod progress;
 mod query;
+mod read_mark;
 mod store;
 mod synctato;
 #[cfg(test)]
@@ -139,6 +140,19 @@ fn transact(
     Ok(())
 }
 
+fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
+    if store.reads().contains_key(&raw_id) {
+        return Ok(());
+    }
+    transact(store, "mark read", |tx| {
+        tx.reads.upsert(read_mark::ReadMark {
+            post_id: raw_id,
+            read_at: chrono::Utc::now(),
+        });
+        Ok(())
+    })
+}
+
 fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let store_dir = store_dir()?;
@@ -155,10 +169,12 @@ fn run() -> anyhow::Result<()> {
             commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
         }
         Some(Command::Open { ref shorthand }) => {
-            commands::open::cmd_open(&store, shorthand)?;
+            let raw_id = commands::open::cmd_open(&store, shorthand)?;
+            mark_read(&mut store, raw_id)?;
         }
         Some(Command::Read { ref shorthand }) => {
-            commands::open::cmd_read(&store, shorthand)?;
+            let raw_id = commands::open::cmd_read(&store, shorthand)?;
+            mark_read(&mut store, raw_id)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
