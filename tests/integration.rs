@@ -984,6 +984,60 @@ fn test_open_post_without_link() {
 }
 
 #[test]
+fn test_open_marks_post_as_read() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Read Blog",
+        &[
+            (
+                "Post A",
+                "Tue, 02 Jan 2024 00:00:00 +0000",
+                "guid-a",
+                "https://example.com/a",
+            ),
+            (
+                "Post B",
+                "Mon, 01 Jan 2024 00:00:00 +0000",
+                "guid-b",
+                "https://example.com/b",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/read.xml", &xml);
+    let url = ctx.server.url("/read.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Before opening: both posts are unread (shown with *)
+    let before = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
+
+    // Open first post (shorthand "a")
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["open", "a"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    // After opening: one post is read, one is still unread
+    let after = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after.lines().filter(|l| l.starts_with('*')).count(),
+        1,
+        "expected 1 unread post after opening one, got:\n{after}"
+    );
+    assert_eq!(
+        after.lines().filter(|l| l.starts_with(' ')).count(),
+        1,
+        "expected 1 read post after opening one, got:\n{after}"
+    );
+}
+
+#[test]
 fn test_remove_nonexistent_feed() {
     let ctx = TestContext::new();
 

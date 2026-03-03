@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::feed::FeedItem;
 use crate::synctato::TableRow;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -16,7 +17,7 @@ impl TableRow for ReadMark {
 
     const TABLE_NAME: &'static str = "reads";
     const SHARD_CHARACTERS: usize = 2;
-    const EXPECTED_CAPACITY: usize = 100_000_000;
+    const EXPECTED_CAPACITY: usize = FeedItem::EXPECTED_CAPACITY;
 }
 
 #[cfg(test)]
