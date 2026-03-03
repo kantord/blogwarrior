@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::synctato::{Row, TableRow, parse_rows};
 use anyhow::{Context, bail};
@@ -261,11 +261,21 @@ pub fn read_remote_table<T: TableRow>(
 
 // --- Network operations (git CLI) ---
 
-pub fn fetch(path: &Path) -> anyhow::Result<()> {
-    let output = Command::new("git")
-        .args(["-C", &path.to_string_lossy(), "fetch", "origin"])
+/// Run a git CLI command, capturing stdout/stderr while inheriting stdin.
+/// Inheriting stdin is required so that SSH can prompt for passphrases or
+/// host-key confirmation when the remote uses SSH transport; without it the
+/// subprocess blocks indefinitely because the closed pipe cannot display a
+/// prompt or receive input.
+pub(crate) fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
+    Command::new("git")
+        .args(args)
+        .stdin(Stdio::inherit())
         .output()
-        .context("failed to run git fetch")?;
+        .context("failed to run git")
+}
+
+pub fn fetch(path: &Path) -> anyhow::Result<()> {
+    let output = git_output(&["-C", &path.to_string_lossy(), "fetch", "origin"])?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("git fetch failed: {}", stderr.trim());
@@ -274,10 +284,7 @@ pub fn fetch(path: &Path) -> anyhow::Result<()> {
 }
 
 pub fn push(path: &Path) -> anyhow::Result<()> {
-    let output = Command::new("git")
-        .args(["-C", &path.to_string_lossy(), "push", "origin", "HEAD"])
-        .output()
-        .context("failed to run git push")?;
+    let output = git_output(&["-C", &path.to_string_lossy(), "push", "origin", "HEAD"])?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("git push failed: {}", stderr.trim());

@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, bail};
@@ -46,16 +45,13 @@ pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
     sp.enable_steady_tick(Duration::from_millis(80));
     sp.set_message(format!("Cloning into {}...", store_dir.display()));
 
-    let output = Command::new("git")
-        .args([
-            "clone",
-            "--depth",
-            "1",
-            &expanded,
-            &store_dir.to_string_lossy(),
-        ])
-        .output()
-        .context("failed to run git clone")?;
+    let output = crate::git::git_output(&[
+        "clone",
+        "--depth",
+        "1",
+        &expanded,
+        &store_dir.to_string_lossy(),
+    ])?;
 
     if !output.status.success() {
         sp.finish_and_clear();
