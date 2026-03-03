@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
+use crate::git;
 use crate::read_mark::ReadMark;
 use crate::synctato::Database;
 
@@ -36,7 +37,6 @@ impl Store {
         msg: &str,
         f: impl FnOnce(&mut Transaction<'_>) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
-        use crate::git;
         let repo = git::try_open_repo(self.path());
         if let Some(ref repo) = repo {
             git::ensure_clean(repo)?;
@@ -51,9 +51,8 @@ impl Store {
     /// Sync with git remote (fetch, merge, push).
     pub(crate) fn sync_remote(
         &mut self,
-        on_progress: impl Fn(SyncEvent),
+        mut on_progress: impl FnMut(SyncEvent),
     ) -> anyhow::Result<SyncResult> {
-        use crate::git;
         let path = self.path().to_path_buf();
         let repo = match git::try_open_repo(&path) {
             Some(r) => r,
@@ -120,7 +119,6 @@ impl Store {
 
     /// Clone a git remote into a directory.
     pub(crate) fn clone_from(dir: &Path, url: &str) -> anyhow::Result<()> {
-        use crate::git;
         let output = git::git_output(&["clone", "--depth", "1", url, &dir.to_string_lossy()])?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -131,7 +129,6 @@ impl Store {
 
     /// Run a raw git command in the store directory.
     pub(crate) fn git_passthrough(&self, args: &[String]) -> anyhow::Result<()> {
-        use crate::git;
         git::git_passthrough(self.path(), args)
     }
 }

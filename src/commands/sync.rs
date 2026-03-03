@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -20,13 +19,13 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     store.transact("pull feeds", |tx| cmd_pull(tx, &pb))?;
     pb.finish_and_clear();
 
-    let sp: RefCell<Option<ProgressBar>> = RefCell::new(None);
+    let mut sp: Option<ProgressBar> = None;
     let result = store.sync_remote(|event| match event {
         SyncEvent::Fetching => {
-            *sp.borrow_mut() = Some(spinner("Fetching..."));
+            sp = Some(spinner("Fetching..."));
         }
         SyncEvent::FetchDone => {
-            if let Some(s) = sp.borrow_mut().take() {
+            if let Some(s) = sp.take() {
                 s.finish_with_message("Fetching... done.");
             }
         }
@@ -36,7 +35,7 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
             } else {
                 "Pushing..."
             };
-            *sp.borrow_mut() = Some(spinner(msg));
+            sp = Some(spinner(msg));
         }
         SyncEvent::PushDone { first_push } => {
             let msg = if first_push {
@@ -44,15 +43,15 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
             } else {
                 "Pushing... done."
             };
-            if let Some(s) = sp.borrow_mut().take() {
+            if let Some(s) = sp.take() {
                 s.finish_with_message(msg);
             }
         }
         SyncEvent::MergingRemote => {
-            *sp.borrow_mut() = Some(spinner("Merging remote data..."));
+            sp = Some(spinner("Merging remote data..."));
         }
         SyncEvent::MergeDone { feeds, posts } => {
-            if let Some(s) = sp.borrow_mut().take() {
+            if let Some(s) = sp.take() {
                 s.finish_with_message(format!(
                     "Merging remote data... done ({} feeds, {} posts from remote).",
                     feeds, posts
