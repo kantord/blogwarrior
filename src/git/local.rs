@@ -192,6 +192,20 @@ pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Both sides produced identical data — fast-forward to the remote commit
+    // instead of creating an empty merge commit.
+    if head_commit.tree_id() == remote_commit.tree_id() {
+        let head_ref = repo.head().context("no HEAD")?;
+        let branch_name = head_ref.name().context("HEAD has no name")?;
+        repo.reference(
+            branch_name,
+            remote_commit.id(),
+            true,
+            "fast-forward to remote",
+        )?;
+        return Ok(());
+    }
+
     let sig = signature(repo)?;
     let tree = head_commit.tree().context("failed to get HEAD tree")?;
 
