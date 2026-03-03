@@ -7,6 +7,33 @@ use url::Url;
 
 use super::{FeedItem, FeedMeta};
 
+/// Parse an RFC 2822 date, falling back to stripping the colon from timezone
+/// offsets like `-07:00` → `-0700` which some feeds produce.
+fn parse_rfc2822_lenient(s: &str) -> Option<DateTime<FixedOffset>> {
+    DateTime::parse_from_rfc2822(s)
+        .or_else(|_| DateTime::parse_from_rfc2822(&strip_tz_colon(s)))
+        .ok()
+}
+
+fn strip_tz_colon(s: &str) -> String {
+    let trimmed = s.trim_end();
+    // Match a trailing +HH:MM or -HH:MM and remove the colon
+    if trimmed.len() >= 6 {
+        let (head, tail) = trimmed.split_at(trimmed.len() - 6);
+        let bytes = tail.as_bytes();
+        if (bytes[0] == b'+' || bytes[0] == b'-')
+            && bytes[1].is_ascii_digit()
+            && bytes[2].is_ascii_digit()
+            && bytes[3] == b':'
+            && bytes[4].is_ascii_digit()
+            && bytes[5].is_ascii_digit()
+        {
+            return format!("{}{}{}{}", head, &tail[..3], &tail[4..6], "");
+        }
+    }
+    s.to_string()
+}
+
 fn normalize_url(raw: &str) -> String {
     match Url::parse(raw) {
         Ok(url) => url.to_string(),
@@ -36,7 +63,7 @@ pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
             title: item.title().unwrap_or("untitled").to_string(),
             date: item
                 .pub_date()
-                .and_then(|d| DateTime::<FixedOffset>::parse_from_rfc2822(d).ok())
+                .and_then(parse_rfc2822_lenient)
                 .map(|d| d.to_utc()),
             feed: String::new(),
             link: item.link().unwrap_or_default().to_string(),
@@ -241,6 +268,31 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_ne!(items[0].raw_id, items[1].raw_id);
+    }
+
+    #[test]
+    fn test_colon_timezone_offset_is_parsed() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test</title>
+            <item>
+              <title>Post</title>
+              <pubDate>Sun, 18 May 2025 00:00:00 -07:00</pubDate>
+            </item>
+          </channel>
+        </rss>"#;
+
+        let (_, items) = parse(xml.as_bytes()).unwrap();
+
+        assert!(
+            items[0].date.is_some(),
+            "date with colon timezone offset (-07:00) should be parsed"
+        );
+        assert_eq!(
+            items[0].date.unwrap().format("%Y-%m-%d").to_string(),
+            "2025-05-18"
+        );
     }
 
     #[test]
