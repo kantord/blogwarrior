@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use crate::synctato::{Row, TableRow, parse_rows};
 use anyhow::{Context, bail};
 use git2::{Repository, RepositoryOpenFlags, Signature};
-
-// --- Local operations (git2) ---
 
 /// Open a git repo at exactly `path`, without searching parent directories.
 fn open_exact(path: &Path) -> Result<Repository, git2::Error> {
@@ -30,7 +27,6 @@ pub fn open_or_init_repo(path: &Path) -> anyhow::Result<Repository> {
         Err(_) => {
             let repo = Repository::init(path)
                 .with_context(|| format!("failed to init git repo at {}", path.display()))?;
-            // If there are already data files in the directory, commit them
             if !is_clean(&repo)? {
                 auto_commit(&repo, "init store")?;
             }
@@ -103,7 +99,6 @@ pub fn auto_commit(repo: &Repository, message: &str) -> anyhow::Result<()> {
 }
 
 fn signature(repo: &Repository) -> anyhow::Result<Signature<'static>> {
-    // Try repo config first, fall back to defaults
     match repo.signature() {
         Ok(sig) => Ok(Signature::now(
             sig.name().unwrap_or("blogtato"),
@@ -116,7 +111,6 @@ fn signature(repo: &Repository) -> anyhow::Result<Signature<'static>> {
 /// Find the remote tracking branch for origin (e.g. "refs/remotes/origin/main").
 /// Tries the local HEAD branch name first, then falls back to common defaults.
 fn find_remote_ref(repo: &Repository) -> Option<git2::Reference<'_>> {
-    // Use the local HEAD branch name — if we're on "main", look for "origin/main", etc.
     if let Ok(head) = repo.head()
         && let Some(branch) = head.shorthand()
     {
@@ -125,7 +119,6 @@ fn find_remote_ref(repo: &Repository) -> Option<git2::Reference<'_>> {
             return Some(r);
         }
     }
-    // Fallback: try common branch names
     for name in ["main", "master"] {
         let refname = format!("refs/remotes/origin/{name}");
         if let Ok(r) = repo.find_reference(&refname) {
@@ -192,7 +185,6 @@ pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
         .peel_to_commit()
         .context("failed to peel remote ref")?;
 
-    // If remote is an ancestor of HEAD, nothing to merge
     if repo
         .graph_descendant_of(head_commit.id(), remote_commit.id())
         .unwrap_or(false)
@@ -259,63 +251,13 @@ pub fn read_remote_table<T: TableRow>(
     Ok(all_rows)
 }
 
-// --- Network operations (git CLI) ---
-
-/// Run a git CLI command, capturing stdout/stderr while inheriting stdin.
-/// Inheriting stdin is required so that SSH can prompt for passphrases or
-/// host-key confirmation when the remote uses SSH transport; without it the
-/// subprocess blocks indefinitely because the closed pipe cannot display a
-/// prompt or receive input.
-pub(crate) fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
-    Command::new("git")
-        .args(args)
-        .stdin(Stdio::inherit())
-        .output()
-        .context("failed to run git")
-}
-
-pub fn fetch(path: &Path) -> anyhow::Result<()> {
-    let output = git_output(&["-C", &path.to_string_lossy(), "fetch", "origin"])?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("git fetch failed: {}", stderr.trim());
-    }
-    Ok(())
-}
-
-pub fn push(path: &Path) -> anyhow::Result<()> {
-    let output = git_output(&["-C", &path.to_string_lossy(), "push", "origin", "HEAD"])?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("git push failed: {}", stderr.trim());
-    }
-    Ok(())
-}
-
-pub fn has_remote(path: &Path) -> bool {
-    Command::new("git")
-        .args(["-C", &path.to_string_lossy(), "remote", "get-url", "origin"])
-        .output()
-        .is_ok_and(|o| o.status.success())
-}
-
-pub fn git_passthrough(path: &Path, args: &[String]) -> anyhow::Result<()> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(path);
-    cmd.args(args);
-
-    let status = cmd.status().context("failed to run git")?;
-    if !status.success() {
-        bail!("git exited with {}", status);
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::{fetch, push};
     use serde::{Deserialize, Serialize};
     use std::fs;
+    use std::process::Command;
     use tempfile::TempDir;
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -360,8 +302,6 @@ mod tests {
         fs::write(table_dir.join(file), content).unwrap();
     }
 
-    // --- open_or_init_repo tests ---
-
     #[test]
     fn test_open_or_init_fresh_dir() {
         let dir = TempDir::new().unwrap();
@@ -383,12 +323,9 @@ mod tests {
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         let repo = open_or_init_repo(dir.path()).unwrap();
         setup_git_config(&repo);
-        // The first open_or_init_repo should have committed the data file
         assert!(repo.head().is_ok());
         assert!(is_clean(&repo).unwrap());
     }
-
-    // --- is_clean tests ---
 
     #[test]
     fn test_is_clean_on_clean_repo() {
@@ -429,7 +366,6 @@ mod tests {
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
-        // .lock files should not make repo dirty
         fs::write(dir.path().join("feeds").join(".lock"), "").unwrap();
         assert!(is_clean(&repo).unwrap());
     }
@@ -441,12 +377,9 @@ mod tests {
         setup_git_config(&repo);
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
-        // Unrelated files should not make repo dirty
         fs::write(dir.path().join("random.txt"), "whatever").unwrap();
         assert!(is_clean(&repo).unwrap());
     }
-
-    // --- ensure_clean tests ---
 
     #[test]
     fn test_ensure_clean_on_clean_repo() {
@@ -472,8 +405,6 @@ mod tests {
             "error should mention uncommitted changes: {err}"
         );
     }
-
-    // --- auto_commit tests ---
 
     #[test]
     fn test_auto_commit_with_changes() {
@@ -509,7 +440,6 @@ mod tests {
         let repo = init_repo(dir.path());
         setup_git_config(&repo);
 
-        // Simulate what Table::save() does: create a table dir with data + .lock
         let table_dir = dir.path().join("feeds");
         fs::create_dir_all(&table_dir).unwrap();
         fs::write(
@@ -521,7 +451,6 @@ mod tests {
 
         auto_commit(&repo, "add data").unwrap();
 
-        // .lock should NOT be in the committed tree
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         let tree = head.tree().unwrap();
         let feeds_tree = tree
@@ -547,7 +476,6 @@ mod tests {
         let repo = init_repo(dir.path());
         setup_git_config(&repo);
 
-        // Create a data file and a random unrelated file
         let table_dir = dir.path().join("feeds");
         fs::create_dir_all(&table_dir).unwrap();
         fs::write(
@@ -571,8 +499,6 @@ mod tests {
         );
     }
 
-    // --- has_remote_branch tests ---
-
     #[test]
     fn test_has_remote_branch_false() {
         let dir = TempDir::new().unwrap();
@@ -580,11 +506,8 @@ mod tests {
         assert!(!has_remote_branch(&repo));
     }
 
-    // --- merge_ours tests ---
-
     #[test]
     fn test_merge_ours_diverged() {
-        // Setup: create two repos, diverge them, simulate fetch
         let origin_dir = TempDir::new().unwrap();
         let _origin = init_bare_repo(origin_dir.path());
 
@@ -592,11 +515,9 @@ mod tests {
         let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
 
-        // Add remote
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
 
-        // Create initial commit and push
         write_data(
             clone_dir.path(),
             "feeds",
@@ -606,7 +527,6 @@ mod tests {
         auto_commit(&repo, "initial").unwrap();
         push(clone_dir.path()).unwrap();
 
-        // Simulate divergence: create a commit in origin via another clone
         let other_dir = TempDir::new().unwrap();
         let other_output = Command::new("git")
             .args([
@@ -622,7 +542,6 @@ mod tests {
             String::from_utf8_lossy(&other_output.stderr)
         );
 
-        // Set git config in other clone
         Command::new("git")
             .args([
                 "-C",
@@ -666,7 +585,6 @@ mod tests {
             .unwrap();
         push(other_dir.path()).unwrap();
 
-        // Create local diverging commit
         write_data(
             clone_dir.path(),
             "posts",
@@ -675,17 +593,13 @@ mod tests {
         );
         auto_commit(&repo, "local commit").unwrap();
 
-        // Fetch
         fetch(clone_dir.path()).unwrap();
 
-        // Now merge_ours
         merge_ours(&repo).unwrap();
 
-        // Verify: merge commit exists, HEAD has 2 parents
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         assert_eq!(head.parent_count(), 2, "merge commit should have 2 parents");
 
-        // Tree should be the local tree (ours strategy)
         let posts_tree = head
             .tree()
             .unwrap()
@@ -701,8 +615,6 @@ mod tests {
         );
     }
 
-    // --- read_remote_table tests ---
-
     fn setup_remote_with_table(table_name: &str, files: &[(&str, &str)]) -> (TempDir, Repository) {
         let origin_dir = TempDir::new().unwrap();
         let _origin = init_bare_repo(origin_dir.path());
@@ -714,7 +626,6 @@ mod tests {
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
 
-        // Create table files in a temp dir, push as "remote"
         let other_dir = TempDir::new().unwrap();
         let other_output = Command::new("git")
             .args([
@@ -724,10 +635,8 @@ mod tests {
             ])
             .output()
             .unwrap();
-        // Clone might warn about empty repo, that's ok
         let _ = other_output;
 
-        // Init other repo manually if clone from empty fails
         let other_repo = match Repository::open(other_dir.path()) {
             Ok(r) => r,
             Err(_) => {
@@ -738,7 +647,6 @@ mod tests {
             }
         };
 
-        // Set git config
         let mut config = other_repo.config().unwrap();
         config.set_str("user.name", "Other").unwrap();
         config.set_str("user.email", "other@test.com").unwrap();
@@ -751,7 +659,6 @@ mod tests {
         auto_commit(&other_repo, "add table data").unwrap();
         push(other_dir.path()).unwrap();
 
-        // Fetch in our repo
         fetch(clone_dir.path()).unwrap();
 
         (clone_dir, repo)
@@ -791,7 +698,6 @@ mod tests {
         let repo = init_repo(clone_dir.path());
         setup_git_config(&repo);
 
-        // No remote branch at all
         let rows: HashMap<String, Row<GitTestItem>> =
             read_remote_table(&repo, "nonexistent").unwrap();
         assert!(rows.is_empty());
@@ -807,42 +713,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // --- Network operations tests ---
-
-    #[test]
-    fn test_has_remote_false() {
-        let dir = TempDir::new().unwrap();
-        init_repo(dir.path());
-        assert!(!has_remote(dir.path()));
-    }
-
-    #[test]
-    fn test_has_remote_true() {
-        let dir = TempDir::new().unwrap();
-        let repo = init_repo(dir.path());
-        repo.remote("origin", "https://example.com/repo.git")
-            .unwrap();
-        assert!(has_remote(dir.path()));
-    }
-
-    #[test]
-    fn test_fetch_no_remote() {
-        let dir = TempDir::new().unwrap();
-        init_repo(dir.path());
-        let result = fetch(dir.path());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_git_passthrough_status() {
-        let dir = TempDir::new().unwrap();
-        init_repo(dir.path());
-        let result = git_passthrough(dir.path(), &["status".to_string()]);
-        assert!(result.is_ok());
-    }
-
-    // --- is_remote_ancestor tests ---
-
     #[test]
     fn test_is_remote_ancestor_when_ahead() {
         let origin_dir = TempDir::new().unwrap();
@@ -854,7 +724,6 @@ mod tests {
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
 
-        // Initial commit + push
         write_data(
             clone_dir.path(),
             "feeds",
@@ -865,7 +734,6 @@ mod tests {
         push(clone_dir.path()).unwrap();
         fetch(clone_dir.path()).unwrap();
 
-        // Local extra commit (ahead of remote)
         write_data(
             clone_dir.path(),
             "feeds",
@@ -888,7 +756,6 @@ mod tests {
         repo.remote("origin", &format!("file://{}", origin_dir.path().display()))
             .unwrap();
 
-        // Initial commit + push
         write_data(
             clone_dir.path(),
             "feeds",
@@ -898,7 +765,6 @@ mod tests {
         auto_commit(&repo, "initial").unwrap();
         push(clone_dir.path()).unwrap();
 
-        // Remote commit via another clone
         let other_dir = TempDir::new().unwrap();
         let other_output = Command::new("git")
             .args([
@@ -951,7 +817,6 @@ mod tests {
             .unwrap();
         push(other_dir.path()).unwrap();
 
-        // Local diverging commit
         write_data(
             clone_dir.path(),
             "posts",
@@ -986,7 +851,6 @@ mod tests {
         push(clone_dir.path()).unwrap();
         fetch(clone_dir.path()).unwrap();
 
-        // HEAD == origin/main → false
         assert!(!is_remote_ancestor(&repo).unwrap());
     }
 
@@ -999,7 +863,6 @@ mod tests {
         write_data(dir.path(), "feeds", "items_.jsonl", "{\"id\":\"a\"}\n");
         auto_commit(&repo, "initial").unwrap();
 
-        // No remote ref at all → false
         assert!(!is_remote_ancestor(&repo).unwrap());
     }
 }

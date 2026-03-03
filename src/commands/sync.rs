@@ -13,12 +13,10 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     let path = store.path().to_path_buf();
     let repo = git::try_open_repo(&path);
 
-    // If git exists, ensure working tree is clean before we start
     if let Some(ref repo) = repo {
         git::ensure_clean(repo)?;
     }
 
-    // Always pull feeds
     let pb = ProgressBar::new(0);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -30,7 +28,6 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     store.transaction(|tx| cmd_pull(tx, &pb))?;
     pb.finish_and_clear();
 
-    // Auto-commit pulled data (if git exists)
     if let Some(ref repo) = repo {
         git::auto_commit(repo, "pull feeds")?;
     }
@@ -49,7 +46,6 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // No remote branch yet → first push
     if !git::has_remote_branch(&repo) {
         let sp = spinner("Pushing to remote (first sync)...");
         git::push(&path)?;
@@ -57,12 +53,10 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Fetch
     let sp = spinner("Fetching...");
     git::fetch(&path)?;
     sp.finish_with_message("Fetching... done.");
 
-    // Already up-to-date
     if git::is_up_to_date(&repo)? {
         eprintln!("Already up to date.");
         return Ok(());

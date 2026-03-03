@@ -678,8 +678,6 @@ mod tests {
         }
     }
 
-    // --- Filtering tests ---
-
     fn filter_items(items: &[FeedItem], date_filter: &DateFilter) -> Vec<String> {
         let filtered: Vec<&FeedItem> = items
             .iter()

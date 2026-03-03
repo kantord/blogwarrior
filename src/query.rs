@@ -229,8 +229,6 @@ mod tests {
         values.iter().map(|s| s.to_string()).collect()
     }
 
-    // --- parse_group tests ---
-
     #[rstest]
     #[case::date("/d", GroupKey::Date)]
     #[case::week("/w", GroupKey::Week)]
@@ -269,8 +267,6 @@ mod tests {
         let q = parse_show_args(&args(&["@myblog"])).unwrap();
         assert_eq!(q.filter, Some("@myblog".to_string()));
     }
-
-    // --- parse_date_value tests ---
 
     fn parse_date(value: &str) -> anyhow::Result<DateTime<Utc>> {
         let parser = date_value_parser();
@@ -339,8 +335,6 @@ mod tests {
         assert!(parse_date("nonsense").is_err());
     }
 
-    // --- since/until via parse_show_args ---
-
     #[test]
     fn test_since_arg() {
         let q = parse_show_args(&args(&["since:2024-01-15"])).unwrap();
@@ -362,8 +356,6 @@ mod tests {
         assert_eq!(q.filter, Some("@blog".to_string()));
         assert!(q.date_filter.since.is_some());
     }
-
-    // --- range syntax ---
 
     #[test]
     fn test_range_both() {
