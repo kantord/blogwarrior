@@ -4,6 +4,7 @@ use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
 use crate::git;
 use crate::read_mark::ReadMark;
+// Required by the `database!` macro expansion (provides `transaction`, `save`, `begin`).
 use crate::synctato::Database;
 
 crate::database!(pub(crate) Store {
@@ -58,6 +59,8 @@ impl Store {
             Some(r) => r,
             None => return Ok(SyncResult::NoGitRepo),
         };
+
+        git::ensure_clean(&repo)?;
 
         if !git::has_remote(&path) {
             return Ok(SyncResult::NoRemote);
@@ -117,18 +120,18 @@ impl Store {
         Ok(SyncResult::Synced)
     }
 
-    /// Clone a git remote into a directory.
-    pub(crate) fn clone_from(dir: &Path, url: &str) -> anyhow::Result<()> {
-        let output = git::git_output(&["clone", "--depth", "1", url, &dir.to_string_lossy()])?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("git clone failed: {}", stderr.trim());
-        }
-        Ok(())
-    }
-
     /// Run a raw git command in the store directory.
     pub(crate) fn git_passthrough(&self, args: &[String]) -> anyhow::Result<()> {
         git::git_passthrough(self.path(), args)
     }
+}
+
+/// Clone a git remote into a new store directory.
+pub(crate) fn clone_store(dir: &Path, url: &str) -> anyhow::Result<()> {
+    let output = git::git_output(&["clone", "--depth", "1", url, &dir.to_string_lossy()])?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git clone failed: {}", stderr.trim());
+    }
+    Ok(())
 }
