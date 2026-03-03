@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::io::IsTerminal;
 
@@ -11,6 +11,8 @@ use crate::query::{DateFilter, GroupKey};
 use crate::store::Store;
 
 use super::{feed_index, post_index};
+
+const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
 
 fn format_date(item: &FeedItem) -> String {
     item.date
@@ -39,6 +41,7 @@ fn truncate_str(s: &str, max_cols: usize) -> String {
     format!("{}\u{2026}", &s[..end])
 }
 
+#[allow(clippy::too_many_arguments)]
 fn format_item(
     item: &FeedItem,
     grouped_keys: &[GroupKey],
@@ -47,6 +50,7 @@ fn format_item(
     color: bool,
     shorthand_width: usize,
     content_width: Option<usize>,
+    is_read: bool,
 ) -> String {
     let show_date = !grouped_keys.contains(&GroupKey::Date);
     let show_feed = !grouped_keys.contains(&GroupKey::Feed);
@@ -61,7 +65,7 @@ fn format_item(
     } else {
         0
     };
-    let fixed_width = date_width + shorthand_width + 1; // +1 for space after shorthand
+    let fixed_width = READ_MARKER_WIDTH + date_width + shorthand_width + 1; // +1 for space after shorthand
 
     // Split feed_label "@tag Blog Name" into fixed tag and truncatable blog name.
     // Labels from cmd_show always have "@shorthand title" format, but tests may
@@ -130,8 +134,10 @@ fn format_item(
         String::new()
     };
 
+    let read_marker = if is_read { "  " } else { "* " };
+
     format!(
-        "{date_part}{bold}{shorthand:<sw$}{reset} {title}{styled_meta}",
+        "{read_marker}{date_part}{bold}{shorthand:<sw$}{reset} {title}{styled_meta}",
         sw = shorthand_width
     )
 }
@@ -140,6 +146,7 @@ struct RenderCtx<'a> {
     all_keys: &'a [GroupKey],
     shorthands: &'a HashMap<String, String>,
     feed_labels: &'a HashMap<String, String>,
+    read_ids: &'a HashSet<String>,
     color: bool,
     shorthand_width: usize,
     max_width: Option<usize>,
@@ -150,6 +157,7 @@ fn render_grouped(
     keys: &[GroupKey],
     shorthands: &HashMap<String, String>,
     feed_labels: &HashMap<String, String>,
+    read_ids: &HashSet<String>,
     color: bool,
     max_width: Option<usize>,
 ) -> String {
@@ -166,6 +174,7 @@ fn render_grouped(
                     .get(&item.raw_id)
                     .map(|s| s.as_str())
                     .unwrap_or("");
+                let is_read = ctx.read_ids.contains(&item.raw_id);
                 writeln!(
                     out,
                     "{indent}{}",
@@ -176,7 +185,8 @@ fn render_grouped(
                         ctx.feed_labels,
                         ctx.color,
                         ctx.shorthand_width,
-                        content_width
+                        content_width,
+                        is_read,
                     )
                 )
                 .unwrap();
@@ -232,6 +242,7 @@ fn render_grouped(
         all_keys: keys,
         shorthands,
         feed_labels,
+        read_ids,
         color,
         shorthand_width,
         max_width,
@@ -298,6 +309,13 @@ pub(crate) fn cmd_show(
 
     ensure!(!posts.items.is_empty(), "No matching posts");
 
+    let read_ids: HashSet<String> = store
+        .reads()
+        .items()
+        .into_iter()
+        .map(|r| r.post_id)
+        .collect();
+
     let color = std::io::stdout().is_terminal();
     let max_width = terminal_size::terminal_size().map(|(w, _)| w.0 as usize);
     let refs: Vec<&FeedItem> = posts.items.iter().collect();
@@ -308,6 +326,7 @@ pub(crate) fn cmd_show(
             keys,
             &posts.shorthands,
             &feed_labels,
+            &read_ids,
             color,
             max_width
         )
@@ -326,15 +345,32 @@ mod tests {
         HashMap::new()
     }
 
+    fn no_reads() -> HashSet<String> {
+        HashSet::new()
+    }
+
     #[rstest]
-    #[case::no_grouping(&[], "2024-01-15  abc Post (Alice)")]
-    #[case::grouped_by_date(&[GroupKey::Date], "abc Post (Alice)")]
-    #[case::grouped_by_feed(&[GroupKey::Feed], "2024-01-15  abc Post")]
-    #[case::grouped_by_both(&[GroupKey::Date, GroupKey::Feed], "abc Post")]
-    fn test_format_item_grouping(#[case] keys: &[GroupKey], #[case] expected: &str) {
+    #[case::no_grouping(&[], "* 2024-01-15  abc Post (Alice)")]
+    #[case::grouped_by_date(&[GroupKey::Date], "* abc Post (Alice)")]
+    #[case::grouped_by_feed(&[GroupKey::Feed], "* 2024-01-15  abc Post")]
+    #[case::grouped_by_both(&[GroupKey::Date, GroupKey::Feed], "* abc Post")]
+    fn test_format_item_unread(#[case] keys: &[GroupKey], #[case] expected: &str) {
         let i = feed_item("Post", "2024-01-15", "Alice");
         assert_eq!(
-            format_item(&i, keys, "abc", &no_labels(), false, 3, None),
+            format_item(&i, keys, "abc", &no_labels(), false, 3, None, false),
+            expected
+        );
+    }
+
+    #[rstest]
+    #[case::no_grouping(&[], "  2024-01-15  abc Post (Alice)")]
+    #[case::grouped_by_date(&[GroupKey::Date], "  abc Post (Alice)")]
+    #[case::grouped_by_feed(&[GroupKey::Feed], "  2024-01-15  abc Post")]
+    #[case::grouped_by_both(&[GroupKey::Date, GroupKey::Feed], "  abc Post")]
+    fn test_format_item_read(#[case] keys: &[GroupKey], #[case] expected: &str) {
+        let i = feed_item("Post", "2024-01-15", "Alice");
+        assert_eq!(
+            format_item(&i, keys, "abc", &no_labels(), false, 3, None, true),
             expected
         );
     }
@@ -362,10 +398,42 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(&refs, &[], &no_labels(), &no_labels(), false, None);
+        let output = render_grouped(
+            &refs,
+            &[],
+            &no_labels(),
+            &no_labels(),
+            &no_reads(),
+            false,
+            None,
+        );
         assert_eq!(
             output,
-            "2024-01-02   Post A (Alice)\n2024-01-01   Post B (Bob)\n"
+            "* 2024-01-02   Post A (Alice)\n* 2024-01-01   Post B (Bob)\n"
+        );
+    }
+
+    #[test]
+    fn test_render_flat_with_read_marks() {
+        let items = [
+            feed_item_with_raw_id("Post A", "2024-01-02", "Alice", "id-a"),
+            feed_item_with_raw_id("Post B", "2024-01-01", "Bob", "id-b"),
+        ];
+        let refs: Vec<&FeedItem> = items.iter().collect();
+        let read_ids: HashSet<String> = ["id-a".to_string()].into();
+
+        let output = render_grouped(
+            &refs,
+            &[],
+            &no_labels(),
+            &no_labels(),
+            &read_ids,
+            false,
+            None,
+        );
+        assert_eq!(
+            output,
+            "  2024-01-02   Post A (Alice)\n* 2024-01-01   Post B (Bob)\n"
         );
     }
 
@@ -383,6 +451,7 @@ mod tests {
             &[GroupKey::Date],
             &no_labels(),
             &no_labels(),
+            &no_reads(),
             false,
             None,
         );
@@ -391,13 +460,13 @@ mod tests {
             "\
 === 2024-01-02 ===
 
-   Post A (Alice)
-   Post B (Bob)
+  *  Post A (Alice)
+  *  Post B (Bob)
 
 
 === 2024-01-01 ===
 
-   Post C (Alice)
+  *  Post C (Alice)
 
 
 "
@@ -417,6 +486,7 @@ mod tests {
             &[GroupKey::Feed],
             &no_labels(),
             &no_labels(),
+            &no_reads(),
             false,
             None,
         );
@@ -425,12 +495,12 @@ mod tests {
             "\
 === Alice ===
 
-  2024-01-01   Post B
+  * 2024-01-01   Post B
 
 
 === Bob ===
 
-  2024-01-02   Post A
+  * 2024-01-02   Post A
 
 
 "
@@ -451,6 +521,7 @@ mod tests {
             &[GroupKey::Date, GroupKey::Feed],
             &no_labels(),
             &no_labels(),
+            &no_reads(),
             false,
             None,
         );
@@ -460,17 +531,17 @@ mod tests {
 === 2024-01-02 ===
 
   --- Alice ---
-     Post B
+    *  Post B
 
   --- Bob ---
-     Post A
+    *  Post A
 
 
 
 === 2024-01-01 ===
 
   --- Alice ---
-     Post C
+    *  Post C
 
 
 
@@ -492,6 +563,7 @@ mod tests {
             &[GroupKey::Feed, GroupKey::Date],
             &no_labels(),
             &no_labels(),
+            &no_reads(),
             false,
             None,
         );
@@ -501,17 +573,17 @@ mod tests {
 === Alice ===
 
   --- 2024-01-02 ---
-     Post B
+    *  Post B
 
   --- 2024-01-01 ---
-     Post C
+    *  Post C
 
 
 
 === Bob ===
 
   --- 2024-01-02 ---
-     Post A
+    *  Post A
 
 
 
@@ -529,6 +601,7 @@ mod tests {
                 &[GroupKey::Date],
                 &no_labels(),
                 &no_labels(),
+                &no_reads(),
                 false,
                 None
             ),
@@ -550,6 +623,7 @@ mod tests {
             &[GroupKey::Date],
             &no_labels(),
             &no_labels(),
+            &no_reads(),
             false,
             None,
         );
@@ -578,6 +652,7 @@ mod tests {
             &[GroupKey::Feed],
             &no_labels(),
             &no_labels(),
+            &no_reads(),
             false,
             None,
         );
@@ -599,8 +674,16 @@ mod tests {
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id-a".to_string(), "sDf".to_string());
-        let output = render_grouped(&refs, &[], &shorthands, &no_labels(), false, None);
-        assert_eq!(output, "2024-01-02  sDf Post A (Alice)\n");
+        let output = render_grouped(
+            &refs,
+            &[],
+            &shorthands,
+            &no_labels(),
+            &no_reads(),
+            false,
+            None,
+        );
+        assert_eq!(output, "* 2024-01-02  sDf Post A (Alice)\n");
     }
 
     #[test]
@@ -626,7 +709,15 @@ mod tests {
         // chars().count() of title = 10, blog = 4 → total 14 ≤ 20 → no truncation.
         // But display width of title = 20, so actual line = 45 columns. Must fail.
         let max_width = 40;
-        let output = render_grouped(&refs, &[], &shorthands, &labels, false, Some(max_width));
+        let output = render_grouped(
+            &refs,
+            &[],
+            &shorthands,
+            &labels,
+            &no_reads(),
+            false,
+            Some(max_width),
+        );
 
         for line in output.lines() {
             if line.trim().is_empty() {
@@ -660,7 +751,15 @@ mod tests {
         );
 
         let max_width = 60;
-        let output = render_grouped(&refs, &[], &shorthands, &labels, false, Some(max_width));
+        let output = render_grouped(
+            &refs,
+            &[],
+            &shorthands,
+            &labels,
+            &no_reads(),
+            false,
+            Some(max_width),
+        );
 
         for line in output.lines() {
             if line.trim().is_empty() {
@@ -699,7 +798,15 @@ mod tests {
                 true
             })
             .collect();
-        let output = render_grouped(&filtered, &[], &no_labels(), &no_labels(), false, None);
+        let output = render_grouped(
+            &filtered,
+            &[],
+            &no_labels(),
+            &no_labels(),
+            &no_reads(),
+            false,
+            None,
+        );
         output
             .lines()
             .filter(|l| !l.trim().is_empty())

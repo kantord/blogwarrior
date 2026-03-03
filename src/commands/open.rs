@@ -15,14 +15,14 @@ fn resolve_post_shorthand(store: &Store, shorthand: &str) -> anyhow::Result<Feed
         .ok_or_else(|| anyhow::anyhow!("Unknown shorthand: {}", shorthand))
 }
 
-pub(crate) fn cmd_read(store: &Store, shorthand: &str) -> anyhow::Result<()> {
+pub(crate) fn cmd_read(store: &Store, shorthand: &str) -> anyhow::Result<String> {
     let item = resolve_post_shorthand(store, shorthand)?;
     ensure!(!item.link.is_empty(), "Post has no link");
     println!("{}", item.link);
-    Ok(())
+    Ok(item.raw_id)
 }
 
-pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<()> {
+pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<String> {
     let item = resolve_post_shorthand(store, shorthand)?;
     ensure!(!item.link.is_empty(), "Post has no link");
     match std::env::var("BROWSER") {
@@ -41,5 +41,5 @@ pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<()> {
         }
     }
     eprintln!("Opened in browser: {}", item.link);
-    Ok(())
+    Ok(item.raw_id)
 }

@@ -895,15 +895,14 @@ fn test_show_displays_post_shorthands() {
         if line.trim().is_empty() {
             continue;
         }
-        // Lines are: "YYYY-MM-DD  shorthand title (meta)"
-        // Skip the date column and trailing spaces to find the shorthand.
+        // Lines are: "* YYYY-MM-DD  shorthand title (meta)"
         let words: Vec<&str> = line.split_whitespace().collect();
         assert!(
-            words.len() >= 2,
-            "line should have at least a date and shorthand: {}",
+            words.len() >= 3,
+            "line should have a marker, date, and shorthand: {}",
             line
         );
-        let shorthand = words[1];
+        let shorthand = words[2];
         assert!(
             shorthand.chars().all(|c| post_alphabet.contains(&c)),
             "shorthand '{}' should only contain POST_ALPHABET characters in line: {}",
