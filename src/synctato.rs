@@ -187,6 +187,11 @@ impl<T: TableRow> Table<T> {
         hash_id(&item.key(), self.id_length)
     }
 
+    pub fn contains_key(&self, key: &str) -> bool {
+        let id = hash_id(key, self.id_length);
+        matches!(self.items.get(&id), Some(Row::Live { .. }))
+    }
+
     fn shard_key(&self, id: &str) -> String {
         let end = self.shard_characters.min(id.len());
         id[..end].to_string()
@@ -825,6 +830,27 @@ mod tests {
         let items = loaded.items();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Back");
+    }
+
+    #[test]
+    fn test_contains_key_live() {
+        let (_dir, mut table) = new_test_table();
+        table.upsert(make_item("x", "Item"));
+        assert!(table.contains_key("x"));
+    }
+
+    #[test]
+    fn test_contains_key_missing() {
+        let (_dir, table) = new_test_table();
+        assert!(!table.contains_key("x"));
+    }
+
+    #[test]
+    fn test_contains_key_deleted() {
+        let (_dir, mut table) = new_test_table();
+        table.upsert(make_item("x", "Item"));
+        table.delete("x");
+        assert!(!table.contains_key("x"));
     }
 
     #[test]

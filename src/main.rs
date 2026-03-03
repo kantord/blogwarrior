@@ -141,6 +141,9 @@ fn transact(
 }
 
 fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
+    if store.reads().contains_key(&raw_id) {
+        return Ok(());
+    }
     transact(store, "mark read", |tx| {
         tx.reads.upsert(read_mark::ReadMark {
             post_id: raw_id,
