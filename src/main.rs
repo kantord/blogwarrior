@@ -18,13 +18,10 @@ use commands::RESERVED_COMMANDS;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
-#[command(args_conflicts_with_subcommands = true, after_help = QUERY_HELP)]
+#[command(after_help = QUERY_HELP)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
-
-    /// Query arguments (see below)
-    args: Vec<String>,
 }
 
 const QUERY_HELP: &str = "\
@@ -72,15 +69,9 @@ enum Command {
         args: Vec<String>,
     },
     /// Open a post in the default browser
-    Open {
-        /// Post shorthand
-        shorthand: String,
-    },
+    Open,
     /// Print the URL of a post to stdout
-    Read {
-        /// Post shorthand
-        shorthand: String,
-    },
+    Read,
     /// Manage feed subscriptions
     Feed {
         #[command(subcommand)]
@@ -89,10 +80,7 @@ enum Command {
     /// Fetch feeds and sync with remote
     Sync,
     /// Mark a post as unread
-    Unread {
-        /// Post shorthand
-        shorthand: String,
-    },
+    Unread,
     /// Run git commands in the store directory
     Git {
         /// Arguments to pass to git
@@ -121,21 +109,25 @@ enum FeedCommand {
     Ls,
 }
 
-fn preprocess_args(mut args: Vec<String>) -> Vec<String> {
-    if args.len() < 3 {
-        return args;
-    }
-    if RESERVED_COMMANDS.contains(&args[1].as_str()) {
-        return args;
-    }
-    if let Some(pos) = args[2..]
+fn split_at_command(args: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let cmd_pos = args[1..]
         .iter()
-        .position(|a| RESERVED_COMMANDS.contains(&a.as_str()))
-    {
-        let cmd = args.remove(pos + 2);
-        args.insert(1, cmd);
-    }
-    args
+        .position(|a| RESERVED_COMMANDS.contains(&a.as_str()));
+    let split = cmd_pos.map(|p| p + 1).unwrap_or(args.len());
+    let filter = args[1..split]
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .cloned()
+        .collect();
+    let mut cmd_args = vec![args[0].clone()];
+    cmd_args.extend(
+        args[1..split]
+            .iter()
+            .filter(|a| a.starts_with('-'))
+            .cloned(),
+    );
+    cmd_args.extend_from_slice(&args[split..]);
+    (filter, cmd_args)
 }
 
 fn store_dir() -> anyhow::Result<PathBuf> {
@@ -170,7 +162,8 @@ fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
 }
 
 fn run() -> anyhow::Result<()> {
-    let args = Args::parse_from(preprocess_args(std::env::args().collect()));
+    let (filter, cmd_args) = split_at_command(std::env::args().collect());
+    let args = Args::parse_from(cmd_args);
     let store_dir = store_dir()?;
 
     if let Some(Command::Clone { ref url }) = args.command {
@@ -181,19 +174,23 @@ fn run() -> anyhow::Result<()> {
 
     match args.command {
         Some(Command::Show { ref args }) => {
-            let q = query::parse_show_args(args)?;
+            let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
+            let q = query::parse_show_args(&all_args)?;
             commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
         }
-        Some(Command::Open { ref shorthand }) => {
-            let raw_id = commands::open::cmd_open(&store, shorthand)?;
+        Some(Command::Open) => {
+            anyhow::ensure!(filter.len() == 1, "Usage: blog <shorthand> open");
+            let raw_id = commands::open::cmd_open(&store, &filter[0])?;
             mark_read(&mut store, raw_id)?;
         }
-        Some(Command::Read { ref shorthand }) => {
-            let raw_id = commands::open::cmd_read(&store, shorthand)?;
+        Some(Command::Read) => {
+            anyhow::ensure!(filter.len() == 1, "Usage: blog <shorthand> read");
+            let raw_id = commands::open::cmd_read(&store, &filter[0])?;
             mark_read(&mut store, raw_id)?;
         }
-        Some(Command::Unread { ref shorthand }) => {
-            let item = commands::open::resolve_post_shorthand(&store, shorthand)?;
+        Some(Command::Unread) => {
+            anyhow::ensure!(filter.len() == 1, "Usage: blog <shorthand> unread");
+            let item = commands::open::resolve_post_shorthand(&store, &filter[0])?;
             mark_unread(&mut store, item.raw_id)?;
         }
         Some(Command::Feed {
@@ -229,7 +226,7 @@ fn run() -> anyhow::Result<()> {
         }
         Some(Command::Clone { .. }) => unreachable!(),
         None => {
-            let q = query::parse_show_args(&args.args)?;
+            let q = query::parse_show_args(&filter)?;
             commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
         }
     }
@@ -252,43 +249,52 @@ mod tests {
     }
 
     #[test]
-    fn test_preprocess_args_target_first() {
-        assert_eq!(
-            preprocess_args(args(&["blog", "a", "open"])),
-            args(&["blog", "open", "a"]),
-        );
+    fn test_split_at_command_filter_before_command() {
+        let (filter, cmd) = split_at_command(args(&["blog", "a", "open"]));
+        assert_eq!(filter, args(&["a"]));
+        assert_eq!(cmd, args(&["blog", "open"]));
     }
 
     #[test]
-    fn test_preprocess_args_command_first_unchanged() {
-        assert_eq!(
-            preprocess_args(args(&["blog", "open", "a"])),
-            args(&["blog", "open", "a"]),
-        );
+    fn test_split_at_command_no_filter() {
+        let (filter, cmd) = split_at_command(args(&["blog", "sync"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "sync"]));
     }
 
     #[test]
-    fn test_preprocess_args_no_command_unchanged() {
-        assert_eq!(
-            preprocess_args(args(&["blog", "/d", "@hn"])),
-            args(&["blog", "/d", "@hn"]),
-        );
+    fn test_split_at_command_no_command() {
+        let (filter, cmd) = split_at_command(args(&["blog", "/d", "@hn"]));
+        assert_eq!(filter, args(&["/d", "@hn"]));
+        assert_eq!(cmd, args(&["blog"]));
     }
 
     #[test]
-    fn test_preprocess_args_single_command_unchanged() {
-        assert_eq!(
-            preprocess_args(args(&["blog", "sync"])),
-            args(&["blog", "sync"]),
-        );
+    fn test_split_at_command_help_flag() {
+        let (filter, cmd) = split_at_command(args(&["blog", "--help"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "--help"]));
     }
 
     #[test]
-    fn test_preprocess_args_help_unchanged() {
-        assert_eq!(
-            preprocess_args(args(&["blog", "--help"])),
-            args(&["blog", "--help"]),
-        );
+    fn test_split_at_command_feed_subcommand() {
+        let (filter, cmd) = split_at_command(args(&["blog", "feed", "add", "url"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "feed", "add", "url"]));
+    }
+
+    #[test]
+    fn test_split_at_command_show_with_args() {
+        let (filter, cmd) = split_at_command(args(&["blog", "show", "/d"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "show", "/d"]));
+    }
+
+    #[test]
+    fn test_split_at_command_filter_with_show() {
+        let (filter, cmd) = split_at_command(args(&["blog", "/d", "show"]));
+        assert_eq!(filter, args(&["/d"]));
+        assert_eq!(cmd, args(&["blog", "show"]));
     }
 
     #[test]

@@ -916,7 +916,7 @@ fn test_show_displays_post_shorthands() {
 fn test_open_unknown_shorthand() {
     let ctx = TestContext::new();
 
-    let output = ctx.run(&["open", "zzzzz"]).failure();
+    let output = ctx.run(&["zzzzz", "open"]).failure();
     let stderr = output.stderr_str();
     assert!(
         stderr.contains("Unknown shorthand"),
@@ -949,7 +949,7 @@ fn test_open_valid_shorthand() {
     #[allow(deprecated)]
     let output = Command::cargo_bin("blog")
         .unwrap()
-        .args(["open", "a"])
+        .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert();
@@ -974,7 +974,7 @@ fn test_open_post_without_link() {
     std::fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     std::fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["open", "a"]).failure();
+    let output = ctx.run(&["a", "open"]).failure();
     let stderr = output.stderr_str();
     assert!(
         stderr.contains("Post has no link"),
@@ -1017,7 +1017,7 @@ fn test_open_marks_post_as_read() {
     #[allow(deprecated)]
     Command::cargo_bin("blog")
         .unwrap()
-        .args(["open", "a"])
+        .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert()
@@ -2089,7 +2089,7 @@ fn test_unread_command() {
     #[allow(deprecated)]
     Command::cargo_bin("blog")
         .unwrap()
-        .args(["open", "a"])
+        .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert()
@@ -2104,7 +2104,7 @@ fn test_unread_command() {
     );
 
     // Mark it unread again
-    ctx.run(&["unread", "a"]).success();
+    ctx.run(&["a", "unread"]).success();
 
     // After unread: both posts should be unread again
     let after_unread = ctx.run(&["show"]).success().stdout_str();
