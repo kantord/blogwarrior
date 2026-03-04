@@ -14,6 +14,7 @@ mod test_helpers;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use commands::RESERVED_COMMANDS;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
@@ -117,6 +118,23 @@ enum FeedCommand {
     Ls,
 }
 
+fn preprocess_args(mut args: Vec<String>) -> Vec<String> {
+    if args.len() < 3 {
+        return args;
+    }
+    if RESERVED_COMMANDS.contains(&args[1].as_str()) {
+        return args;
+    }
+    if let Some(pos) = args[2..]
+        .iter()
+        .position(|a| RESERVED_COMMANDS.contains(&a.as_str()))
+    {
+        let cmd = args.remove(pos + 2);
+        args.insert(1, cmd);
+    }
+    args
+}
+
 fn store_dir() -> anyhow::Result<PathBuf> {
     if let Ok(val) = std::env::var("RSS_STORE") {
         return Ok(PathBuf::from(val));
@@ -149,7 +167,7 @@ fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
 }
 
 fn run() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let args = Args::parse_from(preprocess_args(std::env::args().collect()));
     let store_dir = store_dir()?;
 
     if let Some(Command::Clone { ref url }) = args.command {
@@ -219,5 +237,54 @@ fn main() {
     if let Err(e) = run() {
         eprintln!("{e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(input: &[&str]) -> Vec<String> {
+        input.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_preprocess_args_target_first() {
+        assert_eq!(
+            preprocess_args(args(&["blog", "a", "open"])),
+            args(&["blog", "open", "a"]),
+        );
+    }
+
+    #[test]
+    fn test_preprocess_args_command_first_unchanged() {
+        assert_eq!(
+            preprocess_args(args(&["blog", "open", "a"])),
+            args(&["blog", "open", "a"]),
+        );
+    }
+
+    #[test]
+    fn test_preprocess_args_no_command_unchanged() {
+        assert_eq!(
+            preprocess_args(args(&["blog", "/d", "@hn"])),
+            args(&["blog", "/d", "@hn"]),
+        );
+    }
+
+    #[test]
+    fn test_preprocess_args_single_command_unchanged() {
+        assert_eq!(
+            preprocess_args(args(&["blog", "sync"])),
+            args(&["blog", "sync"]),
+        );
+    }
+
+    #[test]
+    fn test_preprocess_args_help_unchanged() {
+        assert_eq!(
+            preprocess_args(args(&["blog", "--help"])),
+            args(&["blog", "--help"]),
+        );
     }
 }

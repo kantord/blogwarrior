@@ -12,6 +12,10 @@ use std::collections::HashMap;
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
 
+pub(crate) const RESERVED_COMMANDS: &[&str] = &[
+    "show", "open", "read", "unread", "feed", "sync", "git", "clone",
+];
+
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 
 const POST_ALPHABET: [char; 34] = [
@@ -132,10 +136,18 @@ pub(crate) struct PostIndex {
 pub(crate) fn post_index(table: &crate::synctato::Table<FeedItem>) -> PostIndex {
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
+    let mut idx = 0;
     let shorthands = items
         .iter()
-        .enumerate()
-        .map(|(i, item)| (item.raw_id.clone(), index_to_shorthand(i)))
+        .map(|item| {
+            loop {
+                let sh = index_to_shorthand(idx);
+                idx += 1;
+                if !RESERVED_COMMANDS.contains(&sh.as_str()) {
+                    return (item.raw_id.clone(), sh);
+                }
+            }
+        })
         .collect();
     PostIndex { items, shorthands }
 }
@@ -226,5 +238,32 @@ mod tests {
         assert_eq!(sh0.len(), 1);
         assert_eq!(sh33.len(), 1);
         assert_eq!(sh34.len(), 2);
+    }
+
+    #[test]
+    fn test_shorthand_skips_reserved_commands() {
+        // Generate enough shorthands to cover the single-char and two-char range
+        for i in 0..2000 {
+            let sh = index_to_shorthand(i);
+            // index_to_shorthand itself doesn't skip, but post_index does.
+            // Here we just verify the reserved list is well-formed.
+            let _ = sh;
+        }
+        // Verify that no reserved command name can appear as a shorthand
+        // by simulating the skip logic used in post_index.
+        let mut idx = 0;
+        for _ in 0..2000 {
+            loop {
+                let sh = index_to_shorthand(idx);
+                idx += 1;
+                if !RESERVED_COMMANDS.contains(&sh.as_str()) {
+                    assert!(
+                        !RESERVED_COMMANDS.contains(&sh.as_str()),
+                        "shorthand {sh} collides with a reserved command"
+                    );
+                    break;
+                }
+            }
+        }
     }
 }

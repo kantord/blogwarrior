@@ -2114,3 +2114,124 @@ fn test_unread_command() {
         "expected 2 unread posts after marking one unread, got:\n{after_unread}"
     );
 }
+
+#[test]
+fn test_target_first_open() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Target First Blog",
+        &[
+            (
+                "Post A",
+                "Tue, 02 Jan 2024 00:00:00 +0000",
+                "guid-a",
+                "https://example.com/a",
+            ),
+            (
+                "Post B",
+                "Mon, 01 Jan 2024 00:00:00 +0000",
+                "guid-b",
+                "https://example.com/b",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/tf.xml", &xml);
+    let url = ctx.server.url("/tf.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Both posts are unread
+    let before = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
+
+    // Use target-first syntax: `a open` instead of `open a`
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["a", "open"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    // After opening: one post is read
+    let after = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after.lines().filter(|l| l.starts_with('*')).count(),
+        1,
+        "expected 1 unread post after target-first open, got:\n{after}"
+    );
+}
+
+#[test]
+fn test_target_first_read() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Target First Read Blog",
+        &[(
+            "Post A",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-a",
+            "https://example.com/a",
+        )],
+    );
+    ctx.mock_rss_feed("/tfr.xml", &xml);
+    let url = ctx.server.url("/tfr.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Use target-first syntax: `a read` instead of `read a`
+    let output = ctx.run(&["a", "read"]).success().stdout_str();
+    assert!(
+        output.contains("https://example.com/a"),
+        "expected URL in output, got: {output}"
+    );
+}
+
+#[test]
+fn test_target_first_unread() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Target First Unread Blog",
+        &[(
+            "Post A",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-a",
+            "https://example.com/a",
+        )],
+    );
+    ctx.mock_rss_feed("/tfu.xml", &xml);
+    let url = ctx.server.url("/tfu.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Mark as read first via target-first open
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["a", "open"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    let after_open = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after_open.lines().filter(|l| l.starts_with('*')).count(),
+        0,
+        "expected 0 unread posts after open"
+    );
+
+    // Use target-first syntax: `a unread` instead of `unread a`
+    ctx.run(&["a", "unread"]).success();
+
+    let after_unread = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after_unread.lines().filter(|l| l.starts_with('*')).count(),
+        1,
+        "expected 1 unread post after target-first unread, got:\n{after_unread}"
+    );
+}
