@@ -84,6 +84,11 @@ enum Command {
     },
     /// Fetch feeds and sync with remote
     Sync,
+    /// Mark a post as unread
+    Unread {
+        /// Post shorthand
+        shorthand: String,
+    },
     /// Run git commands in the store directory
     Git {
         /// Arguments to pass to git
@@ -123,6 +128,13 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
+fn mark_unread(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
+    store.transact("mark unread", |tx| {
+        tx.reads.delete(&raw_id);
+        Ok(())
+    })
+}
+
 fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
     if store.reads().contains_key(&raw_id) {
         return Ok(());
@@ -158,6 +170,10 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Read { ref shorthand }) => {
             let raw_id = commands::open::cmd_read(&store, shorthand)?;
             mark_read(&mut store, raw_id)?;
+        }
+        Some(Command::Unread { ref shorthand }) => {
+            let item = commands::open::resolve_post_shorthand(&store, shorthand)?;
+            mark_unread(&mut store, item.raw_id)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },

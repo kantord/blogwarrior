@@ -2054,3 +2054,63 @@ fn test_show_since_with_grouping() {
     );
     assert!(stdout.contains("New Post"), "New Post should be shown");
 }
+
+#[test]
+fn test_unread_command() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Unread Blog",
+        &[
+            (
+                "Post A",
+                "Tue, 02 Jan 2024 00:00:00 +0000",
+                "guid-a",
+                "https://example.com/a",
+            ),
+            (
+                "Post B",
+                "Mon, 01 Jan 2024 00:00:00 +0000",
+                "guid-b",
+                "https://example.com/b",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/unread.xml", &xml);
+    let url = ctx.server.url("/unread.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Before opening: both posts are unread (shown with *)
+    let before = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
+
+    // Open first post (shorthand "a") to mark it read
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["open", "a"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    // After opening: one post is read, one is still unread
+    let after_open = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after_open.lines().filter(|l| l.starts_with('*')).count(),
+        1,
+        "expected 1 unread post after opening one, got:\n{after_open}"
+    );
+
+    // Mark it unread again
+    ctx.run(&["unread", "a"]).success();
+
+    // After unread: both posts should be unread again
+    let after_unread = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after_unread.lines().filter(|l| l.starts_with('*')).count(),
+        2,
+        "expected 2 unread posts after marking one unread, got:\n{after_unread}"
+    );
+}
