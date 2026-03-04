@@ -7,10 +7,10 @@ use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 use crate::feed::FeedItem;
-use crate::query::GroupKey;
+use crate::query::{GroupKey, Query};
 use crate::store::Store;
 
-use super::ResolvedPosts;
+use super::resolve_posts;
 
 const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
 
@@ -230,11 +230,8 @@ fn render_grouped(
     out
 }
 
-pub(crate) fn cmd_show(
-    store: &Store,
-    keys: &[GroupKey],
-    resolved: &ResolvedPosts,
-) -> anyhow::Result<()> {
+pub(crate) fn cmd_show(store: &Store, query: &Query) -> anyhow::Result<()> {
+    let resolved = resolve_posts(store, query)?;
     ensure!(!resolved.items.is_empty(), "No matching posts");
 
     let read_ids: HashSet<String> = store
@@ -251,7 +248,7 @@ pub(crate) fn cmd_show(
         "{}",
         render_grouped(
             &refs,
-            keys,
+            &query.keys,
             &resolved.shorthands,
             &resolved.feed_labels,
             &read_ids,

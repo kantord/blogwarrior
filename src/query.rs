@@ -62,6 +62,16 @@ pub(crate) struct Query {
     pub shorthands: Vec<String>,
 }
 
+impl Query {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+            && self.filter.is_none()
+            && self.date_filter.since.is_none()
+            && self.date_filter.until.is_none()
+            && self.shorthands.is_empty()
+    }
+}
+
 enum Token {
     Group(GroupKey),
     FeedFilter(String),
