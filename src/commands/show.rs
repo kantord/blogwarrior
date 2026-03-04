@@ -41,20 +41,17 @@ fn truncate_str(s: &str, max_cols: usize) -> String {
     format!("{}\u{2026}", &s[..end])
 }
 
-#[allow(clippy::too_many_arguments)]
-fn format_item(
-    item: &FeedItem,
-    grouped_keys: &[GroupKey],
-    shorthand: &str,
-    feed_labels: &HashMap<String, String>,
-    color: bool,
-    shorthand_width: usize,
-    content_width: Option<usize>,
-    is_read: bool,
-) -> String {
-    let show_date = !grouped_keys.contains(&GroupKey::Date);
-    let show_feed = !grouped_keys.contains(&GroupKey::Feed);
-    let feed_label = feed_labels
+fn format_item(item: &FeedItem, content_width: Option<usize>, ctx: &RenderCtx) -> String {
+    let shorthand = ctx
+        .shorthands
+        .get(&item.raw_id)
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let is_read = ctx.read_ids.contains(&item.raw_id);
+    let show_date = !ctx.all_keys.contains(&GroupKey::Date);
+    let show_feed = !ctx.all_keys.contains(&GroupKey::Feed);
+    let feed_label = ctx
+        .feed_labels
         .get(&item.feed)
         .map(|s| s.as_str())
         .unwrap_or(&item.feed);
@@ -65,7 +62,7 @@ fn format_item(
     } else {
         0
     };
-    let fixed_width = READ_MARKER_WIDTH + date_width + shorthand_width + 1; // +1 for space after shorthand
+    let fixed_width = READ_MARKER_WIDTH + date_width + ctx.shorthand_width + 1; // +1 for space after shorthand
 
     // Split feed_label "@tag Blog Name" into fixed tag and truncatable blog name.
     // Labels from cmd_show always have "@shorthand title" format, but tests may
@@ -113,7 +110,7 @@ fn format_item(
     };
 
     // Apply ANSI styling after truncation
-    let (bold, dim, italic, date_color, reset) = if color {
+    let (bold, dim, italic, date_color, reset) = if ctx.color {
         ("\x1b[1m", "\x1b[2m", "\x1b[3m", "\x1b[36m", "\x1b[0m")
     } else {
         ("", "", "", "", "")
@@ -138,7 +135,7 @@ fn format_item(
 
     format!(
         "{read_marker}{date_part}{bold}{shorthand:<sw$}{reset} {title}{styled_meta}",
-        sw = shorthand_width
+        sw = ctx.shorthand_width
     )
 }
 
@@ -169,27 +166,7 @@ fn render_grouped(
             let indent_width = depth * 2;
             let content_width = ctx.max_width.map(|w| w.saturating_sub(indent_width));
             for item in items {
-                let sh = ctx
-                    .shorthands
-                    .get(&item.raw_id)
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
-                let is_read = ctx.read_ids.contains(&item.raw_id);
-                writeln!(
-                    out,
-                    "{indent}{}",
-                    format_item(
-                        item,
-                        ctx.all_keys,
-                        sh,
-                        ctx.feed_labels,
-                        ctx.color,
-                        ctx.shorthand_width,
-                        content_width,
-                        is_read,
-                    )
-                )
-                .unwrap();
+                writeln!(out, "{indent}{}", format_item(item, content_width, ctx)).unwrap();
             }
             return;
         }
@@ -364,10 +341,22 @@ mod tests {
         #[case] expected: &str,
     ) {
         let i = feed_item("Post", "2024-01-15", "Alice");
-        assert_eq!(
-            format_item(&i, keys, "abc", &no_labels(), false, 3, None, is_read),
-            expected
-        );
+        let mut shorthands = HashMap::new();
+        shorthands.insert(i.raw_id.clone(), "abc".to_string());
+        let mut read_ids = HashSet::new();
+        if is_read {
+            read_ids.insert(i.raw_id.clone());
+        }
+        let ctx = RenderCtx {
+            all_keys: keys,
+            shorthands: &shorthands,
+            feed_labels: &no_labels(),
+            read_ids: &read_ids,
+            color: false,
+            shorthand_width: 3,
+            max_width: None,
+        };
+        assert_eq!(format_item(&i, None, &ctx), expected);
     }
 
     #[test]
