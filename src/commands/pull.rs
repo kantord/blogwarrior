@@ -5,15 +5,20 @@ use crate::feed::{FeedItem, FeedMeta};
 use crate::feed_source::FeedSource;
 use crate::store::Transaction;
 
-type FetchResult = (FeedSource, Result<(FeedMeta, Vec<FeedItem>), String>);
+pub(crate) type FetchResult = (FeedSource, Result<(FeedMeta, Vec<FeedItem>), String>);
 
-pub(crate) fn cmd_pull(tx: &mut Transaction, pb: &ProgressBar) -> anyhow::Result<()> {
-    let client = crate::http::http_client()?;
-    let sources = tx.feeds.items();
+/// Fetch all feeds in parallel.
+pub(crate) fn fetch_feeds(sources: &[FeedSource], pb: &ProgressBar) -> Vec<FetchResult> {
+    let client = match crate::http::http_client() {
+        Ok(c) => c,
+        Err(e) => {
+            pb.suspend(|| eprintln!("Error creating HTTP client: {e}"));
+            return Vec::new();
+        }
+    };
     pb.set_length(sources.len() as u64);
 
-    // Fetch all feeds in parallel
-    let results: Vec<FetchResult> = sources
+    sources
         .par_iter()
         .map(|source| {
             pb.set_message(source.url.clone());
@@ -21,9 +26,15 @@ pub(crate) fn cmd_pull(tx: &mut Transaction, pb: &ProgressBar) -> anyhow::Result
             pb.inc(1);
             (source.clone(), result)
         })
-        .collect();
+        .collect()
+}
 
-    // Apply results sequentially
+/// Apply fetched feed results to the store.
+pub(crate) fn apply_fetched(
+    tx: &mut Transaction,
+    results: Vec<FetchResult>,
+    pb: &ProgressBar,
+) -> anyhow::Result<()> {
     for (source, result) in results {
         let (meta, items) = match result {
             Ok(r) => r,

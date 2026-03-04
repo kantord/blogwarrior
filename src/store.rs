@@ -32,7 +32,7 @@ pub(crate) enum SyncResult {
 }
 
 impl Store {
-    /// Git-aware transaction: ensure_clean → run closure → save → auto_commit.
+    /// Git-aware transaction: lock → reload → ensure_clean → run closure → save → auto_commit → unlock.
     pub(crate) fn transact(
         &mut self,
         msg: &str,
@@ -42,7 +42,7 @@ impl Store {
         if let Some(ref repo) = repo {
             git::ensure_clean(repo)?;
         }
-        self.transaction(f)?;
+        self.locked_transaction(f)?;
         if let Some(ref repo) = repo {
             git::auto_commit(repo, msg)?;
         }
@@ -98,13 +98,12 @@ impl Store {
         let feeds_count = remote_feeds.len();
         let posts_count = remote_posts.len();
 
-        {
-            let tx = self.begin();
+        self.locked_transaction(|tx| {
             tx.feeds.merge_remote(remote_feeds);
             tx.posts.merge_remote(remote_posts);
             tx.reads.merge_remote(remote_reads);
-        }
-        self.save()?;
+            Ok(())
+        })?;
         on_progress(SyncEvent::MergeDone {
             feeds: feeds_count,
             posts: posts_count,

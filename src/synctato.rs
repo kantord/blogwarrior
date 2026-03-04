@@ -11,18 +11,33 @@ use sha2::{Digest, Sha256};
 #[doc(hidden)]
 pub use paste::paste;
 
+/// Acquire an exclusive advisory lock on the store directory.
+/// Returns the lock file handle; the lock is released when it is dropped.
+pub fn lock_store(store_path: &Path) -> anyhow::Result<fs::File> {
+    fs::create_dir_all(store_path).context("failed to create store directory")?;
+    let lock_file =
+        fs::File::create(store_path.join(".lock")).context("failed to create store lock file")?;
+    lock_file.lock().context("failed to acquire store lock")?;
+    Ok(lock_file)
+}
+
 pub trait Database {
     type Transaction<'a>
     where
         Self: 'a;
 
+    fn path(&self) -> &Path;
     fn save(&self) -> anyhow::Result<()>;
+    fn reload(&mut self) -> anyhow::Result<()>;
     fn begin(&mut self) -> Self::Transaction<'_>;
 
-    fn transaction<F, T>(&mut self, f: F) -> anyhow::Result<T>
+    /// Lock the store, reload from disk, run the closure, save, then unlock.
+    fn locked_transaction<F, T>(&mut self, f: F) -> anyhow::Result<T>
     where
         F: FnOnce(&mut Self::Transaction<'_>) -> anyhow::Result<T>,
     {
+        let _lock = lock_store(self.path())?;
+        self.reload()?;
         let result = {
             let mut tx = self.begin();
             f(&mut tx)?
@@ -147,6 +162,12 @@ impl<T: TableRow> Table<T> {
         })
     }
 
+    /// Re-read all items from disk, replacing the in-memory state.
+    pub fn reload(&mut self) -> anyhow::Result<()> {
+        self.items = Self::read_items(&self.dir)?;
+        Ok(())
+    }
+
     pub fn upsert(&mut self, item: T) {
         let id = hash_id(&item.key(), self.id_length);
 
@@ -205,15 +226,9 @@ impl<T: TableRow> Table<T> {
         // std::fs::File::lock() — exclusive advisory lock (stable since Rust 1.89)
         lock_file.lock().context("failed to acquire lock")?;
 
-        // Re-read disk state and merge: preserve items added by other processes
-        let mut merged = Self::read_items(&self.dir)?;
-        for (id, row) in &self.items {
-            merged.insert(id.clone(), row.clone());
-        }
-
         // Group items by shard key
         let mut shards: HashMap<String, Vec<&Row<T>>> = HashMap::new();
-        for row in merged.values() {
+        for row in self.items.values() {
             let key = self.shard_key(row.id());
             shards.entry(key).or_default().push(row);
         }
@@ -315,10 +330,6 @@ macro_rules! database {
                     })
                 }
 
-                pub fn path(&self) -> &::std::path::Path {
-                    &self.path
-                }
-
                 $(
                     pub fn $field(&self) -> &$crate::synctato::Table<$row> {
                         &self.$field
@@ -329,8 +340,17 @@ macro_rules! database {
             impl $crate::synctato::Database for $name {
                 type Transaction<'a> = [<$name Transaction>]<'a>;
 
+                fn path(&self) -> &::std::path::Path {
+                    &self.path
+                }
+
                 fn save(&self) -> ::anyhow::Result<()> {
                     $(self.$field.save()?;)*
+                    Ok(())
+                }
+
+                fn reload(&mut self) -> ::anyhow::Result<()> {
+                    $(self.$field.reload()?;)*
                     Ok(())
                 }
 
@@ -997,33 +1017,85 @@ mod tests {
         }
     }
 
+    crate::database!(TestDb { t: TestItem });
+
     #[test]
-    fn test_concurrent_saves_lose_data() {
+    fn test_locked_transaction_reloads_before_mutating() {
         let dir = TempDir::new().unwrap();
 
         // Initial state: one item
-        let mut table = Table::<TestItem>::load(dir.path()).unwrap();
-        table.upsert(make_item("existing", "Existing"));
-        table.save().unwrap();
+        let mut db = TestDb::open(dir.path()).unwrap();
+        db.locked_transaction(|tx| {
+            tx.t.upsert(make_item("x", "Original"));
+            Ok(())
+        })
+        .unwrap();
 
-        // Two "processes" load the same data
-        let mut process_a = Table::<TestItem>::load(dir.path()).unwrap();
-        let mut process_b = Table::<TestItem>::load(dir.path()).unwrap();
+        // Simulate another process writing directly to disk
+        let mut other = TestDb::open(dir.path()).unwrap();
+        other
+            .locked_transaction(|tx| {
+                tx.t.upsert(make_item("x", "From Other"));
+                Ok(())
+            })
+            .unwrap();
 
-        // Each adds a different item
-        process_a.upsert(make_item("from-a", "From A"));
-        process_b.upsert(make_item("from-b", "From B"));
+        // First db still has stale in-memory state ("Original").
+        // locked_transaction should reload from disk before mutating,
+        // so "From Other" survives if we don't touch that key.
+        db.locked_transaction(|tx| {
+            tx.t.upsert(make_item("y", "New Item"));
+            Ok(())
+        })
+        .unwrap();
 
-        // Both save — second write overwrites the first
-        process_a.save().unwrap();
-        process_b.save().unwrap();
+        let final_db = TestDb::open(dir.path()).unwrap();
+        let items = final_db.t.items();
+        assert_eq!(items.len(), 2);
+        let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
+        assert!(
+            titles.contains(&"From Other"),
+            "reload should preserve other process's write"
+        );
+        assert!(titles.contains(&"New Item"));
+    }
 
-        // We should have 3 items, but process_b's save didn't include "From A"
-        let final_table = Table::<TestItem>::load(dir.path()).unwrap();
+    #[test]
+    fn test_locked_transaction_preserves_concurrent_writes() {
+        let dir = TempDir::new().unwrap();
+
+        // Initial state: one item
+        let mut db = TestDb::open(dir.path()).unwrap();
+        db.locked_transaction(|tx| {
+            tx.t.upsert(make_item("existing", "Existing"));
+            Ok(())
+        })
+        .unwrap();
+
+        // Two "processes" use locked_transaction sequentially
+        // (real concurrency would block on the lock; here we simulate
+        // the serial execution that the lock enforces)
+        let mut db_a = TestDb::open(dir.path()).unwrap();
+        db_a.locked_transaction(|tx| {
+            tx.t.upsert(make_item("from-a", "From A"));
+            Ok(())
+        })
+        .unwrap();
+
+        let mut db_b = TestDb::open(dir.path()).unwrap();
+        db_b.locked_transaction(|tx| {
+            tx.t.upsert(make_item("from-b", "From B"));
+            Ok(())
+        })
+        .unwrap();
+
+        // All 3 items are preserved because each locked_transaction
+        // reloads from disk before mutating
+        let final_db = TestDb::open(dir.path()).unwrap();
         assert_eq!(
-            final_table.items().len(),
+            final_db.t.items().len(),
             3,
-            "expected all 3 items but lost data due to concurrent saves"
+            "locked_transaction should preserve all items"
         );
     }
 

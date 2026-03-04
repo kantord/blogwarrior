@@ -5,7 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crate::progress::spinner;
 use crate::store::{Store, SyncEvent, SyncResult};
 
-use super::pull::cmd_pull;
+use super::pull::{apply_fetched, fetch_feeds};
 
 pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
     let pb = ProgressBar::new(0);
@@ -16,8 +16,14 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
             .progress_chars("=> "),
     );
     pb.enable_steady_tick(Duration::from_millis(100));
-    store.transact("pull feeds", |tx| cmd_pull(tx, &pb))?;
+
+    // Fetch feeds outside the transaction (network I/O, no lock held)
+    let sources = store.feeds().items();
+    let results = fetch_feeds(&sources, &pb);
     pb.finish_and_clear();
+
+    // Apply results inside a locked transaction
+    store.transact("pull feeds", |tx| apply_fetched(tx, results, &pb))?;
 
     let mut sp: Option<ProgressBar> = None;
     let result = store.sync_remote(|event| match event {
