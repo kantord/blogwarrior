@@ -919,8 +919,8 @@ fn test_open_unknown_shorthand() {
     let output = ctx.run(&["zzzzz", "open"]).failure();
     let stderr = output.stderr_str();
     assert!(
-        stderr.contains("Expected exactly 1 post, got 0"),
-        "expected 'Expected exactly 1 post, got 0' on stderr, got: {}",
+        stderr.contains("Unknown shorthand: zzzzz"),
+        "expected 'Unknown shorthand: zzzzz' on stderr, got: {}",
         stderr,
     );
 }

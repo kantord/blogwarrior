@@ -196,6 +196,12 @@ pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<Reso
 
     if !query.shorthands.is_empty() {
         let sh_set: HashSet<&str> = query.shorthands.iter().map(|s| s.as_str()).collect();
+        let all_known: HashSet<&str> = posts.shorthands.values().map(|s| s.as_str()).collect();
+        for sh in &query.shorthands {
+            if !all_known.contains(sh.as_str()) {
+                anyhow::bail!("Unknown shorthand: {sh}");
+            }
+        }
         posts.items.retain(|item| {
             posts
                 .shorthands
