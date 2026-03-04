@@ -12,10 +12,6 @@ use std::collections::HashMap;
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
 
-pub(crate) const RESERVED_COMMANDS: &[&str] = &[
-    "show", "open", "read", "unread", "feed", "sync", "git", "clone",
-];
-
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 
 const POST_ALPHABET: [char; 34] = [
@@ -132,6 +128,10 @@ pub(crate) struct PostIndex {
     pub items: Vec<FeedItem>,
     pub shorthands: HashMap<String, String>,
 }
+
+pub(crate) const RESERVED_COMMANDS: &[&str] = &[
+    "show", "open", "read", "unread", "feed", "sync", "git", "clone",
+];
 
 pub(crate) fn post_index(table: &crate::synctato::Table<FeedItem>) -> PostIndex {
     let mut items = table.items();

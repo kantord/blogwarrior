@@ -58,7 +58,10 @@ EXAMPLES:
   blog @myblog                Show only posts from @myblog
   blog since:1w               Posts from the last week
   blog 3m..1m                 Posts from 1-3 months ago
-  blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date";
+  blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date
+  blog a open                 Open post with shorthand 'a'
+  blog a read                 Print URL of post 'a'
+  blog a unread               Mark post 'a' as unread";
 
 #[derive(Subcommand)]
 enum Command {
@@ -285,6 +288,21 @@ mod tests {
         assert_eq!(
             preprocess_args(args(&["blog", "--help"])),
             args(&["blog", "--help"]),
+        );
+    }
+
+    #[test]
+    fn test_reserved_commands_match_clap_subcommands() {
+        use clap::CommandFactory;
+        let clap_names: std::collections::HashSet<_> = Args::command()
+            .get_subcommands()
+            .map(|c| c.get_name().to_string())
+            .collect();
+        let reserved: std::collections::HashSet<_> =
+            RESERVED_COMMANDS.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            clap_names, reserved,
+            "RESERVED_COMMANDS must match clap subcommands"
         );
     }
 }
