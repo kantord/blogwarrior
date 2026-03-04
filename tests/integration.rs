@@ -308,7 +308,7 @@ fn test_show_rejects_unknown_argument() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["show", "d"]).failure();
+    let output = ctx.run(&["show", "/x"]).failure();
     let stderr = output.stderr_str();
     assert!(
         stderr.contains("Failed to parse argument"),
@@ -916,11 +916,11 @@ fn test_show_displays_post_shorthands() {
 fn test_open_unknown_shorthand() {
     let ctx = TestContext::new();
 
-    let output = ctx.run(&["open", "zzzzz"]).failure();
+    let output = ctx.run(&["zzzzz", "open"]).failure();
     let stderr = output.stderr_str();
     assert!(
-        stderr.contains("Unknown shorthand"),
-        "expected 'Unknown shorthand' on stderr, got: {}",
+        stderr.contains("Unknown shorthand: zzzzz"),
+        "expected 'Unknown shorthand: zzzzz' on stderr, got: {}",
         stderr,
     );
 }
@@ -949,7 +949,7 @@ fn test_open_valid_shorthand() {
     #[allow(deprecated)]
     let output = Command::cargo_bin("blog")
         .unwrap()
-        .args(["open", "a"])
+        .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert();
@@ -974,7 +974,7 @@ fn test_open_post_without_link() {
     std::fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     std::fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["open", "a"]).failure();
+    let output = ctx.run(&["a", "open"]).failure();
     let stderr = output.stderr_str();
     assert!(
         stderr.contains("Post has no link"),
@@ -1017,7 +1017,7 @@ fn test_open_marks_post_as_read() {
     #[allow(deprecated)]
     Command::cargo_bin("blog")
         .unwrap()
-        .args(["open", "a"])
+        .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert()
@@ -2089,7 +2089,7 @@ fn test_unread_command() {
     #[allow(deprecated)]
     Command::cargo_bin("blog")
         .unwrap()
-        .args(["open", "a"])
+        .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
         .assert()
@@ -2104,7 +2104,7 @@ fn test_unread_command() {
     );
 
     // Mark it unread again
-    ctx.run(&["unread", "a"]).success();
+    ctx.run(&["a", "unread"]).success();
 
     // After unread: both posts should be unread again
     let after_unread = ctx.run(&["show"]).success().stdout_str();
@@ -2112,5 +2112,126 @@ fn test_unread_command() {
         after_unread.lines().filter(|l| l.starts_with('*')).count(),
         2,
         "expected 2 unread posts after marking one unread, got:\n{after_unread}"
+    );
+}
+
+#[test]
+fn test_target_first_open() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Target First Blog",
+        &[
+            (
+                "Post A",
+                "Tue, 02 Jan 2024 00:00:00 +0000",
+                "guid-a",
+                "https://example.com/a",
+            ),
+            (
+                "Post B",
+                "Mon, 01 Jan 2024 00:00:00 +0000",
+                "guid-b",
+                "https://example.com/b",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/tf.xml", &xml);
+    let url = ctx.server.url("/tf.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Both posts are unread
+    let before = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
+
+    // Use target-first syntax: `a open` instead of `open a`
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["a", "open"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    // After opening: one post is read
+    let after = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after.lines().filter(|l| l.starts_with('*')).count(),
+        1,
+        "expected 1 unread post after target-first open, got:\n{after}"
+    );
+}
+
+#[test]
+fn test_target_first_read() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Target First Read Blog",
+        &[(
+            "Post A",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-a",
+            "https://example.com/a",
+        )],
+    );
+    ctx.mock_rss_feed("/tfr.xml", &xml);
+    let url = ctx.server.url("/tfr.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Use target-first syntax: `a read` instead of `read a`
+    let output = ctx.run(&["a", "read"]).success().stdout_str();
+    assert!(
+        output.contains("https://example.com/a"),
+        "expected URL in output, got: {output}"
+    );
+}
+
+#[test]
+fn test_target_first_unread() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Target First Unread Blog",
+        &[(
+            "Post A",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-a",
+            "https://example.com/a",
+        )],
+    );
+    ctx.mock_rss_feed("/tfu.xml", &xml);
+    let url = ctx.server.url("/tfu.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Mark as read first via target-first open
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["a", "open"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    let after_open = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after_open.lines().filter(|l| l.starts_with('*')).count(),
+        0,
+        "expected 0 unread posts after open"
+    );
+
+    // Use target-first syntax: `a unread` instead of `unread a`
+    ctx.run(&["a", "unread"]).success();
+
+    let after_unread = ctx.run(&["show"]).success().stdout_str();
+    assert_eq!(
+        after_unread.lines().filter(|l| l.starts_with('*')).count(),
+        1,
+        "expected 1 unread post after target-first unread, got:\n{after_unread}"
     );
 }

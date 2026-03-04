@@ -14,16 +14,14 @@ mod test_helpers;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use commands::RESERVED_COMMANDS;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
-#[command(args_conflicts_with_subcommands = true, after_help = QUERY_HELP)]
+#[command(after_help = QUERY_HELP)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
-
-    /// Query arguments (see below)
-    args: Vec<String>,
 }
 
 const QUERY_HELP: &str = "\
@@ -57,7 +55,10 @@ EXAMPLES:
   blog @myblog                Show only posts from @myblog
   blog since:1w               Posts from the last week
   blog 3m..1m                 Posts from 1-3 months ago
-  blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date";
+  blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date
+  blog a open                 Open post with shorthand 'a'
+  blog a read                 Print URL of post 'a'
+  blog a unread               Mark post 'a' as unread";
 
 #[derive(Subcommand)]
 enum Command {
@@ -68,15 +69,9 @@ enum Command {
         args: Vec<String>,
     },
     /// Open a post in the default browser
-    Open {
-        /// Post shorthand
-        shorthand: String,
-    },
+    Open,
     /// Print the URL of a post to stdout
-    Read {
-        /// Post shorthand
-        shorthand: String,
-    },
+    Read,
     /// Manage feed subscriptions
     Feed {
         #[command(subcommand)]
@@ -85,10 +80,7 @@ enum Command {
     /// Fetch feeds and sync with remote
     Sync,
     /// Mark a post as unread
-    Unread {
-        /// Post shorthand
-        shorthand: String,
-    },
+    Unread,
     /// Run git commands in the store directory
     Git {
         /// Arguments to pass to git
@@ -117,6 +109,27 @@ enum FeedCommand {
     Ls,
 }
 
+fn split_at_command(args: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let cmd_pos = args[1..]
+        .iter()
+        .position(|a| RESERVED_COMMANDS.contains(&a.as_str()));
+    let split = cmd_pos.map(|p| p + 1).unwrap_or(args.len());
+    let filter = args[1..split]
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .cloned()
+        .collect();
+    let mut cmd_args = vec![args[0].clone()];
+    cmd_args.extend(
+        args[1..split]
+            .iter()
+            .filter(|a| a.starts_with('-'))
+            .cloned(),
+    );
+    cmd_args.extend_from_slice(&args[split..]);
+    (filter, cmd_args)
+}
+
 fn store_dir() -> anyhow::Result<PathBuf> {
     if let Ok(val) = std::env::var("RSS_STORE") {
         return Ok(PathBuf::from(val));
@@ -128,28 +141,17 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
-fn mark_unread(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
-    store.transact("mark unread", |tx| {
-        tx.reads.delete(&raw_id);
-        Ok(())
-    })
-}
-
-fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
-    if store.reads().contains_key(&raw_id) {
-        return Ok(());
-    }
-    store.transact("mark read", |tx| {
-        tx.reads.upsert(read_mark::ReadMark {
-            post_id: raw_id,
-            read_at: chrono::Utc::now(),
-        });
-        Ok(())
-    })
+fn ensure_no_query(query: &query::Query, command: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        query.is_empty(),
+        "{command} command does not accept a filter"
+    );
+    Ok(())
 }
 
 fn run() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let (filter, cmd_args) = split_at_command(std::env::args().collect());
+    let args = Args::parse_from(cmd_args);
     let store_dir = store_dir()?;
 
     if let Some(Command::Clone { ref url }) = args.command {
@@ -160,24 +162,27 @@ fn run() -> anyhow::Result<()> {
 
     match args.command {
         Some(Command::Show { ref args }) => {
-            let q = query::parse_show_args(args)?;
-            commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
+            let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
+            let q = query::parse_query(&all_args)?;
+            commands::show::cmd_show(&store, &q)?;
         }
-        Some(Command::Open { ref shorthand }) => {
-            let raw_id = commands::open::cmd_open(&store, shorthand)?;
-            mark_read(&mut store, raw_id)?;
+        Some(Command::Open) => {
+            let q = query::parse_query(&filter)?;
+            commands::open::cmd_open(&mut store, &q)?;
         }
-        Some(Command::Read { ref shorthand }) => {
-            let raw_id = commands::open::cmd_read(&store, shorthand)?;
-            mark_read(&mut store, raw_id)?;
+        Some(Command::Read) => {
+            let q = query::parse_query(&filter)?;
+            commands::open::cmd_read(&mut store, &q)?;
         }
-        Some(Command::Unread { ref shorthand }) => {
-            let item = commands::open::resolve_post_shorthand(&store, shorthand)?;
-            mark_unread(&mut store, item.raw_id)?;
+        Some(Command::Unread) => {
+            let q = query::parse_query(&filter)?;
+            commands::open::cmd_unread(&mut store, &q)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
         }) => {
+            let q = query::parse_query(&filter)?;
+            ensure_no_query(&q, "feed")?;
             let resolved = commands::add::resolve_feed_url(url)?;
             if resolved != *url {
                 eprintln!("Discovered feed: {resolved}");
@@ -191,6 +196,8 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },
         }) => {
+            let q = query::parse_query(&filter)?;
+            ensure_no_query(&q, "feed")?;
             store.transact(&format!("remove feed: {url}"), |tx| {
                 commands::remove::cmd_remove(tx, url)
             })?;
@@ -198,18 +205,24 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Ls,
         }) => {
+            let q = query::parse_query(&filter)?;
+            ensure_no_query(&q, "feed")?;
             commands::feed_ls::cmd_feed_ls(&store)?;
         }
         Some(Command::Sync) => {
+            let q = query::parse_query(&filter)?;
+            ensure_no_query(&q, "sync")?;
             commands::sync::cmd_sync(&mut store)?;
         }
         Some(Command::Git { ref args }) => {
+            let q = query::parse_query(&filter)?;
+            ensure_no_query(&q, "git")?;
             store.git_passthrough(args)?;
         }
         Some(Command::Clone { .. }) => unreachable!(),
         None => {
-            let q = query::parse_show_args(&args.args)?;
-            commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
+            let q = query::parse_query(&filter)?;
+            commands::show::cmd_show(&store, &q)?;
         }
     }
     Ok(())
@@ -219,5 +232,78 @@ fn main() {
     if let Err(e) = run() {
         eprintln!("{e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(input: &[&str]) -> Vec<String> {
+        input.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_split_at_command_filter_before_command() {
+        let (filter, cmd) = split_at_command(args(&["blog", "a", "open"]));
+        assert_eq!(filter, args(&["a"]));
+        assert_eq!(cmd, args(&["blog", "open"]));
+    }
+
+    #[test]
+    fn test_split_at_command_no_filter() {
+        let (filter, cmd) = split_at_command(args(&["blog", "sync"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "sync"]));
+    }
+
+    #[test]
+    fn test_split_at_command_no_command() {
+        let (filter, cmd) = split_at_command(args(&["blog", "/d", "@hn"]));
+        assert_eq!(filter, args(&["/d", "@hn"]));
+        assert_eq!(cmd, args(&["blog"]));
+    }
+
+    #[test]
+    fn test_split_at_command_help_flag() {
+        let (filter, cmd) = split_at_command(args(&["blog", "--help"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "--help"]));
+    }
+
+    #[test]
+    fn test_split_at_command_feed_subcommand() {
+        let (filter, cmd) = split_at_command(args(&["blog", "feed", "add", "url"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "feed", "add", "url"]));
+    }
+
+    #[test]
+    fn test_split_at_command_show_with_args() {
+        let (filter, cmd) = split_at_command(args(&["blog", "show", "/d"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "show", "/d"]));
+    }
+
+    #[test]
+    fn test_split_at_command_filter_with_show() {
+        let (filter, cmd) = split_at_command(args(&["blog", "/d", "show"]));
+        assert_eq!(filter, args(&["/d"]));
+        assert_eq!(cmd, args(&["blog", "show"]));
+    }
+
+    #[test]
+    fn test_reserved_commands_match_clap_subcommands() {
+        use clap::CommandFactory;
+        let clap_names: std::collections::HashSet<_> = Args::command()
+            .get_subcommands()
+            .map(|c| c.get_name().to_string())
+            .collect();
+        let reserved: std::collections::HashSet<_> =
+            RESERVED_COMMANDS.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            clap_names, reserved,
+            "RESERVED_COMMANDS must match clap subcommands"
+        );
     }
 }

@@ -1,29 +1,20 @@
 use anyhow::ensure;
 
 use crate::feed::FeedItem;
+use crate::query::Query;
+use crate::read_mark::ReadMark;
 use crate::store::Store;
 
-use super::{PostIndex, post_index};
+use super::resolve_posts;
 
-pub(crate) fn resolve_post_shorthand(store: &Store, shorthand: &str) -> anyhow::Result<FeedItem> {
-    // Rebuilds the full sorted index to resolve a single shorthand. This is
-    // O(n log n) but fast in practice (single-digit ms even at 100k posts).
-    let PostIndex { items, shorthands } = post_index(store.posts());
-    items
-        .into_iter()
-        .find(|item| shorthands.get(&item.raw_id).is_some_and(|s| s == shorthand))
-        .ok_or_else(|| anyhow::anyhow!("Unknown shorthand: {}", shorthand))
-}
-
-pub(crate) fn cmd_read(store: &Store, shorthand: &str) -> anyhow::Result<String> {
-    let item = resolve_post_shorthand(store, shorthand)?;
-    ensure!(!item.link.is_empty(), "Post has no link");
-    println!("{}", item.link);
-    Ok(item.raw_id)
-}
-
-pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<String> {
-    let item = resolve_post_shorthand(store, shorthand)?;
+pub(crate) fn cmd_open(store: &mut Store, query: &Query) -> anyhow::Result<()> {
+    let resolved = resolve_posts(store, query)?;
+    ensure!(
+        resolved.items.len() == 1,
+        "Expected exactly 1 post, got {}",
+        resolved.items.len()
+    );
+    let item = &resolved.items[0];
     ensure!(!item.link.is_empty(), "Post has no link");
     match std::env::var("BROWSER") {
         Ok(browser) => {
@@ -41,5 +32,48 @@ pub(crate) fn cmd_open(store: &Store, shorthand: &str) -> anyhow::Result<String>
         }
     }
     eprintln!("Opened in browser: {}", item.link);
-    Ok(item.raw_id)
+    mark_read_batch(store, &resolved.items)?;
+    Ok(())
+}
+
+pub(crate) fn cmd_read(store: &mut Store, query: &Query) -> anyhow::Result<()> {
+    let resolved = resolve_posts(store, query)?;
+    ensure!(!resolved.items.is_empty(), "No matching posts");
+    for item in &resolved.items {
+        ensure!(!item.link.is_empty(), "Post has no link");
+        println!("{}", item.link);
+    }
+    mark_read_batch(store, &resolved.items)?;
+    Ok(())
+}
+
+pub(crate) fn cmd_unread(store: &mut Store, query: &Query) -> anyhow::Result<()> {
+    let resolved = resolve_posts(store, query)?;
+    ensure!(!resolved.items.is_empty(), "No matching posts");
+    mark_unread_batch(store, &resolved.items)?;
+    Ok(())
+}
+
+fn mark_read_batch(store: &mut Store, items: &[FeedItem]) -> anyhow::Result<()> {
+    let now = chrono::Utc::now();
+    store.transact("mark read", |tx| {
+        for item in items {
+            if !tx.reads.contains_key(&item.raw_id) {
+                tx.reads.upsert(ReadMark {
+                    post_id: item.raw_id.clone(),
+                    read_at: now,
+                });
+            }
+        }
+        Ok(())
+    })
+}
+
+fn mark_unread_batch(store: &mut Store, items: &[FeedItem]) -> anyhow::Result<()> {
+    store.transact("mark unread", |tx| {
+        for item in items {
+            tx.reads.delete(&item.raw_id);
+        }
+        Ok(())
+    })
 }

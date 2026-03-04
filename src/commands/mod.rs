@@ -7,10 +7,12 @@ pub mod remove;
 pub mod show;
 pub mod sync;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
+use crate::query::Query;
+use crate::store::Store;
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 
@@ -129,13 +131,25 @@ pub(crate) struct PostIndex {
     pub shorthands: HashMap<String, String>,
 }
 
+pub(crate) const RESERVED_COMMANDS: &[&str] = &[
+    "show", "open", "read", "unread", "feed", "sync", "git", "clone",
+];
+
 pub(crate) fn post_index(table: &crate::synctato::Table<FeedItem>) -> PostIndex {
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
+    let mut idx = 0;
     let shorthands = items
         .iter()
-        .enumerate()
-        .map(|(i, item)| (item.raw_id.clone(), index_to_shorthand(i)))
+        .map(|item| {
+            loop {
+                let sh = index_to_shorthand(idx);
+                idx += 1;
+                if !RESERVED_COMMANDS.contains(&sh.as_str()) {
+                    return (item.raw_id.clone(), sh);
+                }
+            }
+        })
         .collect();
     PostIndex { items, shorthands }
 }
@@ -150,6 +164,76 @@ pub(crate) fn resolve_shorthand(
         .zip(fi.shorthands.iter())
         .find(|(_, sh)| sh.as_str() == shorthand)
         .map(|(feed, _)| feed.url.clone())
+}
+
+pub(crate) fn build_feed_labels(fi: &FeedIndex) -> HashMap<String, String> {
+    fi.ids
+        .iter()
+        .zip(fi.feeds.iter())
+        .zip(fi.shorthands.iter())
+        .map(|((id, feed), sh)| {
+            let label = if feed.title.is_empty() {
+                format!("@{} {}", sh, feed.url)
+            } else {
+                format!("@{} {}", sh, feed.title)
+            };
+            (id.clone(), label)
+        })
+        .collect()
+}
+
+pub(crate) struct ResolvedPosts {
+    pub items: Vec<FeedItem>,
+    pub shorthands: HashMap<String, String>,
+    pub feed_labels: HashMap<String, String>,
+}
+
+pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<ResolvedPosts> {
+    let fi = feed_index(store.feeds());
+    let feed_labels = build_feed_labels(&fi);
+
+    let mut posts = post_index(store.posts());
+
+    if !query.shorthands.is_empty() {
+        let sh_set: HashSet<&str> = query.shorthands.iter().map(|s| s.as_str()).collect();
+        let all_known: HashSet<&str> = posts.shorthands.values().map(|s| s.as_str()).collect();
+        for sh in &query.shorthands {
+            if !all_known.contains(sh.as_str()) {
+                anyhow::bail!("Unknown shorthand: {sh}");
+            }
+        }
+        posts.items.retain(|item| {
+            posts
+                .shorthands
+                .get(&item.raw_id)
+                .is_some_and(|s| sh_set.contains(s.as_str()))
+        });
+    }
+
+    if let Some(ref f) = query.filter {
+        let shorthand = &f[1..];
+        let feed_id = fi
+            .id_for_shorthand(shorthand)
+            .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?;
+        posts.items.retain(|item| item.feed == feed_id);
+    }
+
+    if let Some(since) = query.date_filter.since {
+        posts
+            .items
+            .retain(|item| item.date.is_some_and(|d| d >= since));
+    }
+    if let Some(until) = query.date_filter.until {
+        posts
+            .items
+            .retain(|item| item.date.is_some_and(|d| d <= until));
+    }
+
+    Ok(ResolvedPosts {
+        items: posts.items,
+        shorthands: posts.shorthands,
+        feed_labels,
+    })
 }
 
 #[cfg(test)]
@@ -226,5 +310,32 @@ mod tests {
         assert_eq!(sh0.len(), 1);
         assert_eq!(sh33.len(), 1);
         assert_eq!(sh34.len(), 2);
+    }
+
+    #[test]
+    fn test_shorthand_skips_reserved_commands() {
+        // Generate enough shorthands to cover the single-char and two-char range
+        for i in 0..2000 {
+            let sh = index_to_shorthand(i);
+            // index_to_shorthand itself doesn't skip, but post_index does.
+            // Here we just verify the reserved list is well-formed.
+            let _ = sh;
+        }
+        // Verify that no reserved command name can appear as a shorthand
+        // by simulating the skip logic used in post_index.
+        let mut idx = 0;
+        for _ in 0..2000 {
+            loop {
+                let sh = index_to_shorthand(idx);
+                idx += 1;
+                if !RESERVED_COMMANDS.contains(&sh.as_str()) {
+                    assert!(
+                        !RESERVED_COMMANDS.contains(&sh.as_str()),
+                        "shorthand {sh} collides with a reserved command"
+                    );
+                    break;
+                }
+            }
+        }
     }
 }

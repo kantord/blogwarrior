@@ -7,10 +7,10 @@ use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 use crate::feed::FeedItem;
-use crate::query::{DateFilter, GroupKey};
+use crate::query::{GroupKey, Query};
 use crate::store::Store;
 
-use super::{feed_index, post_index};
+use super::resolve_posts;
 
 const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
 
@@ -230,61 +230,9 @@ fn render_grouped(
     out
 }
 
-pub(crate) fn cmd_show(
-    store: &Store,
-    keys: &[GroupKey],
-    filter: Option<&str>,
-    date_filter: &DateFilter,
-) -> anyhow::Result<()> {
-    let fi = feed_index(store.feeds());
-
-    let filter_feed_id = match filter {
-        Some(f) if f.starts_with('@') => {
-            let shorthand = &f[1..];
-            Some(
-                fi.id_for_shorthand(shorthand)
-                    .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?
-                    .to_string(),
-            )
-        }
-        _ => None,
-    };
-
-    let feed_labels: HashMap<String, String> = fi
-        .ids
-        .iter()
-        .zip(fi.feeds.iter())
-        .zip(fi.shorthands.iter())
-        .map(|((id, feed), sh)| {
-            let label = if feed.title.is_empty() {
-                format!("@{} {}", sh, feed.url)
-            } else {
-                format!("@{} {}", sh, feed.title)
-            };
-            (id.clone(), label)
-        })
-        .collect();
-
-    let mut posts = post_index(store.posts());
-
-    if let Some(ref feed_id) = filter_feed_id {
-        posts.items.retain(|item| item.feed == *feed_id);
-    }
-
-    if let Some(since) = date_filter.since {
-        posts.items.retain(|item| match item.date {
-            Some(d) => d >= since,
-            None => false,
-        });
-    }
-    if let Some(until) = date_filter.until {
-        posts.items.retain(|item| match item.date {
-            Some(d) => d <= until,
-            None => false,
-        });
-    }
-
-    ensure!(!posts.items.is_empty(), "No matching posts");
+pub(crate) fn cmd_show(store: &Store, query: &Query) -> anyhow::Result<()> {
+    let resolved = resolve_posts(store, query)?;
+    ensure!(!resolved.items.is_empty(), "No matching posts");
 
     let read_ids: HashSet<String> = store
         .reads()
@@ -295,14 +243,14 @@ pub(crate) fn cmd_show(
 
     let color = std::io::stdout().is_terminal();
     let max_width = terminal_size::terminal_size().map(|(w, _)| w.0 as usize);
-    let refs: Vec<&FeedItem> = posts.items.iter().collect();
+    let refs: Vec<&FeedItem> = resolved.items.iter().collect();
     print!(
         "{}",
         render_grouped(
             &refs,
-            keys,
-            &posts.shorthands,
-            &feed_labels,
+            &query.keys,
+            &resolved.shorthands,
+            &resolved.feed_labels,
             &read_ids,
             color,
             max_width
@@ -314,6 +262,7 @@ pub(crate) fn cmd_show(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query::DateFilter;
     use crate::test_helpers::{feed_item, feed_item_with_raw_id, utc_date};
     use chrono::{DateTime, Utc};
     use rstest::rstest;
