@@ -308,7 +308,7 @@ fn test_show_rejects_unknown_argument() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["show", "d"]).failure();
+    let output = ctx.run(&["show", "/x"]).failure();
     let stderr = output.stderr_str();
     assert!(
         stderr.contains("Failed to parse argument"),
@@ -919,8 +919,8 @@ fn test_open_unknown_shorthand() {
     let output = ctx.run(&["zzzzz", "open"]).failure();
     let stderr = output.stderr_str();
     assert!(
-        stderr.contains("Unknown shorthand"),
-        "expected 'Unknown shorthand' on stderr, got: {}",
+        stderr.contains("Expected exactly 1 post, got 0"),
+        "expected 'Expected exactly 1 post, got 0' on stderr, got: {}",
         stderr,
     );
 }

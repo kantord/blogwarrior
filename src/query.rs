@@ -55,10 +55,11 @@ impl GroupKey {
 }
 
 #[derive(Debug)]
-pub(crate) struct ShowQuery {
+pub(crate) struct Query {
     pub keys: Vec<GroupKey>,
     pub filter: Option<String>,
     pub date_filter: DateFilter,
+    pub shorthands: Vec<String>,
 }
 
 enum Token {
@@ -67,6 +68,7 @@ enum Token {
     Since(DateTime<Utc>),
     Until(DateTime<Utc>),
     Range(Option<DateTime<Utc>>, Option<DateTime<Utc>>),
+    Shorthand(String),
 }
 
 fn date_value_core<'a>() -> impl Parser<'a, &'a str, DateTime<Utc>, extra::Err<Rich<'a, char>>> {
@@ -166,15 +168,24 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
             .map(|to| Token::Range(None, Some(to))),
     ));
 
-    choice((since, until, range, group, feed_filter))
-        .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, or @feed)")
+    let shorthand = any()
+        .filter(|c: &char| c.is_alphanumeric())
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+        .then_ignore(end())
+        .map(Token::Shorthand);
+
+    choice((since, until, range, group, feed_filter, shorthand))
+        .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, @feed, or shorthand)")
 }
 
-pub(crate) fn parse_show_args(args: &[String]) -> anyhow::Result<ShowQuery> {
+pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
     let mut keys = Vec::new();
     let mut filter = None;
     let mut since = None;
     let mut until = None;
+    let mut shorthands = Vec::new();
 
     let parser = arg_parser();
 
@@ -202,6 +213,9 @@ pub(crate) fn parse_show_args(args: &[String]) -> anyhow::Result<ShowQuery> {
                         until = Some(u);
                     }
                 }
+                Token::Shorthand(s) => {
+                    shorthands.push(s);
+                }
             },
             Err(errs) => {
                 let messages: Vec<String> = errs.into_iter().map(|e| e.to_string()).collect();
@@ -213,10 +227,11 @@ pub(crate) fn parse_show_args(args: &[String]) -> anyhow::Result<ShowQuery> {
         }
     }
 
-    Ok(ShowQuery {
+    Ok(Query {
         keys,
         filter,
         date_filter: DateFilter { since, until },
+        shorthands,
     })
 }
 
@@ -234,13 +249,13 @@ mod tests {
     #[case::week("/w", GroupKey::Week)]
     #[case::feed("/f", GroupKey::Feed)]
     fn test_parse_group_arg(#[case] input: &str, #[case] expected: GroupKey) {
-        let q = parse_show_args(&args(&[input])).unwrap();
+        let q = parse_query(&args(&[input])).unwrap();
         assert_eq!(q.keys, vec![expected]);
     }
 
     #[test]
     fn test_parse_group_arg_invalid() {
-        let result = parse_show_args(&args(&["/x"]));
+        let result = parse_query(&args(&["/x"]));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("Failed to parse argument"), "got: {msg}");
@@ -248,23 +263,29 @@ mod tests {
 
     #[test]
     fn test_too_many_groups() {
-        let result = parse_show_args(&args(&["/d", "/f", "/w"]));
+        let result = parse_query(&args(&["/d", "/f", "/w"]));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("Too many grouping arguments"), "got: {msg}");
     }
 
     #[test]
-    fn test_unknown_argument() {
-        let result = parse_show_args(&args(&["d"]));
-        assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("Failed to parse argument"), "got: {msg}");
+    fn test_bare_word_is_shorthand() {
+        let q = parse_query(&args(&["d"])).unwrap();
+        assert_eq!(q.shorthands, vec!["d".to_string()]);
+    }
+
+    #[test]
+    fn test_multiple_shorthands() {
+        let q = parse_query(&args(&["a", "/d", "@hn"])).unwrap();
+        assert_eq!(q.shorthands, vec!["a".to_string()]);
+        assert_eq!(q.keys, vec![GroupKey::Date]);
+        assert_eq!(q.filter, Some("@hn".to_string()));
     }
 
     #[test]
     fn test_feed_filter() {
-        let q = parse_show_args(&args(&["@myblog"])).unwrap();
+        let q = parse_query(&args(&["@myblog"])).unwrap();
         assert_eq!(q.filter, Some("@myblog".to_string()));
     }
 
@@ -337,21 +358,21 @@ mod tests {
 
     #[test]
     fn test_since_arg() {
-        let q = parse_show_args(&args(&["since:2024-01-15"])).unwrap();
+        let q = parse_query(&args(&["since:2024-01-15"])).unwrap();
         let dt = q.date_filter.since.unwrap();
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-01-15");
     }
 
     #[test]
     fn test_until_arg() {
-        let q = parse_show_args(&args(&["until:2024-06-01"])).unwrap();
+        let q = parse_query(&args(&["until:2024-06-01"])).unwrap();
         let dt = q.date_filter.until.unwrap();
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-06-01");
     }
 
     #[test]
     fn test_combined_args() {
-        let q = parse_show_args(&args(&["/d", "@blog", "since:2024-01-15"])).unwrap();
+        let q = parse_query(&args(&["/d", "@blog", "since:2024-01-15"])).unwrap();
         assert_eq!(q.keys, vec![GroupKey::Date]);
         assert_eq!(q.filter, Some("@blog".to_string()));
         assert!(q.date_filter.since.is_some());
@@ -359,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_range_both() {
-        let q = parse_show_args(&args(&["2024-01-15..2024-02-01"])).unwrap();
+        let q = parse_query(&args(&["2024-01-15..2024-02-01"])).unwrap();
         assert_eq!(
             q.date_filter.since.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-15"
@@ -372,7 +393,7 @@ mod tests {
 
     #[test]
     fn test_range_open_end() {
-        let q = parse_show_args(&args(&["2024-01-15.."])).unwrap();
+        let q = parse_query(&args(&["2024-01-15.."])).unwrap();
         assert_eq!(
             q.date_filter.since.unwrap().format("%Y-%m-%d").to_string(),
             "2024-01-15"
@@ -382,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_range_open_start() {
-        let q = parse_show_args(&args(&["..2024-02-01"])).unwrap();
+        let q = parse_query(&args(&["..2024-02-01"])).unwrap();
         assert!(q.date_filter.since.is_none());
         assert_eq!(
             q.date_filter.until.unwrap().format("%Y-%m-%d").to_string(),
@@ -392,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_range_relative() {
-        let q = parse_show_args(&args(&["3w..1w"])).unwrap();
+        let q = parse_query(&args(&["3w..1w"])).unwrap();
         assert!(q.date_filter.since.is_some());
         assert!(q.date_filter.until.is_some());
         assert!(q.date_filter.since.unwrap() < q.date_filter.until.unwrap());

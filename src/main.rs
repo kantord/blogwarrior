@@ -141,22 +141,26 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
-fn mark_unread(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
-    store.transact("mark unread", |tx| {
-        tx.reads.delete(&raw_id);
+fn mark_read_batch(store: &mut store::Store, items: &[feed::FeedItem]) -> anyhow::Result<()> {
+    let now = chrono::Utc::now();
+    store.transact("mark read", |tx| {
+        for item in items {
+            if !tx.reads.contains_key(&item.raw_id) {
+                tx.reads.upsert(read_mark::ReadMark {
+                    post_id: item.raw_id.clone(),
+                    read_at: now,
+                });
+            }
+        }
         Ok(())
     })
 }
 
-fn mark_read(store: &mut store::Store, raw_id: String) -> anyhow::Result<()> {
-    if store.reads().contains_key(&raw_id) {
-        return Ok(());
-    }
-    store.transact("mark read", |tx| {
-        tx.reads.upsert(read_mark::ReadMark {
-            post_id: raw_id,
-            read_at: chrono::Utc::now(),
-        });
+fn mark_unread_batch(store: &mut store::Store, items: &[feed::FeedItem]) -> anyhow::Result<()> {
+    store.transact("mark unread", |tx| {
+        for item in items {
+            tx.reads.delete(&item.raw_id);
+        }
         Ok(())
     })
 }
@@ -175,27 +179,40 @@ fn run() -> anyhow::Result<()> {
     match args.command {
         Some(Command::Show { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = query::parse_show_args(&all_args)?;
-            commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
+            let q = query::parse_query(&all_args)?;
+            let resolved = commands::resolve_posts(&store, &q)?;
+            commands::show::cmd_show(&store, &q.keys, &resolved)?;
         }
         Some(Command::Open) => {
-            anyhow::ensure!(filter.len() == 1, "Usage: blog <shorthand> open");
-            let raw_id = commands::open::cmd_open(&store, &filter[0])?;
-            mark_read(&mut store, raw_id)?;
+            let q = query::parse_query(&filter)?;
+            let resolved = commands::resolve_posts(&store, &q)?;
+            anyhow::ensure!(
+                resolved.items.len() == 1,
+                "Expected exactly 1 post, got {}",
+                resolved.items.len()
+            );
+            commands::open::cmd_open_item(&resolved.items[0])?;
+            mark_read_batch(&mut store, &resolved.items)?;
         }
         Some(Command::Read) => {
-            anyhow::ensure!(filter.len() == 1, "Usage: blog <shorthand> read");
-            let raw_id = commands::open::cmd_read(&store, &filter[0])?;
-            mark_read(&mut store, raw_id)?;
+            let q = query::parse_query(&filter)?;
+            let resolved = commands::resolve_posts(&store, &q)?;
+            anyhow::ensure!(!resolved.items.is_empty(), "No matching posts");
+            for item in &resolved.items {
+                commands::open::cmd_print_url(item)?;
+            }
+            mark_read_batch(&mut store, &resolved.items)?;
         }
         Some(Command::Unread) => {
-            anyhow::ensure!(filter.len() == 1, "Usage: blog <shorthand> unread");
-            let item = commands::open::resolve_post_shorthand(&store, &filter[0])?;
-            mark_unread(&mut store, item.raw_id)?;
+            let q = query::parse_query(&filter)?;
+            let resolved = commands::resolve_posts(&store, &q)?;
+            anyhow::ensure!(!resolved.items.is_empty(), "No matching posts");
+            mark_unread_batch(&mut store, &resolved.items)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },
         }) => {
+            anyhow::ensure!(filter.is_empty(), "feed command does not accept a filter");
             let resolved = commands::add::resolve_feed_url(url)?;
             if resolved != *url {
                 eprintln!("Discovered feed: {resolved}");
@@ -209,6 +226,7 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Rm { ref url },
         }) => {
+            anyhow::ensure!(filter.is_empty(), "feed command does not accept a filter");
             store.transact(&format!("remove feed: {url}"), |tx| {
                 commands::remove::cmd_remove(tx, url)
             })?;
@@ -216,18 +234,22 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Feed {
             command: FeedCommand::Ls,
         }) => {
+            anyhow::ensure!(filter.is_empty(), "feed command does not accept a filter");
             commands::feed_ls::cmd_feed_ls(&store)?;
         }
         Some(Command::Sync) => {
+            anyhow::ensure!(filter.is_empty(), "sync command does not accept a filter");
             commands::sync::cmd_sync(&mut store)?;
         }
         Some(Command::Git { ref args }) => {
+            anyhow::ensure!(filter.is_empty(), "git command does not accept a filter");
             store.git_passthrough(args)?;
         }
         Some(Command::Clone { .. }) => unreachable!(),
         None => {
-            let q = query::parse_show_args(&filter)?;
-            commands::show::cmd_show(&store, &q.keys, q.filter.as_deref(), &q.date_filter)?;
+            let q = query::parse_query(&filter)?;
+            let resolved = commands::resolve_posts(&store, &q)?;
+            commands::show::cmd_show(&store, &q.keys, &resolved)?;
         }
     }
     Ok(())

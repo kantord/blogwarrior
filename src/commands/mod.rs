@@ -7,10 +7,12 @@ pub mod remove;
 pub mod show;
 pub mod sync;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
+use crate::query::Query;
+use crate::store::Store;
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 
@@ -162,6 +164,70 @@ pub(crate) fn resolve_shorthand(
         .zip(fi.shorthands.iter())
         .find(|(_, sh)| sh.as_str() == shorthand)
         .map(|(feed, _)| feed.url.clone())
+}
+
+pub(crate) fn build_feed_labels(fi: &FeedIndex) -> HashMap<String, String> {
+    fi.ids
+        .iter()
+        .zip(fi.feeds.iter())
+        .zip(fi.shorthands.iter())
+        .map(|((id, feed), sh)| {
+            let label = if feed.title.is_empty() {
+                format!("@{} {}", sh, feed.url)
+            } else {
+                format!("@{} {}", sh, feed.title)
+            };
+            (id.clone(), label)
+        })
+        .collect()
+}
+
+pub(crate) struct ResolvedPosts {
+    pub items: Vec<FeedItem>,
+    pub shorthands: HashMap<String, String>,
+    pub feed_labels: HashMap<String, String>,
+}
+
+pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<ResolvedPosts> {
+    let fi = feed_index(store.feeds());
+    let feed_labels = build_feed_labels(&fi);
+
+    let mut posts = post_index(store.posts());
+
+    if !query.shorthands.is_empty() {
+        let sh_set: HashSet<&str> = query.shorthands.iter().map(|s| s.as_str()).collect();
+        posts.items.retain(|item| {
+            posts
+                .shorthands
+                .get(&item.raw_id)
+                .is_some_and(|s| sh_set.contains(s.as_str()))
+        });
+    }
+
+    if let Some(ref f) = query.filter {
+        let shorthand = &f[1..];
+        let feed_id = fi
+            .id_for_shorthand(shorthand)
+            .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?;
+        posts.items.retain(|item| item.feed == feed_id);
+    }
+
+    if let Some(since) = query.date_filter.since {
+        posts
+            .items
+            .retain(|item| item.date.is_some_and(|d| d >= since));
+    }
+    if let Some(until) = query.date_filter.until {
+        posts
+            .items
+            .retain(|item| item.date.is_some_and(|d| d <= until));
+    }
+
+    Ok(ResolvedPosts {
+        items: posts.items,
+        shorthands: posts.shorthands,
+        feed_labels,
+    })
 }
 
 #[cfg(test)]
