@@ -14,6 +14,10 @@ use super::resolve_posts;
 
 const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
 
+/// Default query when no arguments are provided: unread posts from the last
+/// 90 days, grouped by week. The 90-day window keeps output clean — most
+/// people don't read very old articles, and when they do they're usually
+/// searching for something specific and will provide an explicit filter.
 fn default_query() -> Query {
     let since = chrono::Utc::now() - chrono::Duration::days(90);
     Query {

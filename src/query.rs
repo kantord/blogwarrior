@@ -56,7 +56,10 @@ impl GroupKey {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ReadFilter {
+    /// No explicit filter provided (parser default)
     Any,
+    /// User explicitly requested all posts via `.all`
+    All,
     Read,
     Unread,
 }
@@ -192,6 +195,7 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
         .ignore_then(choice((
             just("unread").to(ReadFilter::Unread),
             just("read").to(ReadFilter::Read),
+            just("all").to(ReadFilter::All),
         )))
         .then_ignore(end().labelled("end of read filter"))
         .map(Token::ReadStatus);
@@ -213,7 +217,9 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
         read_status,
         shorthand,
     ))
-    .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, @feed, .read, .unread, or shorthand)")
+    .labelled(
+        "argument (since:, until:, 3d..1d, /d, /w, /f, @feed, .read, .unread, .all, or shorthand)",
+    )
 }
 
 pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
@@ -476,6 +482,13 @@ mod tests {
     fn test_default_read_filter_is_any() {
         let q = parse_query(&args(&["/d"])).unwrap();
         assert_eq!(q.read_filter, ReadFilter::Any);
+    }
+
+    #[test]
+    fn test_all_filter() {
+        let q = parse_query(&args(&[".all"])).unwrap();
+        assert_eq!(q.read_filter, ReadFilter::All);
+        assert!(!q.is_empty(), ".all should make the query non-empty");
     }
 
     #[test]

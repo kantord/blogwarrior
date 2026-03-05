@@ -36,6 +36,7 @@ blog @hn
 # Filter by read status
 blog .unread
 blog .read
+blog .all
 
 # Filter by date
 blog since:1w

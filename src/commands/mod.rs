@@ -239,7 +239,7 @@ pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<Reso
                 .items
                 .retain(|item| !store.reads().contains_key(&item.raw_id));
         }
-        ReadFilter::Any => {}
+        ReadFilter::Any | ReadFilter::All => {}
     }
 
     Ok(ResolvedPosts {

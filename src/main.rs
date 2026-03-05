@@ -35,6 +35,7 @@ QUERY LANGUAGE:
     @shorthand  Show only posts from a specific feed
     .read       Show only read posts
     .unread     Show only unread posts
+    .all        Show all posts (override default filter)
 
   Date range:
     since:<date>    Show posts from this date onward
@@ -62,7 +63,8 @@ EXAMPLES:
   blog a read                 Print URL of post 'a'
   blog a unread               Mark post 'a' as unread
   blog .unread                Show only unread posts
-  blog @myblog .unread        Show unread posts from @myblog";
+  blog @myblog .unread        Show unread posts from @myblog
+  blog .all                   Show all posts (bypass defaults)";
 
 #[derive(Subcommand)]
 enum Command {

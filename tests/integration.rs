@@ -2348,3 +2348,24 @@ fn test_show_default_query_groups_by_week() {
         "default show should group by week, got:\n{output}"
     );
 }
+
+#[test]
+fn test_show_all_bypasses_default_query() {
+    let ctx = TestContext::new();
+
+    // Old post that the default query would hide
+    let posts = r#"{"id":"1","title":"Old Post","date":"2020-01-15T00:00:00Z","feed":"Alice"}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    // Default show hides it (too old)
+    let default_output = ctx.run(&[]);
+    default_output.failure();
+
+    // .all bypasses the default and shows everything
+    let output = ctx.run(&[".all"]).success().stdout_str();
+    assert!(
+        output.contains("Old Post"),
+        ".all should show old posts, got:\n{output}"
+    );
+}
