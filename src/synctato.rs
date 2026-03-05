@@ -20,6 +20,11 @@ pub trait Schema: Sized {
     fn save(&self) -> anyhow::Result<()>;
     fn reload(&mut self) -> anyhow::Result<()>;
     fn begin(&mut self) -> Self::Transaction<'_>;
+
+    fn merge_remote_from_repo(
+        &mut self,
+        repo: &git2::Repository,
+    ) -> anyhow::Result<Vec<(&'static str, usize)>>;
 }
 
 pub struct Connection<S: Schema> {
@@ -383,6 +388,23 @@ macro_rules! schema {
                     [<$name Transaction>] {
                         $($field: &mut self.$field,)*
                     }
+                }
+
+                fn merge_remote_from_repo(
+                    &mut self,
+                    repo: &::git2::Repository,
+                ) -> ::anyhow::Result<Vec<(&'static str, usize)>> {
+                    let mut counts = Vec::new();
+                    $(
+                        let remote = $crate::git::read_remote_table::<$row>(
+                            repo,
+                            <$row as $crate::synctato::TableRow>::TABLE_NAME,
+                        )?;
+                        let count = remote.len();
+                        self.$field.merge_remote(remote);
+                        counts.push((<$row as $crate::synctato::TableRow>::TABLE_NAME, count));
+                    )*
+                    Ok(counts)
                 }
             }
         }

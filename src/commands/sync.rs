@@ -57,11 +57,15 @@ pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
         SyncEvent::MergingRemote => {
             sp = Some(spinner("Merging remote data..."));
         }
-        SyncEvent::MergeDone { feeds, posts } => {
+        SyncEvent::MergeDone { counts } => {
             if let Some(s) = sp.take() {
+                let detail: Vec<String> = counts
+                    .iter()
+                    .map(|(name, count)| format!("{} {}", count, name))
+                    .collect();
                 s.finish_with_message(format!(
-                    "Merging remote data... done ({} feeds, {} posts from remote).",
-                    feeds, posts
+                    "Merging remote data... done ({} from remote).",
+                    detail.join(", ")
                 ));
             }
         }

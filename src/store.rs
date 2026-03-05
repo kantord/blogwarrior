@@ -1,15 +1,15 @@
 use std::path::Path;
 
 use crate::git;
-use crate::schema::{BlogData, Transaction};
+use crate::synctato::{Connection, Schema};
 
-pub(crate) enum SyncEvent {
+pub(crate) enum SyncEvent<'a> {
     Fetching,
     FetchDone,
     Pushing { first_push: bool },
     PushDone { first_push: bool },
     MergingRemote,
-    MergeDone { feeds: usize, posts: usize },
+    MergeDone { counts: &'a [(&'static str, usize)] },
 }
 
 pub(crate) enum SyncResult {
@@ -19,22 +19,34 @@ pub(crate) enum SyncResult {
     Synced,
 }
 
-impl BlogData {
+impl<S: Schema> Connection<S> {
     /// Git-aware transaction: lock → reload → ensure_clean → run closure → save → auto_commit → unlock.
-    pub(crate) fn transact(
+    pub(crate) fn transact<T>(
         &mut self,
         msg: &str,
-        f: impl FnOnce(&mut Transaction<'_>) -> anyhow::Result<()>,
-    ) -> anyhow::Result<()> {
+        f: impl FnOnce(&mut S::Transaction<'_>) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
         let repo = git::try_open_repo(self.path());
         if let Some(ref repo) = repo {
             git::ensure_clean(repo)?;
         }
-        self.locked_transaction(f)?;
+        let result = self.locked_transaction(f)?;
         if let Some(ref repo) = repo {
             git::auto_commit(repo, msg)?;
         }
-        Ok(())
+        Ok(result)
+    }
+
+    /// Merge remote data under lock: lock → reload → merge → save → unlock.
+    fn locked_merge_remote(
+        &mut self,
+        repo: &git2::Repository,
+    ) -> anyhow::Result<Vec<(&'static str, usize)>> {
+        let _lock = self.lock()?;
+        self.reload()?;
+        let counts = self.merge_remote_from_repo(repo)?;
+        self.save()?;
+        Ok(counts)
     }
 
     /// Sync with git remote (fetch, merge, push).
@@ -79,23 +91,8 @@ impl BlogData {
 
         // Diverged → merge remote data
         on_progress(SyncEvent::MergingRemote);
-        let remote_feeds = git::read_remote_table(&repo, "feeds")?;
-        let remote_posts = git::read_remote_table(&repo, "posts")?;
-        let remote_reads = git::read_remote_table(&repo, "reads")?;
-
-        let feeds_count = remote_feeds.len();
-        let posts_count = remote_posts.len();
-
-        self.locked_transaction(|tx| {
-            tx.feeds.merge_remote(remote_feeds);
-            tx.posts.merge_remote(remote_posts);
-            tx.reads.merge_remote(remote_reads);
-            Ok(())
-        })?;
-        on_progress(SyncEvent::MergeDone {
-            feeds: feeds_count,
-            posts: posts_count,
-        });
+        let counts = self.locked_merge_remote(&repo)?;
+        on_progress(SyncEvent::MergeDone { counts: &counts });
 
         git::auto_commit(&repo, "sync")?;
         git::merge_ours(&repo)?;
