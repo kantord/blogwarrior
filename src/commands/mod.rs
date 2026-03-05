@@ -1,5 +1,6 @@
 pub mod add;
 pub mod clone;
+pub mod export;
 pub mod feed_ls;
 pub mod open;
 mod pull;
@@ -132,7 +133,7 @@ pub(crate) struct PostIndex {
 }
 
 pub(crate) const RESERVED_COMMANDS: &[&str] = &[
-    "show", "open", "read", "unread", "feed", "sync", "git", "clone",
+    "show", "open", "read", "unread", "feed", "sync", "git", "clone", "export",
 ];
 
 pub(crate) fn post_index(table: &crate::synctato::Table<FeedItem>) -> PostIndex {

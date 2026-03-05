@@ -2369,3 +2369,107 @@ fn test_show_all_bypasses_default_query() {
         ".all should show old posts, got:\n{output}"
     );
 }
+
+#[test]
+fn test_export_outputs_jsonl() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Export Blog",
+        &[
+            (
+                "Post A",
+                "Mon, 15 Jan 2024 00:00:00 +0000",
+                "guid-a",
+                "https://example.com/a",
+            ),
+            (
+                "Post B",
+                "Sun, 14 Jan 2024 00:00:00 +0000",
+                "guid-b",
+                "https://example.com/b",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/export.xml", &xml);
+    let url = ctx.server.url("/export.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    let output = ctx.run(&[".all", "export"]).success().stdout_str();
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(lines.len(), 2, "expected 2 JSONL lines, got:\n{output}");
+
+    // Each line should be valid JSON with an expanded feed object
+    let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+    assert!(parsed.get("title").is_some());
+    assert!(parsed.get("date").is_some());
+    let feed = parsed.get("feed").expect("feed field should exist");
+    assert!(feed.is_object(), "feed should be an object, got: {feed}");
+    assert!(feed.get("url").is_some(), "feed should have url field");
+
+    // Unread posts should not have read_at
+    assert!(
+        parsed.get("read_at").is_none(),
+        "unread post should not have read_at"
+    );
+
+    // Mark first post as read, then export again
+    ctx.run(&["a", "open"]).success();
+    let output2 = ctx.run(&[".all", "export"]).success().stdout_str();
+    let lines2: Vec<&str> = output2.lines().collect();
+    // Find the read post (Post A)
+    let read_line = lines2.iter().find(|l| l.contains("Post A")).unwrap();
+    let read_parsed: serde_json::Value = serde_json::from_str(read_line).unwrap();
+    assert!(
+        read_parsed.get("read_at").is_some(),
+        "read post should have read_at"
+    );
+
+    // Unread post should still not have read_at
+    let unread_line = lines2.iter().find(|l| l.contains("Post B")).unwrap();
+    let unread_parsed: serde_json::Value = serde_json::from_str(unread_line).unwrap();
+    assert!(
+        unread_parsed.get("read_at").is_none(),
+        "unread post should not have read_at"
+    );
+}
+
+#[test]
+fn test_export_respects_filters() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml_with_links(
+        "Filter Blog",
+        &[
+            (
+                "Post A",
+                "Mon, 15 Jan 2024 00:00:00 +0000",
+                "guid-a",
+                "https://example.com/a",
+            ),
+            (
+                "Post B",
+                "Sun, 14 Jan 2024 00:00:00 +0000",
+                "guid-b",
+                "https://example.com/b",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/filter.xml", &xml);
+    let url = ctx.server.url("/filter.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    let output = ctx
+        .run(&["export", "since:2024-01-15"])
+        .success()
+        .stdout_str();
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "expected 1 filtered JSONL line, got:\n{output}"
+    );
+    assert!(lines[0].contains("Post A"));
+}

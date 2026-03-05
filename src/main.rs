@@ -64,7 +64,9 @@ EXAMPLES:
   blog a unread               Mark post 'a' as unread
   blog .unread                Show only unread posts
   blog @myblog .unread        Show unread posts from @myblog
-  blog .all                   Show all posts (bypass defaults)";
+  blog .all                   Show all posts (bypass defaults)
+  blog .all export             Export all posts as JSONL
+  blog @myblog export          Export posts from @myblog as JSONL";
 
 #[derive(Subcommand)]
 enum Command {
@@ -87,6 +89,12 @@ enum Command {
     Sync,
     /// Mark a post as unread
     Unread,
+    /// Export matching posts as JSONL
+    #[command(after_help = QUERY_HELP)]
+    Export {
+        /// Query arguments (see below)
+        args: Vec<String>,
+    },
     /// Run git commands in the store directory
     Git {
         /// Arguments to pass to git
@@ -183,6 +191,11 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Unread) => {
             let q = query::parse_query(&filter)?;
             commands::open::cmd_unread(&mut store, &q)?;
+        }
+        Some(Command::Export { ref args }) => {
+            let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
+            let q = query::parse_query(&all_args)?;
+            commands::export::cmd_export(&store, &q)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Add { ref url },

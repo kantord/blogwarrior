@@ -56,6 +56,11 @@ w3m $(blog abc read)
 # Mark a post as unread
 blog abc unread
 
+# Export matching posts as JSONL
+blog .all export
+blog @myblog export
+blog since:1w export
+
 # List subscriptions
 blog feed ls
 
