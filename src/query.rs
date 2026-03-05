@@ -156,7 +156,7 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
     let feed_filter = just('@')
         .ignore_then(any().repeated().at_least(1).collect::<String>())
         .then_ignore(end().labelled("end of feed filter"))
-        .map(|s| Token::FeedFilter(format!("@{s}")));
+        .map(Token::FeedFilter);
 
     let since = just("since:")
         .ignore_then(date_value_parser())
@@ -290,13 +290,13 @@ mod tests {
         let q = parse_query(&args(&["a", "/d", "@hn"])).unwrap();
         assert_eq!(q.shorthands, vec!["a".to_string()]);
         assert_eq!(q.keys, vec![GroupKey::Date]);
-        assert_eq!(q.filter, Some("@hn".to_string()));
+        assert_eq!(q.filter, Some("hn".to_string()));
     }
 
     #[test]
     fn test_feed_filter() {
         let q = parse_query(&args(&["@myblog"])).unwrap();
-        assert_eq!(q.filter, Some("@myblog".to_string()));
+        assert_eq!(q.filter, Some("myblog".to_string()));
     }
 
     fn parse_date(value: &str) -> anyhow::Result<DateTime<Utc>> {
@@ -384,7 +384,7 @@ mod tests {
     fn test_combined_args() {
         let q = parse_query(&args(&["/d", "@blog", "since:2024-01-15"])).unwrap();
         assert_eq!(q.keys, vec![GroupKey::Date]);
-        assert_eq!(q.filter, Some("@blog".to_string()));
+        assert_eq!(q.filter, Some("blog".to_string()));
         assert!(q.date_filter.since.is_some());
     }
 

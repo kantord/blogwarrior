@@ -210,11 +210,10 @@ pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<Reso
         });
     }
 
-    if let Some(ref f) = query.filter {
-        let shorthand = &f[1..];
+    if let Some(ref shorthand) = query.filter {
         let feed_id = fi
             .id_for_shorthand(shorthand)
-            .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{}", shorthand))?;
+            .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{shorthand}"))?;
         posts.items.retain(|item| item.feed == feed_id);
     }
 
@@ -314,28 +313,25 @@ mod tests {
 
     #[test]
     fn test_shorthand_skips_reserved_commands() {
-        // Generate enough shorthands to cover the single-char and two-char range
-        for i in 0..2000 {
-            let sh = index_to_shorthand(i);
-            // index_to_shorthand itself doesn't skip, but post_index does.
-            // Here we just verify the reserved list is well-formed.
-            let _ = sh;
-        }
-        // Verify that no reserved command name can appear as a shorthand
-        // by simulating the skip logic used in post_index.
+        // Simulate the skip logic used in post_index and verify
+        // that no generated shorthand collides with a reserved command.
         let mut idx = 0;
+        let mut generated = Vec::new();
         for _ in 0..2000 {
             loop {
                 let sh = index_to_shorthand(idx);
                 idx += 1;
                 if !RESERVED_COMMANDS.contains(&sh.as_str()) {
-                    assert!(
-                        !RESERVED_COMMANDS.contains(&sh.as_str()),
-                        "shorthand {sh} collides with a reserved command"
-                    );
+                    generated.push(sh);
                     break;
                 }
             }
+        }
+        for sh in &generated {
+            assert!(
+                !RESERVED_COMMANDS.contains(&sh.as_str()),
+                "shorthand {sh} collides with a reserved command"
+            );
         }
     }
 }
