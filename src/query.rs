@@ -213,7 +213,7 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
         read_status,
         shorthand,
     ))
-    .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, @feed, or shorthand)")
+    .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, @feed, .read, .unread, or shorthand)")
 }
 
 pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {

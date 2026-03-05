@@ -33,6 +33,8 @@ QUERY LANGUAGE:
 
   Filtering:
     @shorthand  Show only posts from a specific feed
+    .read       Show only read posts
+    .unread     Show only unread posts
 
   Date range:
     since:<date>    Show posts from this date onward
@@ -58,7 +60,9 @@ EXAMPLES:
   blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date
   blog a open                 Open post with shorthand 'a'
   blog a read                 Print URL of post 'a'
-  blog a unread               Mark post 'a' as unread";
+  blog a unread               Mark post 'a' as unread
+  blog .unread                Show only unread posts
+  blog @myblog .unread        Show unread posts from @myblog";
 
 #[derive(Subcommand)]
 enum Command {
