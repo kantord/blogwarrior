@@ -2415,7 +2415,7 @@ fn test_export_outputs_jsonl() {
     );
 
     // Mark first post as read, then export again
-    ctx.run(&["a", "open"]).success();
+    ctx.run(&["a", "read"]).success();
     let output2 = ctx.run(&[".all", "export"]).success().stdout_str();
     let lines2: Vec<&str> = output2.lines().collect();
     // Find the read post (Post A)
