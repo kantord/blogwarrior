@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::query::Query;
-use crate::store::Store;
+use crate::store::BlogData;
 use crate::tables::FeedSource;
 
 use super::resolve_posts;
@@ -20,7 +20,7 @@ struct ExportItem<'a> {
     read_at: Option<&'a DateTime<Utc>>,
 }
 
-pub(crate) fn cmd_export(store: &Store, query: &Query) -> anyhow::Result<()> {
+pub(crate) fn cmd_export(store: &BlogData, query: &Query) -> anyhow::Result<()> {
     let effective_query;
     let query = if query.is_empty() {
         effective_query = super::show::default_query();

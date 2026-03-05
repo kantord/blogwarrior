@@ -11,7 +11,7 @@ pub mod sync;
 use std::collections::{HashMap, HashSet};
 
 use crate::query::{Query, ReadFilter};
-use crate::store::Store;
+use crate::store::BlogData;
 use crate::tables::FeedItem;
 use crate::tables::FeedSource;
 
@@ -189,7 +189,7 @@ pub(crate) struct ResolvedPosts {
     pub feed_labels: HashMap<String, String>,
 }
 
-pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<ResolvedPosts> {
+pub(crate) fn resolve_posts(store: &BlogData, query: &Query) -> anyhow::Result<ResolvedPosts> {
     let fi = feed_index(store.feeds());
     let feed_labels = build_feed_labels(&fi);
 

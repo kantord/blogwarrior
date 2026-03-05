@@ -4,16 +4,15 @@ use crate::git;
 use crate::tables::FeedItem;
 use crate::tables::FeedSource;
 use crate::tables::ReadMark;
-// Required by the `database!` macro expansion (provides `transaction`, `save`, `begin`).
-use crate::synctato::Database;
 
-crate::database!(pub(crate) Store {
+crate::schema!(pub(crate) BlogDataSchema {
     feeds: FeedSource,
     posts: FeedItem,
     reads: ReadMark,
 });
 
-pub(crate) type Transaction<'a> = StoreTransaction<'a>;
+pub(crate) type BlogData = crate::synctato::Connection<BlogDataSchema>;
+pub(crate) type Transaction<'a> = BlogDataSchemaTransaction<'a>;
 
 pub(crate) enum SyncEvent {
     Fetching,
@@ -31,7 +30,7 @@ pub(crate) enum SyncResult {
     Synced,
 }
 
-impl Store {
+impl BlogData {
     /// Git-aware transaction: lock → reload → ensure_clean → run closure → save → auto_commit → unlock.
     pub(crate) fn transact(
         &mut self,

@@ -1,12 +1,12 @@
 use anyhow::ensure;
 
 use crate::query::Query;
-use crate::store::Store;
+use crate::store::BlogData;
 use crate::tables::{FeedItem, ReadMark};
 
 use super::resolve_posts;
 
-pub(crate) fn cmd_open(store: &mut Store, query: &Query) -> anyhow::Result<()> {
+pub(crate) fn cmd_open(store: &mut BlogData, query: &Query) -> anyhow::Result<()> {
     let resolved = resolve_posts(store, query)?;
     ensure!(
         resolved.items.len() == 1,
@@ -35,7 +35,7 @@ pub(crate) fn cmd_open(store: &mut Store, query: &Query) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn cmd_read(store: &mut Store, query: &Query) -> anyhow::Result<()> {
+pub(crate) fn cmd_read(store: &mut BlogData, query: &Query) -> anyhow::Result<()> {
     let resolved = resolve_posts(store, query)?;
     ensure!(!resolved.items.is_empty(), "No matching posts");
     for item in &resolved.items {
@@ -46,14 +46,14 @@ pub(crate) fn cmd_read(store: &mut Store, query: &Query) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn cmd_unread(store: &mut Store, query: &Query) -> anyhow::Result<()> {
+pub(crate) fn cmd_unread(store: &mut BlogData, query: &Query) -> anyhow::Result<()> {
     let resolved = resolve_posts(store, query)?;
     ensure!(!resolved.items.is_empty(), "No matching posts");
     mark_unread_batch(store, &resolved.items)?;
     Ok(())
 }
 
-fn mark_read_batch(store: &mut Store, items: &[FeedItem]) -> anyhow::Result<()> {
+fn mark_read_batch(store: &mut BlogData, items: &[FeedItem]) -> anyhow::Result<()> {
     let now = chrono::Utc::now();
     store.transact("mark read", |tx| {
         for item in items {
@@ -68,7 +68,7 @@ fn mark_read_batch(store: &mut Store, items: &[FeedItem]) -> anyhow::Result<()> 
     })
 }
 
-fn mark_unread_batch(store: &mut Store, items: &[FeedItem]) -> anyhow::Result<()> {
+fn mark_unread_batch(store: &mut BlogData, items: &[FeedItem]) -> anyhow::Result<()> {
     store.transact("mark unread", |tx| {
         for item in items {
             tx.reads.delete(&item.raw_id);

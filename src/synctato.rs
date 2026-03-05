@@ -11,39 +11,70 @@ use sha2::{Digest, Sha256};
 #[doc(hidden)]
 pub use paste::paste;
 
-/// Acquire an exclusive advisory lock on the store directory.
-/// Returns the lock file handle; the lock is released when it is dropped.
-pub fn lock_store(store_path: &Path) -> anyhow::Result<fs::File> {
-    fs::create_dir_all(store_path).context("failed to create store directory")?;
-    let lock_file =
-        fs::File::create(store_path.join(".lock")).context("failed to create store lock file")?;
-    lock_file.lock().context("failed to acquire store lock")?;
-    Ok(lock_file)
-}
-
-pub trait Database {
+pub trait Schema: Sized {
     type Transaction<'a>
     where
         Self: 'a;
 
-    fn path(&self) -> &Path;
+    fn load(path: &Path) -> anyhow::Result<Self>;
     fn save(&self) -> anyhow::Result<()>;
     fn reload(&mut self) -> anyhow::Result<()>;
     fn begin(&mut self) -> Self::Transaction<'_>;
+}
+
+pub struct Connection<S: Schema> {
+    schema: S,
+    path: PathBuf,
+}
+
+impl<S: Schema> Connection<S> {
+    pub fn open(path: &Path) -> anyhow::Result<Self> {
+        let schema = S::load(path)?;
+        Ok(Self {
+            schema,
+            path: path.to_path_buf(),
+        })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Acquire an exclusive advisory lock on the store directory.
+    pub fn lock(&self) -> anyhow::Result<fs::File> {
+        fs::create_dir_all(&self.path).context("failed to create store directory")?;
+        let lock_file = fs::File::create(self.path.join(".lock"))
+            .context("failed to create store lock file")?;
+        lock_file.lock().context("failed to acquire store lock")?;
+        Ok(lock_file)
+    }
 
     /// Lock the store, reload from disk, run the closure, save, then unlock.
-    fn locked_transaction<F, T>(&mut self, f: F) -> anyhow::Result<T>
+    pub fn locked_transaction<F, T>(&mut self, f: F) -> anyhow::Result<T>
     where
-        F: FnOnce(&mut Self::Transaction<'_>) -> anyhow::Result<T>,
+        F: FnOnce(&mut S::Transaction<'_>) -> anyhow::Result<T>,
     {
-        let _lock = lock_store(self.path())?;
-        self.reload()?;
+        let _lock = self.lock()?;
+        self.schema.reload()?;
         let result = {
-            let mut tx = self.begin();
+            let mut tx = self.schema.begin();
             f(&mut tx)?
         };
-        self.save()?;
+        self.schema.save()?;
         Ok(result)
+    }
+}
+
+impl<S: Schema> std::ops::Deref for Connection<S> {
+    type Target = S;
+    fn deref(&self) -> &S {
+        &self.schema
+    }
+}
+
+impl<S: Schema> std::ops::DerefMut for Connection<S> {
+    fn deref_mut(&mut self) -> &mut S {
+        &mut self.schema
     }
 }
 
@@ -310,11 +341,10 @@ impl<T: TableRow> Table<T> {
 }
 
 #[macro_export]
-macro_rules! database {
+macro_rules! schema {
     ($vis:vis $name:ident { $($field:ident : $row:ty),* $(,)? }) => {
         $crate::synctato::paste! {
             $vis struct $name {
-                path: ::std::path::PathBuf,
                 $($field: $crate::synctato::Table<$row>,)*
             }
 
@@ -323,13 +353,6 @@ macro_rules! database {
             }
 
             impl $name {
-                pub fn open(path: &::std::path::Path) -> ::anyhow::Result<Self> {
-                    Ok(Self {
-                        path: path.to_path_buf(),
-                        $($field: $crate::synctato::Table::<$row>::load(path)?,)*
-                    })
-                }
-
                 $(
                     pub fn $field(&self) -> &$crate::synctato::Table<$row> {
                         &self.$field
@@ -337,11 +360,13 @@ macro_rules! database {
                 )*
             }
 
-            impl $crate::synctato::Database for $name {
+            impl $crate::synctato::Schema for $name {
                 type Transaction<'a> = [<$name Transaction>]<'a>;
 
-                fn path(&self) -> &::std::path::Path {
-                    &self.path
+                fn load(path: &::std::path::Path) -> ::anyhow::Result<Self> {
+                    Ok(Self {
+                        $($field: $crate::synctato::Table::<$row>::load(path)?,)*
+                    })
                 }
 
                 fn save(&self) -> ::anyhow::Result<()> {
@@ -1017,14 +1042,14 @@ mod tests {
         }
     }
 
-    crate::database!(TestDb { t: TestItem });
+    crate::schema!(TestDb { t: TestItem });
 
     #[test]
     fn test_locked_transaction_reloads_before_mutating() {
         let dir = TempDir::new().unwrap();
 
         // Initial state: one item
-        let mut db = TestDb::open(dir.path()).unwrap();
+        let mut db = Connection::<TestDb>::open(dir.path()).unwrap();
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("x", "Original"));
             Ok(())
@@ -1032,7 +1057,7 @@ mod tests {
         .unwrap();
 
         // Simulate another process writing directly to disk
-        let mut other = TestDb::open(dir.path()).unwrap();
+        let mut other = Connection::<TestDb>::open(dir.path()).unwrap();
         other
             .locked_transaction(|tx| {
                 tx.t.upsert(make_item("x", "From Other"));
@@ -1049,7 +1074,7 @@ mod tests {
         })
         .unwrap();
 
-        let final_db = TestDb::open(dir.path()).unwrap();
+        let final_db = Connection::<TestDb>::open(dir.path()).unwrap();
         let items = final_db.t.items();
         assert_eq!(items.len(), 2);
         let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
@@ -1065,7 +1090,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
 
         // Initial state: one item
-        let mut db = TestDb::open(dir.path()).unwrap();
+        let mut db = Connection::<TestDb>::open(dir.path()).unwrap();
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("existing", "Existing"));
             Ok(())
@@ -1075,14 +1100,14 @@ mod tests {
         // Two "processes" use locked_transaction sequentially
         // (real concurrency would block on the lock; here we simulate
         // the serial execution that the lock enforces)
-        let mut db_a = TestDb::open(dir.path()).unwrap();
+        let mut db_a = Connection::<TestDb>::open(dir.path()).unwrap();
         db_a.locked_transaction(|tx| {
             tx.t.upsert(make_item("from-a", "From A"));
             Ok(())
         })
         .unwrap();
 
-        let mut db_b = TestDb::open(dir.path()).unwrap();
+        let mut db_b = Connection::<TestDb>::open(dir.path()).unwrap();
         db_b.locked_transaction(|tx| {
             tx.t.upsert(make_item("from-b", "From B"));
             Ok(())
@@ -1091,7 +1116,7 @@ mod tests {
 
         // All 3 items are preserved because each locked_transaction
         // reloads from disk before mutating
-        let final_db = TestDb::open(dir.path()).unwrap();
+        let final_db = Connection::<TestDb>::open(dir.path()).unwrap();
         assert_eq!(
             final_db.t.items().len(),
             3,
