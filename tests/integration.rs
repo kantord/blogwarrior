@@ -274,7 +274,7 @@ fn test_show_displays_posts() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["show"]).success();
+    let output = ctx.run(&["show", "since:2020-01-01"]).success();
     let stdout = output.stdout_str();
 
     assert!(stdout.contains("Hello World"));
@@ -345,7 +345,7 @@ fn test_show_default_no_subcommand() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&[]).success();
+    let output = ctx.run(&["since:2020-01-01"]).success();
     let stdout = output.stdout_str();
 
     assert!(stdout.contains("Default Show"));
@@ -366,7 +366,7 @@ fn test_sync_then_show() {
 
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show"]).success();
+    let output = ctx.run(&["show", "since:2020-01-01"]).success();
     let stdout = output.stdout_str();
 
     assert!(stdout.contains("Roundtrip Post"));
@@ -585,7 +585,7 @@ fn test_remove_feed() {
     ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show"]).success();
+    let output = ctx.run(&["show", "since:2020-01-01"]).success();
     let stdout = output.stdout_str();
     assert!(stdout.contains("Blog to Remove"));
 
@@ -595,7 +595,7 @@ fn test_remove_feed() {
     ctx.run(&["sync"]).success();
 
     // Feed and its posts should be gone — show should report no posts
-    let output = ctx.run(&["show"]).failure();
+    let output = ctx.run(&["show", "since:2020-01-01"]).failure();
     let stderr = output.stderr_str();
     assert!(stderr.contains("No matching posts"));
 }
@@ -856,7 +856,7 @@ fn test_remove_then_readd_feed() {
     ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show"]).success();
+    let output = ctx.run(&["show", "since:2020-01-01"]).success();
     let stdout = output.stdout_str();
     assert!(stdout.contains("Returning Blog"));
     assert!(stdout.contains("Old Post"));
@@ -883,7 +883,7 @@ fn test_show_displays_post_shorthands() {
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show"]).success();
+    let output = ctx.run(&["show", "since:2020-01-01"]).success();
     let stdout = output.stdout_str();
 
     let post_alphabet: &[char] = &[
@@ -1010,7 +1010,10 @@ fn test_open_marks_post_as_read() {
     ctx.run(&["sync"]).success();
 
     // Before opening: both posts are unread (shown with *)
-    let before = ctx.run(&["show"]).success().stdout_str();
+    let before = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Open first post (shorthand "a")
@@ -1024,7 +1027,10 @@ fn test_open_marks_post_as_read() {
         .success();
 
     // After opening: one post is read, one is still unread
-    let after = ctx.run(&["show"]).success().stdout_str();
+    let after = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(
         after.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -2082,7 +2088,10 @@ fn test_unread_command() {
     ctx.run(&["sync"]).success();
 
     // Before opening: both posts are unread (shown with *)
-    let before = ctx.run(&["show"]).success().stdout_str();
+    let before = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Open first post (shorthand "a") to mark it read
@@ -2096,7 +2105,10 @@ fn test_unread_command() {
         .success();
 
     // After opening: one post is read, one is still unread
-    let after_open = ctx.run(&["show"]).success().stdout_str();
+    let after_open = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(
         after_open.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -2107,7 +2119,10 @@ fn test_unread_command() {
     ctx.run(&["a", "unread"]).success();
 
     // After unread: both posts should be unread again
-    let after_unread = ctx.run(&["show"]).success().stdout_str();
+    let after_unread = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(
         after_unread.lines().filter(|l| l.starts_with('*')).count(),
         2,
@@ -2142,7 +2157,10 @@ fn test_target_first_open() {
     ctx.run(&["sync"]).success();
 
     // Both posts are unread
-    let before = ctx.run(&["show"]).success().stdout_str();
+    let before = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Use target-first syntax: `a open` instead of `open a`
@@ -2156,7 +2174,10 @@ fn test_target_first_open() {
         .success();
 
     // After opening: one post is read
-    let after = ctx.run(&["show"]).success().stdout_str();
+    let after = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(
         after.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -2218,7 +2239,10 @@ fn test_target_first_unread() {
         .assert()
         .success();
 
-    let after_open = ctx.run(&["show"]).success().stdout_str();
+    let after_open = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(
         after_open.lines().filter(|l| l.starts_with('*')).count(),
         0,
@@ -2228,10 +2252,99 @@ fn test_target_first_unread() {
     // Use target-first syntax: `a unread` instead of `unread a`
     ctx.run(&["a", "unread"]).success();
 
-    let after_unread = ctx.run(&["show"]).success().stdout_str();
+    let after_unread = ctx
+        .run(&["show", "since:2020-01-01"])
+        .success()
+        .stdout_str();
     assert_eq!(
         after_unread.lines().filter(|l| l.starts_with('*')).count(),
         1,
         "expected 1 unread post after target-first unread, got:\n{after_unread}"
+    );
+}
+
+#[test]
+fn test_show_default_query_hides_read_posts() {
+    let ctx = TestContext::new();
+
+    // Use recent dates so the 3-month window doesn't filter them out
+    let now = chrono::Utc::now();
+    let recent = now - chrono::Duration::days(1);
+    let date_str = recent.format("%a, %d %b %Y %H:%M:%S +0000").to_string();
+
+    let xml = rss_xml_with_links(
+        "Default Query Blog",
+        &[(
+            "Recent Post",
+            &date_str,
+            "guid-recent",
+            "https://example.com/recent",
+        )],
+    );
+    ctx.mock_rss_feed("/default.xml", &xml);
+    let url = ctx.server.url("/default.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Default show (no args) should display the unread post
+    let before = ctx.run(&[]).success().stdout_str();
+    assert!(
+        before.contains("Recent Post"),
+        "unread post should appear by default"
+    );
+
+    // Mark it read
+    ctx.run(&["a", "read"]).success();
+
+    // Default show should now hide the read post
+    let after = ctx.run(&[]);
+    let after = after.failure();
+    let stderr = after.stderr_str();
+    assert!(
+        stderr.contains("No matching posts"),
+        "read posts should be hidden by default, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_show_default_query_hides_old_posts() {
+    let ctx = TestContext::new();
+
+    // One old post (> 3 months) and one recent post
+    let posts = format!(
+        r#"{{"id":"old","title":"Old Post","date":"2020-01-15T00:00:00Z","feed":"Alice"}}
+{{"id":"new","title":"New Post","date":"{}","feed":"Alice"}}"#,
+        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+    );
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), &posts).unwrap();
+
+    // Default show should only display the recent post
+    let output = ctx.run(&[]).success().stdout_str();
+    assert!(output.contains("New Post"), "recent post should appear");
+    assert!(
+        !output.contains("Old Post"),
+        "old post should be hidden by default"
+    );
+}
+
+#[test]
+fn test_show_default_query_groups_by_week() {
+    let ctx = TestContext::new();
+
+    let now = chrono::Utc::now();
+    let date = now - chrono::Duration::days(1);
+    let posts = format!(
+        r#"{{"id":"1","title":"Post A","date":"{}","feed":"Alice"}}"#,
+        date.format("%Y-%m-%dT%H:%M:%SZ")
+    );
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), &posts).unwrap();
+
+    // Default show should group by week (=== YYYY-Www ===)
+    let output = ctx.run(&[]).success().stdout_str();
+    assert!(
+        output.lines().any(|l| l.contains("-W")),
+        "default show should group by week, got:\n{output}"
     );
 }

@@ -7,12 +7,26 @@ use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 use crate::feed::FeedItem;
-use crate::query::{GroupKey, Query};
+use crate::query::{DateFilter, GroupKey, Query, ReadFilter};
 use crate::store::Store;
 
 use super::resolve_posts;
 
 const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
+
+fn default_query() -> Query {
+    let since = chrono::Utc::now() - chrono::Duration::days(90);
+    Query {
+        keys: vec![GroupKey::Week],
+        filter: None,
+        date_filter: DateFilter {
+            since: Some(since),
+            until: None,
+        },
+        shorthands: Vec::new(),
+        read_filter: ReadFilter::Unread,
+    }
+}
 
 fn format_date(item: &FeedItem) -> String {
     item.date
@@ -231,6 +245,13 @@ fn render_grouped(
 }
 
 pub(crate) fn cmd_show(store: &Store, query: &Query) -> anyhow::Result<()> {
+    let effective_query;
+    let query = if query.is_empty() {
+        effective_query = default_query();
+        &effective_query
+    } else {
+        query
+    };
     let resolved = resolve_posts(store, query)?;
     ensure!(!resolved.items.is_empty(), "No matching posts");
 
