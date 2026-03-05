@@ -54,12 +54,20 @@ impl GroupKey {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ReadFilter {
+    Any,
+    Read,
+    Unread,
+}
+
 #[derive(Debug)]
 pub(crate) struct Query {
     pub keys: Vec<GroupKey>,
     pub filter: Option<String>,
     pub date_filter: DateFilter,
     pub shorthands: Vec<String>,
+    pub read_filter: ReadFilter,
 }
 
 impl Query {
@@ -69,6 +77,7 @@ impl Query {
             && self.date_filter.since.is_none()
             && self.date_filter.until.is_none()
             && self.shorthands.is_empty()
+            && matches!(self.read_filter, ReadFilter::Any)
     }
 }
 
@@ -79,6 +88,7 @@ enum Token {
     Until(DateTime<Utc>),
     Range(Option<DateTime<Utc>>, Option<DateTime<Utc>>),
     Shorthand(String),
+    ReadStatus(ReadFilter),
 }
 
 fn date_value_core<'a>() -> impl Parser<'a, &'a str, DateTime<Utc>, extra::Err<Rich<'a, char>>> {
@@ -178,6 +188,14 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
             .map(|to| Token::Range(None, Some(to))),
     ));
 
+    let read_status = just('.')
+        .ignore_then(choice((
+            just("unread").to(ReadFilter::Unread),
+            just("read").to(ReadFilter::Read),
+        )))
+        .then_ignore(end().labelled("end of read filter"))
+        .map(Token::ReadStatus);
+
     let shorthand = any()
         .filter(|c: &char| c.is_alphanumeric())
         .repeated()
@@ -186,8 +204,16 @@ fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
         .then_ignore(end())
         .map(Token::Shorthand);
 
-    choice((since, until, range, group, feed_filter, shorthand))
-        .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, @feed, or shorthand)")
+    choice((
+        since,
+        until,
+        range,
+        group,
+        feed_filter,
+        read_status,
+        shorthand,
+    ))
+    .labelled("argument (since:, until:, 3d..1d, /d, /w, /f, @feed, or shorthand)")
 }
 
 pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
@@ -196,6 +222,7 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
     let mut since = None;
     let mut until = None;
     let mut shorthands = Vec::new();
+    let mut read_filter = ReadFilter::Any;
 
     let parser = arg_parser();
 
@@ -226,6 +253,9 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
                 Token::Shorthand(s) => {
                     shorthands.push(s);
                 }
+                Token::ReadStatus(rf) => {
+                    read_filter = rf;
+                }
             },
             Err(errs) => {
                 let messages: Vec<String> = errs.into_iter().map(|e| e.to_string()).collect();
@@ -242,6 +272,7 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
         filter,
         date_filter: DateFilter { since, until },
         shorthands,
+        read_filter,
     })
 }
 
@@ -427,5 +458,31 @@ mod tests {
         assert!(q.date_filter.since.is_some());
         assert!(q.date_filter.until.is_some());
         assert!(q.date_filter.since.unwrap() < q.date_filter.until.unwrap());
+    }
+
+    #[test]
+    fn test_read_filter() {
+        let q = parse_query(&args(&[".read"])).unwrap();
+        assert_eq!(q.read_filter, ReadFilter::Read);
+    }
+
+    #[test]
+    fn test_unread_filter() {
+        let q = parse_query(&args(&[".unread"])).unwrap();
+        assert_eq!(q.read_filter, ReadFilter::Unread);
+    }
+
+    #[test]
+    fn test_default_read_filter_is_any() {
+        let q = parse_query(&args(&["/d"])).unwrap();
+        assert_eq!(q.read_filter, ReadFilter::Any);
+    }
+
+    #[test]
+    fn test_read_filter_combined() {
+        let q = parse_query(&args(&[".unread", "@hn", "/d"])).unwrap();
+        assert_eq!(q.read_filter, ReadFilter::Unread);
+        assert_eq!(q.filter, Some("hn".to_string()));
+        assert_eq!(q.keys, vec![GroupKey::Date]);
     }
 }

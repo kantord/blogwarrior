@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::feed::FeedItem;
 use crate::feed_source::FeedSource;
-use crate::query::Query;
+use crate::query::{Query, ReadFilter};
 use crate::store::Store;
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
@@ -226,6 +226,20 @@ pub(crate) fn resolve_posts(store: &Store, query: &Query) -> anyhow::Result<Reso
         posts
             .items
             .retain(|item| item.date.is_some_and(|d| d <= until));
+    }
+
+    match query.read_filter {
+        ReadFilter::Read => {
+            posts
+                .items
+                .retain(|item| store.reads().contains_key(&item.raw_id));
+        }
+        ReadFilter::Unread => {
+            posts
+                .items
+                .retain(|item| !store.reads().contains_key(&item.raw_id));
+        }
+        ReadFilter::Any => {}
     }
 
     Ok(ResolvedPosts {
