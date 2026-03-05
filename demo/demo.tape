@@ -38,7 +38,16 @@ Sleep 3s
 
 # Read a post URL with w3m
 Type "w3m $(blog s read)" Sleep 500ms Enter
-Sleep 5s
+Sleep 3s
+
+# Scroll down a couple of times
+Type "j" Sleep 200ms
+Type "j" Sleep 200ms
+Type "j" Sleep 200ms
+Type "j" Sleep 200ms
+Type "j" Sleep 200ms
+Type "j"
+Sleep 2s
 
 Type "q"
 Sleep 500ms
@@ -59,6 +68,10 @@ Sleep 3s
 Type "blog" Sleep 500ms Enter
 Sleep 5s
 
+# List feeds and their shorthands
+Type "blog feed ls" Sleep 500ms Enter
+Sleep 3s
+
 # Group by date
 Type "blog /d" Sleep 500ms Enter
 Sleep 5s
@@ -69,10 +82,6 @@ Sleep 5s
 
 # Group by date and feed
 Type "blog /d /f" Sleep 500ms Enter
-Sleep 5s
-
-# Filter by feed shorthand
-Type "blog @hn" Sleep 500ms Enter
 Sleep 5s
 
 # Filter by read status
