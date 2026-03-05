@@ -1,7 +1,7 @@
 use crate::synctato::TableRow;
 use anyhow::bail;
 
-use crate::store::Transaction;
+use crate::schema::Transaction;
 
 use super::resolve_shorthand;
 

@@ -1,18 +1,7 @@
 use std::path::Path;
 
 use crate::git;
-use crate::tables::FeedItem;
-use crate::tables::FeedSource;
-use crate::tables::ReadMark;
-
-crate::schema!(pub(crate) BlogDataSchema {
-    feeds: FeedSource,
-    posts: FeedItem,
-    reads: ReadMark,
-});
-
-pub(crate) type BlogData = crate::synctato::Connection<BlogDataSchema>;
-pub(crate) type Transaction<'a> = BlogDataSchemaTransaction<'a>;
+use crate::schema::{BlogData, Transaction};
 
 pub(crate) enum SyncEvent {
     Fetching,

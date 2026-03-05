@@ -7,8 +7,8 @@ use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 use crate::query::{DateFilter, GroupKey, Query, ReadFilter};
-use crate::store::BlogData;
-use crate::tables::FeedItem;
+use crate::schema::BlogData;
+use crate::schema::FeedItem;
 
 use super::resolve_posts;
 

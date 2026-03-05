@@ -1,6 +1,6 @@
 use anyhow::ensure;
 
-use crate::store::BlogData;
+use crate::schema::BlogData;
 
 use super::feed_index;
 
