@@ -19,37 +19,48 @@ blog feed add https://news.ycombinator.com/rss
 # Fetch new posts
 blog sync
 
-# Read posts
-blog show
+# Show posts (defaults to unread posts from the last 3 months, grouped by week)
+blog
 
 # Group by date, week, or feed
-blog show /d
-blog show /w
-blog show /f
+blog /d
+blog /w
+blog /f
 
 # Combine groupings
-blog show /d /f
+blog /d /f
 
 # Filter by feed shorthand
-blog show @hn
+blog @hn
+
+# Filter by read status
+blog .unread
+blog .read
 
 # Filter by date
 blog since:1w
 blog 3m..1m
 blog /d since:2w until:1w
 
+# Combine filters
+blog @hn .unread /d
+
 # Open a post in the default browser
-blog open abc
+blog abc open
 
 # Print a post URL (useful with CLI browsers)
-blog read abc
-w3m $(blog read abc)
+blog abc read
+w3m $(blog abc read)
+
+# Mark a post as unread
+blog abc unread
 
 # List subscriptions
 blog feed ls
 
 # Remove a feed
 blog feed rm https://news.ycombinator.com/rss
+blog feed rm @hn
 ```
 
 ## Git sync
