@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use crate::feed::FeedItem;
-use crate::feed_source::FeedSource;
 use crate::git;
-use crate::read_mark::ReadMark;
+use crate::tables::FeedItem;
+use crate::tables::FeedSource;
+use crate::tables::ReadMark;
 // Required by the `database!` macro expansion (provides `transaction`, `save`, `begin`).
 use crate::synctato::Database;
 

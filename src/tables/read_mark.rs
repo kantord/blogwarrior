@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::feed::FeedItem;
 use crate::synctato::TableRow;
+use crate::tables::FeedItem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadMark {

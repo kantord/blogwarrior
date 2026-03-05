@@ -10,10 +10,10 @@ pub mod sync;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::feed::FeedItem;
-use crate::feed_source::FeedSource;
 use crate::query::{Query, ReadFilter};
 use crate::store::Store;
+use crate::tables::FeedItem;
+use crate::tables::FeedSource;
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 

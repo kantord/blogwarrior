@@ -4,7 +4,7 @@ use anyhow::{bail, ensure};
 use chrono::{DateTime, NaiveDate, Utc};
 use chumsky::prelude::*;
 
-use crate::feed::FeedItem;
+use crate::tables::FeedItem;
 
 #[derive(Debug)]
 pub(crate) struct DateFilter {

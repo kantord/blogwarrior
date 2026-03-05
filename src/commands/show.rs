@@ -6,9 +6,9 @@ use anyhow::ensure;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
-use crate::feed::FeedItem;
 use crate::query::{DateFilter, GroupKey, Query, ReadFilter};
 use crate::store::Store;
+use crate::tables::FeedItem;
 
 use super::resolve_posts;
 

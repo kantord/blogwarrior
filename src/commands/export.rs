@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::feed_source::FeedSource;
 use crate::query::Query;
 use crate::store::Store;
+use crate::tables::FeedSource;
 
 use super::resolve_posts;
 

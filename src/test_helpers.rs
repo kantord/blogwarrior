@@ -1,6 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 
-use crate::feed::FeedItem;
+use crate::tables::FeedItem;
 
 pub fn utc_date(year: i32, month: u32, day: u32) -> DateTime<Utc> {
     NaiveDate::from_ymd_opt(year, month, day)
