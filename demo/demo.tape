@@ -25,18 +25,51 @@ Show
 Type "blog feed add https://news.ycombinator.com/rss" Sleep 500ms Enter
 Sleep 3s
 
+Type "blog feed add https://michael.stapelberg.ch/feed.xml" Sleep 500ms Enter
+Sleep 3s
+
+Type "blog feed add https://www.justinmklam.com/index.xml" Sleep 500ms Enter
+Sleep 3s
+
 Type "blog sync" Sleep 500ms Enter
 Sleep 3s
 
 # Default view: unread posts from the last 3 months, grouped by week
 Type "blog" Sleep 500ms Enter
+Sleep 5s
+
+# Group by date
+Type "blog /d" Sleep 500ms Enter
+Sleep 5s
+
+# Group by feed
+Type "blog /f" Sleep 500ms Enter
+Sleep 5s
+
+# Group by date and feed
+Type "blog /d /f" Sleep 500ms Enter
+Sleep 5s
+
+# List feeds and their shorthands
+Type "blog feed ls" Sleep 500ms Enter
 Sleep 3s
 
-# Open a post in the browser (filter-first syntax)
-Type "blog a open" Sleep 500ms Enter
+# Filter by read status
+Type "blog .read" Sleep 500ms Enter
 Sleep 3s
 
-# Read a post URL with w3m
+# Date range filter
+Type "blog since:1w" Sleep 500ms Enter
+Sleep 5s
+
+Type "blog 3m..1m" Sleep 500ms Enter
+Sleep 5s
+
+# Show only unread posts
+Type "blog .unread" Sleep 500ms Enter
+Sleep 5s
+
+# Read a post URL with w3m (using shorthand from the list)
 Type "w3m $(blog s read)" Sleep 500ms Enter
 Sleep 3s
 
@@ -53,52 +86,3 @@ Type "q"
 Sleep 500ms
 Type "y"
 Sleep 1s
-
-# Add more feeds
-Type "blog feed add https://michael.stapelberg.ch/feed.xml" Sleep 500ms Enter
-Sleep 3s
-
-Type "blog feed add https://www.justinmklam.com/index.xml" Sleep 500ms Enter
-Sleep 3s
-
-Type "blog sync" Sleep 500ms Enter
-Sleep 3s
-
-# Default view with multiple feeds
-Type "blog" Sleep 500ms Enter
-Sleep 5s
-
-# List feeds and their shorthands
-Type "blog feed ls" Sleep 500ms Enter
-Sleep 3s
-
-# Group by date
-Type "blog /d" Sleep 500ms Enter
-Sleep 5s
-
-# Group by feed
-Type "blog /f" Sleep 500ms Enter
-Sleep 5s
-
-# Group by date and feed
-Type "blog /d /f" Sleep 500ms Enter
-Sleep 5s
-
-# Filter by read status
-Type "blog .read" Sleep 500ms Enter
-Sleep 3s
-
-# Date range filter
-Type "blog since:1w" Sleep 500ms Enter
-Sleep 5s
-
-Type "blog 3m..1m" Sleep 500ms Enter
-Sleep 5s
-
-# Mark a post as unread
-Type "blog a unread" Sleep 500ms Enter
-Sleep 3s
-
-# Show only unread posts
-Type "blog .unread" Sleep 500ms Enter
-Sleep 5s
