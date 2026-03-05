@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/kantord/blogtato/compare/v0.1.5...v0.1.6) - 2026-03-05
+
+### Added
+
+- allow filtering for read and unread posts ([#49](https://github.com/kantord/blogtato/pull/49))
+- make syntax more similar to taskwarrior ([#47](https://github.com/kantord/blogtato/pull/47))
+- allow marking post unread ([#46](https://github.com/kantord/blogtato/pull/46))
+
+### Fixed
+
+- avoid race condition when running multiple sync at the same time ([#43](https://github.com/kantord/blogtato/pull/43))
+
+### Other
+
+- small refactors ([#48](https://github.com/kantord/blogtato/pull/48))
+- reuse RenderCtx ([#45](https://github.com/kantord/blogtato/pull/45))
+
 ## [0.1.5](https://github.com/kantord/blogtato/compare/v0.1.4...v0.1.5) - 2026-03-03
 
 ### Added
