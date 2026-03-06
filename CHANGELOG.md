@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/kantord/blogtato/compare/blogtato-v0.1.7...blogtato-v0.1.8) - 2026-03-06
+
+### Added
+
+- add export command
+
+### Other
+
+- split display module ([#61](https://github.com/kantord/blogtato/pull/61))
+- split up query.rs ([#60](https://github.com/kantord/blogtato/pull/60))
+- create a utils folder ([#59](https://github.com/kantord/blogtato/pull/59))
+- remove useless test module ([#58](https://github.com/kantord/blogtato/pull/58))
+- add data folder ([#57](https://github.com/kantord/blogtato/pull/57))
+- move shorthand logic to separate file ([#56](https://github.com/kantord/blogtato/pull/56))
+- create synctato crate ([#55](https://github.com/kantord/blogtato/pull/55))
+- create tables module ([#54](https://github.com/kantord/blogtato/pull/54))
+
 ## [0.1.7](https://github.com/kantord/blogtato/compare/v0.1.6...v0.1.7) - 2026-03-05
 
 ### Added
