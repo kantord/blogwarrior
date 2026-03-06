@@ -6,9 +6,6 @@ mod progress;
 mod query;
 mod shorthand;
 
-#[cfg(test)]
-mod test_helpers;
-
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
