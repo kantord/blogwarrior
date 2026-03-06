@@ -1,10 +1,9 @@
 mod commands;
 mod data;
 mod feed;
-mod http;
-mod progress;
 mod query;
 mod shorthand;
+mod utils;
 
 use std::path::PathBuf;
 

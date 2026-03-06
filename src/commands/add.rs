@@ -2,10 +2,10 @@ use anyhow::bail;
 
 use crate::data::Transaction;
 use crate::data::schema::FeedSource;
-use crate::progress::spinner;
+use crate::utils::progress::spinner;
 
 pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
-    let client = crate::http::http_client()?;
+    let client = crate::utils::http::http_client()?;
 
     let sp = spinner(&format!("Fetching {url}..."));
     let response = client.get(url).send()?.error_for_status()?;

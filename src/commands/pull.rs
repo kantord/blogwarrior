@@ -9,7 +9,7 @@ pub(crate) type FetchResult = (FeedSource, Result<(FeedMeta, Vec<FeedItem>), Str
 
 /// Fetch all feeds in parallel.
 pub(crate) fn fetch_feeds(sources: &[FeedSource], pb: &ProgressBar) -> Vec<FetchResult> {
-    let client = match crate::http::http_client() {
+    let client = match crate::utils::http::http_client() {
         Ok(c) => c,
         Err(e) => {
             pb.suspend(|| eprintln!("Error creating HTTP client: {e}"));

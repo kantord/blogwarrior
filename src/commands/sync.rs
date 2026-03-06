@@ -4,7 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use synctato::{SyncEvent, SyncResult};
 
 use crate::data::BlogData;
-use crate::progress::spinner;
+use crate::utils::progress::spinner;
 
 use super::pull::{apply_fetched, fetch_feeds};
 
