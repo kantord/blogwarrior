@@ -115,7 +115,7 @@ impl FeedIndex {
     }
 }
 
-pub(crate) fn feed_index(table: &crate::synctato::Table<FeedSource>) -> FeedIndex {
+pub(crate) fn feed_index(table: &synctato::Table<FeedSource>) -> FeedIndex {
     let mut feeds = table.items();
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| table.id_of(f)).collect();
@@ -136,7 +136,7 @@ pub(crate) const RESERVED_COMMANDS: &[&str] = &[
     "show", "open", "read", "unread", "feed", "sync", "git", "clone", "export",
 ];
 
-pub(crate) fn post_index(table: &crate::synctato::Table<FeedItem>) -> PostIndex {
+pub(crate) fn post_index(table: &synctato::Table<FeedItem>) -> PostIndex {
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
     let mut idx = 0;
@@ -156,7 +156,7 @@ pub(crate) fn post_index(table: &crate::synctato::Table<FeedItem>) -> PostIndex 
 }
 
 pub(crate) fn resolve_shorthand(
-    feeds_table: &crate::synctato::Table<FeedSource>,
+    feeds_table: &synctato::Table<FeedSource>,
     shorthand: &str,
 ) -> Option<String> {
     let fi = feed_index(feeds_table);

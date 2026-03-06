@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::schema::FeedItem;
-use crate::synctato::TableRow;
+use synctato::TableRow;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadMark {
@@ -23,7 +23,7 @@ impl TableRow for ReadMark {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::synctato::Table;
+    use synctato::Table;
     use tempfile::TempDir;
 
     #[test]

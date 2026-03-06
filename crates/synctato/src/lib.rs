@@ -1,3 +1,5 @@
+pub mod git;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[doc(hidden)]
+pub use git2;
+#[doc(hidden)]
 pub use paste::paste;
 
 pub trait Schema: Sized {
@@ -16,14 +20,40 @@ pub trait Schema: Sized {
     where
         Self: 'a;
 
+    fn load(path: &Path) -> anyhow::Result<Self>;
     fn save(&self) -> anyhow::Result<()>;
     fn reload(&mut self) -> anyhow::Result<()>;
     fn begin(&mut self) -> Self::Transaction<'_>;
-
     fn merge_remote_from_repo(
         &mut self,
         repo: &git2::Repository,
     ) -> anyhow::Result<Vec<(&'static str, usize)>>;
+}
+
+pub enum SyncEvent<'a> {
+    Fetching,
+    FetchDone,
+    Pushing { first_push: bool },
+    PushDone { first_push: bool },
+    MergingRemote,
+    MergeDone { counts: &'a [(&'static str, usize)] },
+}
+
+pub enum SyncResult {
+    NoGitRepo,
+    NoRemote,
+    AlreadyUpToDate,
+    Synced,
+}
+
+/// Clone a git remote into a new store directory.
+pub fn clone_store(dir: &Path, url: &str) -> anyhow::Result<()> {
+    let output = git::git_output(&["clone", "--depth", "1", url, &dir.to_string_lossy()])?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git clone failed: {}", stderr.trim());
+    }
+    Ok(())
 }
 
 pub struct Store<S: Schema> {
@@ -34,6 +64,11 @@ pub struct Store<S: Schema> {
 impl<S: Schema> Store<S> {
     pub fn new(schema: S, path: PathBuf) -> Self {
         Self { schema, path }
+    }
+
+    pub fn open(path: &Path) -> anyhow::Result<Self> {
+        let schema = S::load(path)?;
+        Ok(Self::new(schema, path.to_path_buf()))
     }
 
     pub fn path(&self) -> &Path {
@@ -62,6 +97,95 @@ impl<S: Schema> Store<S> {
         };
         self.schema.save()?;
         Ok(result)
+    }
+
+    /// Git-aware transaction: ensure_clean → lock → reload → run closure → save → auto_commit → unlock.
+    pub fn transact<T>(
+        &mut self,
+        msg: &str,
+        f: impl FnOnce(&mut S::Transaction<'_>) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        let repo = git::try_open_repo(self.path());
+        if let Some(ref repo) = repo {
+            git::ensure_clean(repo)?;
+        }
+        let result = self.locked_transaction(f)?;
+        if let Some(ref repo) = repo {
+            git::auto_commit(repo, msg)?;
+        }
+        Ok(result)
+    }
+
+    /// Run a raw git command in the store directory.
+    pub fn git_passthrough(&self, args: &[String]) -> anyhow::Result<()> {
+        git::git_passthrough(self.path(), args)
+    }
+
+    /// Merge remote data under lock: lock → reload → merge → save → unlock.
+    fn locked_merge_remote(
+        &mut self,
+        repo: &git2::Repository,
+    ) -> anyhow::Result<Vec<(&'static str, usize)>> {
+        let _lock = self.lock()?;
+        self.schema.reload()?;
+        let counts = self.schema.merge_remote_from_repo(repo)?;
+        self.schema.save()?;
+        Ok(counts)
+    }
+
+    /// Sync with git remote (fetch, merge, push).
+    pub fn sync_remote(
+        &mut self,
+        mut on_progress: impl FnMut(SyncEvent),
+    ) -> anyhow::Result<SyncResult> {
+        let path = self.path().to_path_buf();
+        let repo = match git::try_open_repo(&path) {
+            Some(r) => r,
+            None => return Ok(SyncResult::NoGitRepo),
+        };
+
+        git::ensure_clean(&repo)?;
+
+        if !git::has_remote(&path) {
+            return Ok(SyncResult::NoRemote);
+        }
+
+        if !git::has_remote_branch(&repo) {
+            on_progress(SyncEvent::Pushing { first_push: true });
+            git::push(&path)?;
+            on_progress(SyncEvent::PushDone { first_push: true });
+            return Ok(SyncResult::Synced);
+        }
+
+        on_progress(SyncEvent::Fetching);
+        git::fetch(&path)?;
+        on_progress(SyncEvent::FetchDone);
+
+        if git::is_up_to_date(&repo)? {
+            return Ok(SyncResult::AlreadyUpToDate);
+        }
+
+        // Local is strictly ahead → just push
+        if git::is_remote_ancestor(&repo)? {
+            on_progress(SyncEvent::Pushing { first_push: false });
+            git::push(&path)?;
+            on_progress(SyncEvent::PushDone { first_push: false });
+            return Ok(SyncResult::Synced);
+        }
+
+        // Diverged → merge remote data
+        on_progress(SyncEvent::MergingRemote);
+        let counts = self.locked_merge_remote(&repo)?;
+        on_progress(SyncEvent::MergeDone { counts: &counts });
+
+        git::auto_commit(&repo, "sync")?;
+        git::merge_ours(&repo)?;
+
+        on_progress(SyncEvent::Pushing { first_push: false });
+        git::push(&path)?;
+        on_progress(SyncEvent::PushDone { first_push: false });
+
+        Ok(SyncResult::Synced)
     }
 }
 
@@ -343,18 +467,18 @@ impl<T: TableRow> Table<T> {
 #[macro_export]
 macro_rules! schema {
     ($vis:vis $name:ident { $($field:ident : $row:ty),* $(,)? }) => {
-        $crate::synctato::paste! {
+        $crate::paste! {
             $vis struct $name {
-                $($field: $crate::synctato::Table<$row>,)*
+                $($field: $crate::Table<$row>,)*
             }
 
             $vis struct [<$name Transaction>]<'a> {
-                $(pub $field: &'a mut $crate::synctato::Table<$row>,)*
+                $(pub $field: &'a mut $crate::Table<$row>,)*
             }
 
             impl $name {
                 $(
-                    pub fn $field(&self) -> &$crate::synctato::Table<$row> {
+                    pub fn $field(&self) -> &$crate::Table<$row> {
                         &self.$field
                     }
                 )*
@@ -366,18 +490,15 @@ macro_rules! schema {
 #[macro_export]
 macro_rules! store {
     ($name:ident { $($field:ident : $row:ty),* $(,)? }) => {
-        $crate::synctato::paste! {
-            impl $crate::synctato::Store<$name> {
-                pub fn open(path: &::std::path::Path) -> ::anyhow::Result<Self> {
-                    let schema = $name {
-                        $($field: $crate::synctato::Table::<$row>::load(path)?,)*
-                    };
-                    Ok(Self::new(schema, path.to_path_buf()))
-                }
-            }
-
-            impl $crate::synctato::Schema for $name {
+        $crate::paste! {
+            impl $crate::Schema for $name {
                 type Transaction<'a> = [<$name Transaction>]<'a>;
+
+                fn load(path: &::std::path::Path) -> ::anyhow::Result<Self> {
+                    Ok($name {
+                        $($field: $crate::Table::<$row>::load(path)?,)*
+                    })
+                }
 
                 fn save(&self) -> ::anyhow::Result<()> {
                     $(self.$field.save()?;)*
@@ -397,17 +518,17 @@ macro_rules! store {
 
                 fn merge_remote_from_repo(
                     &mut self,
-                    repo: &::git2::Repository,
+                    repo: &$crate::git2::Repository,
                 ) -> ::anyhow::Result<Vec<(&'static str, usize)>> {
                     let mut counts = Vec::new();
                     $(
                         let remote = $crate::git::read_remote_table::<$row>(
                             repo,
-                            <$row as $crate::synctato::TableRow>::TABLE_NAME,
+                            <$row as $crate::TableRow>::TABLE_NAME,
                         )?;
-                        let count = remote.len();
+                        let c = remote.len();
                         self.$field.merge_remote(remote);
-                        counts.push((<$row as $crate::synctato::TableRow>::TABLE_NAME, count));
+                        counts.push((<$row as $crate::TableRow>::TABLE_NAME, c));
                     )*
                     Ok(counts)
                 }
@@ -419,11 +540,15 @@ macro_rules! store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::utc_rfc3339;
+    use chrono::DateTime;
     use rstest::rstest;
     use rusty_fork::rusty_fork_test;
     use serde::Deserialize;
     use tempfile::TempDir;
+
+    fn utc_rfc3339(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().to_utc()
+    }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestItem {
@@ -645,7 +770,6 @@ mod tests {
     #[test]
     fn test_items_land_in_correct_shard_files() {
         let (dir, mut table) = new_test_table();
-        // hash_id produces 14-char hex strings; we use pre-hashed ids for predictability
         table
             .items
             .insert("aabb11".to_string(), make_row_with_id("aabb11", "Item AA"));
@@ -660,12 +784,10 @@ mod tests {
         let files = shard_files(&dir, "t");
         assert_eq!(files, vec!["items_aa.jsonl", "items_cc.jsonl"]);
 
-        // Check items_aa.jsonl has 2 items
         let aa_content = fs::read_to_string(dir.path().join("t").join("items_aa.jsonl")).unwrap();
         let aa_lines: Vec<&str> = aa_content.lines().filter(|l| !l.is_empty()).collect();
         assert_eq!(aa_lines.len(), 2);
 
-        // Check items_cc.jsonl has 1 item
         let cc_content = fs::read_to_string(dir.path().join("t").join("items_cc.jsonl")).unwrap();
         let cc_lines: Vec<&str> = cc_content.lines().filter(|l| !l.is_empty()).collect();
         assert_eq!(cc_lines.len(), 1);
@@ -677,7 +799,6 @@ mod tests {
         let table_dir = dir.path().join("t");
         fs::create_dir_all(&table_dir).unwrap();
 
-        // Write two separate shard files
         let item1 = r#"{"id":"aa1111","title":"From AA"}"#;
         let item2 = r#"{"id":"bb2222","title":"From BB"}"#;
         fs::write(table_dir.join("items_aa.jsonl"), format!("{}\n", item1)).unwrap();
@@ -748,11 +869,9 @@ mod tests {
         let table_dir = dir.path().join("t");
         fs::create_dir_all(&table_dir).unwrap();
 
-        // Create an old shard file with valid data that won't be needed after re-shard
         let old_item = r#"{"id":"zz9999","title":"Old"}"#;
         fs::write(table_dir.join("items_zz.jsonl"), format!("{}\n", old_item)).unwrap();
 
-        // Load picks up the old item, then delete it and add one in a different shard
         let mut table = Table::<TestItem>::load(dir.path()).unwrap();
         table.items.insert(
             "zz9999".to_string(),
@@ -766,12 +885,10 @@ mod tests {
             .insert("aabb11".to_string(), make_row_with_id("aabb11", "Item AA"));
         table.save().unwrap();
 
-        // items_zz.jsonl still exists (holds the tombstone), but only items_aa has live data
         let loaded = Table::<TestItem>::load(dir.path()).unwrap();
         assert_eq!(loaded.items().len(), 1);
         assert_eq!(loaded.items()[0].title, "Item AA");
 
-        // An orphaned empty shard file gets cleaned up
         fs::write(table_dir.join("items_qq.jsonl"), "").unwrap();
         loaded.save().unwrap();
         assert!(!table_dir.join("items_qq.jsonl").exists());
@@ -779,9 +896,6 @@ mod tests {
 
     #[test]
     fn test_upsert_same_id_overwrites() {
-        // Two items with the same raw ID should produce the same hash,
-        // so the second upsert overwrites the first. This is correct
-        // table behavior — it's the caller's job to provide distinct IDs.
         let (_dir, mut table) = new_test_table();
         table.upsert(make_item("same", "First"));
         table.upsert(make_item("same", "Second"));
@@ -810,7 +924,6 @@ mod tests {
         table.upsert(make_item("x", "Same"));
         let ts1 = get_updated_at(&table);
 
-        // Upsert identical content — updated_at should not change
         table.upsert(make_item("x", "Same"));
         let ts2 = get_updated_at(&table);
         assert_eq!(ts1, ts2);
@@ -848,7 +961,6 @@ mod tests {
         let mut loaded = Table::<TestItem>::load(dir.path()).unwrap();
         let ts_before = get_updated_at(&loaded);
 
-        // Re-upsert same content after loading from disk
         loaded.upsert(make_item("x", "Item"));
         let ts_after = get_updated_at(&loaded);
         assert_eq!(ts_before, ts_after);
@@ -1003,39 +1115,26 @@ mod tests {
         assert_eq!(table.items()[0].title, "Post");
     }
 
-    // Wrapped in rusty_fork_test! so the inner libc::fork() runs in a
-    // single-threaded subprocess, avoiding deadlocks from forking inside
-    // Cargo's multi-threaded test runner.
     #[cfg(unix)]
     rusty_fork_test! {
         #[test]
         fn test_failed_save_preserves_previous_data() {
             let dir = TempDir::new().unwrap();
 
-            // Save initial data
             let mut table = Table::<TestItem>::load(dir.path()).unwrap();
             table
                 .items
                 .insert("aabb11".to_string(), make_row_with_id("aabb11", "Original"));
             table.save().unwrap();
 
-            // Verify initial data is saved
             let loaded = Table::<TestItem>::load(dir.path()).unwrap();
             assert_eq!(loaded.items().len(), 1);
 
-            // Fork a child process to attempt save() with RLIMIT_FSIZE=8.
-            // RLIMIT_FSIZE is process-wide, so we isolate it in a subprocess to
-            // avoid interfering with other tests running in parallel.
-            // The child sets a file size limit of 8 bytes — enough to create a file
-            // but too small for any real JSONL row — then attempts save().
-            // Deletions (unlink) are unaffected by RLIMIT_FSIZE, so save() will
-            // delete old shards but fail writing new ones — simulating disk-full.
             let dir_path = dir.path().to_path_buf();
             let child_status = unsafe { libc::fork() };
             match child_status {
                 -1 => panic!("fork failed"),
                 0 => {
-                    // Child process: set RLIMIT_FSIZE and attempt save()
                     unsafe {
                         libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
                         let limit = libc::rlimit {
@@ -1049,7 +1148,6 @@ mod tests {
                     std::process::exit(0);
                 }
                 child_pid => {
-                    // Parent: wait for child
                     let mut wstatus: libc::c_int = 0;
                     unsafe {
                         libc::waitpid(child_pid, &mut wstatus, 0);
@@ -1057,7 +1155,6 @@ mod tests {
                 }
             }
 
-            // Original data should still be loadable after the child's failed save
             let recovered =
                 Table::<TestItem>::load(dir.path()).expect("load should not fail after a failed save");
             assert_eq!(
@@ -1069,14 +1166,13 @@ mod tests {
         }
     }
 
-    crate::schema!(TestDb { t: TestItem });
-    crate::store!(TestDb { t: TestItem });
+    schema!(TestDb { t: TestItem });
+    store!(TestDb { t: TestItem });
 
     #[test]
     fn test_locked_transaction_reloads_before_mutating() {
         let dir = TempDir::new().unwrap();
 
-        // Initial state: one item
         let mut db = Store::<TestDb>::open(dir.path()).unwrap();
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("x", "Original"));
@@ -1084,7 +1180,6 @@ mod tests {
         })
         .unwrap();
 
-        // Simulate another process writing directly to disk
         let mut other = Store::<TestDb>::open(dir.path()).unwrap();
         other
             .locked_transaction(|tx| {
@@ -1093,9 +1188,6 @@ mod tests {
             })
             .unwrap();
 
-        // First db still has stale in-memory state ("Original").
-        // locked_transaction should reload from disk before mutating,
-        // so "From Other" survives if we don't touch that key.
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("y", "New Item"));
             Ok(())
@@ -1117,7 +1209,6 @@ mod tests {
     fn test_locked_transaction_preserves_concurrent_writes() {
         let dir = TempDir::new().unwrap();
 
-        // Initial state: one item
         let mut db = Store::<TestDb>::open(dir.path()).unwrap();
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("existing", "Existing"));
@@ -1125,9 +1216,6 @@ mod tests {
         })
         .unwrap();
 
-        // Two "processes" use locked_transaction sequentially
-        // (real concurrency would block on the lock; here we simulate
-        // the serial execution that the lock enforces)
         let mut db_a = Store::<TestDb>::open(dir.path()).unwrap();
         db_a.locked_transaction(|tx| {
             tx.t.upsert(make_item("from-a", "From A"));
@@ -1142,8 +1230,6 @@ mod tests {
         })
         .unwrap();
 
-        // All 3 items are preserved because each locked_transaction
-        // reloads from disk before mutating
         let final_db = Store::<TestDb>::open(dir.path()).unwrap();
         assert_eq!(
             final_db.t.items().len(),

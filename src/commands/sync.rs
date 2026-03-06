@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
+use synctato::{SyncEvent, SyncResult};
 
 use crate::progress::spinner;
 use crate::store::BlogData;
-use crate::store::{SyncEvent, SyncResult};
 
 use super::pull::{apply_fetched, fetch_feeds};
 

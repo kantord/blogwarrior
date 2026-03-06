@@ -6,13 +6,13 @@ pub use feed_item::FeedItem;
 pub use feed_source::FeedSource;
 pub use read_mark::ReadMark;
 
-crate::schema!(pub(crate) BlogDataSchema {
+synctato::schema!(pub(crate) BlogDataSchema {
     feeds: FeedSource,
     posts: FeedItem,
     reads: ReadMark,
 });
 
-crate::store!(BlogDataSchema {
+synctato::store!(BlogDataSchema {
     feeds: FeedSource,
     posts: FeedItem,
     reads: ReadMark,

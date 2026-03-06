@@ -1,12 +1,11 @@
 mod commands;
 mod feed;
-mod git;
 mod http;
 mod progress;
 mod query;
 mod schema;
 mod store;
-mod synctato;
+
 #[cfg(test)]
 mod test_helpers;
 
