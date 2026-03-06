@@ -10,10 +10,6 @@ pub fn utc_date(year: i32, month: u32, day: u32) -> DateTime<Utc> {
         .and_utc()
 }
 
-pub fn utc_rfc3339(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s).unwrap().to_utc()
-}
-
 pub fn feed_item(title: &str, date: &str, feed: &str) -> FeedItem {
     FeedItem {
         title: title.to_string(),

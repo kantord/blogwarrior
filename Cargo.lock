@@ -239,7 +239,6 @@ dependencies = [
  "itertools",
  "libc",
  "open",
- "paste",
  "rayon",
  "reqwest",
  "rss",
