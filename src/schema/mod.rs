@@ -12,5 +12,8 @@ crate::schema!(pub(crate) BlogDataSchema {
     reads: ReadMark,
 });
 
-pub(crate) type BlogData = crate::synctato::Connection<BlogDataSchema>;
-pub(crate) type Transaction<'a> = BlogDataSchemaTransaction<'a>;
+crate::store!(BlogDataSchema {
+    feeds: FeedSource,
+    posts: FeedItem,
+    reads: ReadMark,
+});

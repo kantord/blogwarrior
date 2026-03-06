@@ -11,9 +11,9 @@ pub mod sync;
 use std::collections::{HashMap, HashSet};
 
 use crate::query::{Query, ReadFilter};
-use crate::schema::BlogData;
 use crate::schema::FeedItem;
 use crate::schema::FeedSource;
+use crate::store::BlogData;
 
 const HOME_ROW: [char; 9] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
 

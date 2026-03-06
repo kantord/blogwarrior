@@ -16,7 +16,6 @@ pub trait Schema: Sized {
     where
         Self: 'a;
 
-    fn load(path: &Path) -> anyhow::Result<Self>;
     fn save(&self) -> anyhow::Result<()>;
     fn reload(&mut self) -> anyhow::Result<()>;
     fn begin(&mut self) -> Self::Transaction<'_>;
@@ -27,18 +26,14 @@ pub trait Schema: Sized {
     ) -> anyhow::Result<Vec<(&'static str, usize)>>;
 }
 
-pub struct Connection<S: Schema> {
+pub struct Store<S: Schema> {
     schema: S,
     path: PathBuf,
 }
 
-impl<S: Schema> Connection<S> {
-    pub fn open(path: &Path) -> anyhow::Result<Self> {
-        let schema = S::load(path)?;
-        Ok(Self {
-            schema,
-            path: path.to_path_buf(),
-        })
+impl<S: Schema> Store<S> {
+    pub fn new(schema: S, path: PathBuf) -> Self {
+        Self { schema, path }
     }
 
     pub fn path(&self) -> &Path {
@@ -70,14 +65,14 @@ impl<S: Schema> Connection<S> {
     }
 }
 
-impl<S: Schema> std::ops::Deref for Connection<S> {
+impl<S: Schema> std::ops::Deref for Store<S> {
     type Target = S;
     fn deref(&self) -> &S {
         &self.schema
     }
 }
 
-impl<S: Schema> std::ops::DerefMut for Connection<S> {
+impl<S: Schema> std::ops::DerefMut for Store<S> {
     fn deref_mut(&mut self) -> &mut S {
         &mut self.schema
     }
@@ -364,15 +359,25 @@ macro_rules! schema {
                     }
                 )*
             }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! store {
+    ($name:ident { $($field:ident : $row:ty),* $(,)? }) => {
+        $crate::synctato::paste! {
+            impl $crate::synctato::Store<$name> {
+                pub fn open(path: &::std::path::Path) -> ::anyhow::Result<Self> {
+                    let schema = $name {
+                        $($field: $crate::synctato::Table::<$row>::load(path)?,)*
+                    };
+                    Ok(Self::new(schema, path.to_path_buf()))
+                }
+            }
 
             impl $crate::synctato::Schema for $name {
                 type Transaction<'a> = [<$name Transaction>]<'a>;
-
-                fn load(path: &::std::path::Path) -> ::anyhow::Result<Self> {
-                    Ok(Self {
-                        $($field: $crate::synctato::Table::<$row>::load(path)?,)*
-                    })
-                }
 
                 fn save(&self) -> ::anyhow::Result<()> {
                     $(self.$field.save()?;)*
@@ -1065,13 +1070,14 @@ mod tests {
     }
 
     crate::schema!(TestDb { t: TestItem });
+    crate::store!(TestDb { t: TestItem });
 
     #[test]
     fn test_locked_transaction_reloads_before_mutating() {
         let dir = TempDir::new().unwrap();
 
         // Initial state: one item
-        let mut db = Connection::<TestDb>::open(dir.path()).unwrap();
+        let mut db = Store::<TestDb>::open(dir.path()).unwrap();
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("x", "Original"));
             Ok(())
@@ -1079,7 +1085,7 @@ mod tests {
         .unwrap();
 
         // Simulate another process writing directly to disk
-        let mut other = Connection::<TestDb>::open(dir.path()).unwrap();
+        let mut other = Store::<TestDb>::open(dir.path()).unwrap();
         other
             .locked_transaction(|tx| {
                 tx.t.upsert(make_item("x", "From Other"));
@@ -1096,7 +1102,7 @@ mod tests {
         })
         .unwrap();
 
-        let final_db = Connection::<TestDb>::open(dir.path()).unwrap();
+        let final_db = Store::<TestDb>::open(dir.path()).unwrap();
         let items = final_db.t.items();
         assert_eq!(items.len(), 2);
         let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
@@ -1112,7 +1118,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
 
         // Initial state: one item
-        let mut db = Connection::<TestDb>::open(dir.path()).unwrap();
+        let mut db = Store::<TestDb>::open(dir.path()).unwrap();
         db.locked_transaction(|tx| {
             tx.t.upsert(make_item("existing", "Existing"));
             Ok(())
@@ -1122,14 +1128,14 @@ mod tests {
         // Two "processes" use locked_transaction sequentially
         // (real concurrency would block on the lock; here we simulate
         // the serial execution that the lock enforces)
-        let mut db_a = Connection::<TestDb>::open(dir.path()).unwrap();
+        let mut db_a = Store::<TestDb>::open(dir.path()).unwrap();
         db_a.locked_transaction(|tx| {
             tx.t.upsert(make_item("from-a", "From A"));
             Ok(())
         })
         .unwrap();
 
-        let mut db_b = Connection::<TestDb>::open(dir.path()).unwrap();
+        let mut db_b = Store::<TestDb>::open(dir.path()).unwrap();
         db_b.locked_transaction(|tx| {
             tx.t.upsert(make_item("from-b", "From B"));
             Ok(())
@@ -1138,7 +1144,7 @@ mod tests {
 
         // All 3 items are preserved because each locked_transaction
         // reloads from disk before mutating
-        let final_db = Connection::<TestDb>::open(dir.path()).unwrap();
+        let final_db = Store::<TestDb>::open(dir.path()).unwrap();
         assert_eq!(
             final_db.t.items().len(),
             3,

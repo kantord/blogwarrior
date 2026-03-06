@@ -171,7 +171,7 @@ fn run() -> anyhow::Result<()> {
         return commands::clone::cmd_clone(&store_dir, url);
     }
 
-    let mut store = schema::BlogData::open(&store_dir)?;
+    let mut store = store::BlogData::open(&store_dir)?;
 
     match args.command {
         Some(Command::Show { ref args }) => {

@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::query::Query;
-use crate::schema::BlogData;
 use crate::schema::FeedSource;
+use crate::store::BlogData;
 
 use super::resolve_posts;
 

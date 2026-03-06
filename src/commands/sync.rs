@@ -3,7 +3,7 @@ use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::progress::spinner;
-use crate::schema::BlogData;
+use crate::store::BlogData;
 use crate::store::{SyncEvent, SyncResult};
 
 use super::pull::{apply_fetched, fetch_feeds};

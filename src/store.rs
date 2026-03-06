@@ -1,7 +1,11 @@
 use std::path::Path;
 
 use crate::git;
-use crate::synctato::{Connection, Schema};
+use crate::schema::BlogDataSchema;
+use crate::synctato::{Schema, Store};
+
+pub(crate) type BlogData = Store<BlogDataSchema>;
+pub(crate) type Transaction<'a> = crate::schema::BlogDataSchemaTransaction<'a>;
 
 pub(crate) enum SyncEvent<'a> {
     Fetching,
@@ -19,7 +23,7 @@ pub(crate) enum SyncResult {
     Synced,
 }
 
-impl<S: Schema> Connection<S> {
+impl<S: Schema> Store<S> {
     /// Git-aware transaction: lock → reload → ensure_clean → run closure → save → auto_commit → unlock.
     pub(crate) fn transact<T>(
         &mut self,

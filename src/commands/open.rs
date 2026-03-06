@@ -1,8 +1,8 @@
 use anyhow::ensure;
 
 use crate::query::Query;
-use crate::schema::BlogData;
 use crate::schema::{FeedItem, ReadMark};
+use crate::store::BlogData;
 
 use super::resolve_posts;
 
