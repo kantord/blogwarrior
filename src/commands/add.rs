@@ -1,8 +1,8 @@
 use anyhow::bail;
 
+use crate::data::Transaction;
+use crate::data::schema::FeedSource;
 use crate::progress::spinner;
-use crate::schema::FeedSource;
-use crate::store::Transaction;
 
 pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
     let client = crate::http::http_client()?;

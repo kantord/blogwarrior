@@ -1,9 +1,8 @@
 use anyhow::bail;
 use synctato::TableRow;
 
-use crate::store::Transaction;
-
-use super::resolve_shorthand;
+use crate::data::Transaction;
+use crate::data::index::resolve_shorthand;
 
 pub(crate) fn cmd_remove(tx: &mut Transaction, url: &str) -> anyhow::Result<()> {
     let url = if let Some(shorthand) = url.strip_prefix('@') {

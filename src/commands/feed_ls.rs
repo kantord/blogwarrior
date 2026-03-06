@@ -1,8 +1,7 @@
 use anyhow::ensure;
 
-use crate::store::BlogData;
-
-use super::feed_index;
+use crate::data::BlogData;
+use crate::data::index::feed_index;
 
 pub(crate) fn cmd_feed_ls(store: &BlogData) -> anyhow::Result<()> {
     let fi = feed_index(store.feeds());

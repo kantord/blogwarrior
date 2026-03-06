@@ -6,11 +6,10 @@ use anyhow::ensure;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
+use crate::data::BlogData;
+use crate::data::index::resolve_posts;
+use crate::data::schema::FeedItem;
 use crate::query::{DateFilter, GroupKey, Query, ReadFilter};
-use crate::schema::FeedItem;
-use crate::store::BlogData;
-
-use super::resolve_posts;
 
 const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
 

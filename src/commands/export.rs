@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+use crate::data::BlogData;
+use crate::data::index::resolve_posts;
+use crate::data::schema::FeedSource;
 use crate::query::Query;
-use crate::schema::FeedSource;
-use crate::store::BlogData;
-
-use super::resolve_posts;
 
 #[derive(Serialize)]
 struct ExportItem<'a> {

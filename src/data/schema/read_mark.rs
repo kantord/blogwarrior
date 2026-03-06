@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::schema::FeedItem;
+use super::FeedItem;
 use synctato::TableRow;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
