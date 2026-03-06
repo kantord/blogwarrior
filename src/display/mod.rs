@@ -1,138 +1,11 @@
+mod group;
+mod item;
+
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
 
-use itertools::Itertools;
-use unicode_width::UnicodeWidthStr;
-
-use crate::data::schema::FeedItem;
 use crate::query::GroupKey;
 
-const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
-
-pub(crate) fn format_date(item: &FeedItem) -> String {
-    item.date
-        .map(|d| d.format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn truncate_str(s: &str, max_cols: usize) -> String {
-    if s.width() <= max_cols {
-        return s.to_string();
-    }
-    if max_cols == 0 {
-        return String::new();
-    }
-    let budget = max_cols - 1; // reserve 1 column for '…'
-    let mut used = 0;
-    let mut end = 0;
-    for (i, c) in s.char_indices() {
-        let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-        if used + cw > budget {
-            break;
-        }
-        used += cw;
-        end = i + c.len_utf8();
-    }
-    format!("{}\u{2026}", &s[..end])
-}
-
-fn format_item(item: &FeedItem, content_width: Option<usize>, ctx: &RenderCtx) -> String {
-    let shorthand = ctx
-        .shorthands
-        .get(&item.raw_id)
-        .map(|s| s.as_str())
-        .unwrap_or("");
-    let is_read = ctx.read_ids.contains(&item.raw_id);
-    let show_date = !ctx.all_keys.contains(&GroupKey::Date);
-    let show_feed = !ctx.all_keys.contains(&GroupKey::Feed);
-    let feed_label = ctx
-        .feed_labels
-        .get(&item.feed)
-        .map(|s| s.as_str())
-        .unwrap_or(&item.feed);
-
-    // Compute plain-text widths for fixed parts
-    let date_width = if show_date {
-        format_date(item).width() + 2 // "YYYY-MM-DD  "
-    } else {
-        0
-    };
-    let fixed_width = READ_MARKER_WIDTH + date_width + ctx.shorthand_width + 1; // +1 for space after shorthand
-
-    // Split feed_label "@tag Blog Name" into fixed tag and truncatable blog name.
-    // Labels from cmd_show always have "@shorthand title" format, but tests may
-    // pass bare names like "Alice" — treat those as blog name only.
-    let (tag, blog_name) = if show_feed {
-        match feed_label.split_once(' ') {
-            Some((t, b)) if t.starts_with('@') => (Some(t), b),
-            _ => (None, feed_label),
-        }
-    } else {
-        (None, "")
-    };
-
-    // Fixed meta overhead: parts that never truncate
-    let meta_fixed_width = if show_feed {
-        match tag {
-            Some(t) => 2 + t.width() + 1 + 1, // " (@tag " + ")"
-            None => 2 + 1,                    // " (" + ")"
-        }
-    } else {
-        0
-    };
-
-    let (title, blog) = match content_width {
-        Some(w) if fixed_width + meta_fixed_width < w => {
-            let remaining = w - fixed_width - meta_fixed_width;
-            let title_len = item.title.width();
-            let blog_len = blog_name.width();
-
-            if title_len + blog_len <= remaining {
-                (item.title.clone(), blog_name.to_string())
-            } else if !show_feed {
-                (truncate_str(&item.title, remaining), String::new())
-            } else {
-                // Blog name gets at most 35% of remaining, post title gets the rest
-                let blog_budget = (remaining * 35 / 100).max(3).min(blog_len);
-                let title_budget = remaining.saturating_sub(blog_budget);
-                (
-                    truncate_str(&item.title, title_budget),
-                    truncate_str(blog_name, blog_budget),
-                )
-            }
-        }
-        _ => (item.title.clone(), blog_name.to_string()),
-    };
-
-    // Apply ANSI styling after truncation
-    let (bold, dim, italic, date_color, reset) = if ctx.color {
-        ("\x1b[1m", "\x1b[2m", "\x1b[3m", "\x1b[36m", "\x1b[0m")
-    } else {
-        ("", "", "", "", "")
-    };
-
-    let styled_meta = if show_feed {
-        match tag {
-            Some(t) => format!("{dim}{italic} ({t} {blog}){reset}"),
-            None => format!("{dim}{italic} ({blog}){reset}"),
-        }
-    } else {
-        String::new()
-    };
-
-    let date_part = if show_date {
-        format!("{date_color}{}{reset}  ", format_date(item))
-    } else {
-        String::new()
-    };
-
-    let read_marker = if is_read { "  " } else { "* " };
-
-    format!(
-        "{read_marker}{date_part}{bold}{shorthand:<sw$}{reset} {title}{styled_meta}",
-        sw = ctx.shorthand_width
-    )
-}
+pub(crate) use group::render_grouped;
 
 pub(crate) struct RenderCtx<'a> {
     pub all_keys: &'a [GroupKey],
@@ -144,90 +17,10 @@ pub(crate) struct RenderCtx<'a> {
     pub max_width: Option<usize>,
 }
 
-pub(crate) fn render_grouped(
-    items: &[&FeedItem],
-    keys: &[GroupKey],
-    shorthands: &HashMap<String, String>,
-    feed_labels: &HashMap<String, String>,
-    read_ids: &HashSet<String>,
-    color: bool,
-    max_width: Option<usize>,
-) -> String {
-    fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], ctx: &RenderCtx) {
-        let depth = ctx.all_keys.len() - remaining.len();
-        let indent = "  ".repeat(depth);
-
-        if remaining.is_empty() {
-            let indent_width = depth * 2;
-            let content_width = ctx.max_width.map(|w| w.saturating_sub(indent_width));
-            for item in items {
-                writeln!(out, "{indent}{}", format_item(item, content_width, ctx)).unwrap();
-            }
-            return;
-        }
-
-        let key = remaining[0];
-        let rest = &remaining[1..];
-
-        let mut sorted = items.to_vec();
-        sorted.sort_by(|a, b| key.compare(a, b, ctx.feed_labels));
-
-        let (bold, reset) = if ctx.color {
-            ("\x1b[1m", "\x1b[0m")
-        } else {
-            ("", "")
-        };
-
-        let (prefix, suffix) = if depth == 0 {
-            ("=== ", " ===")
-        } else {
-            ("--- ", " ---")
-        };
-
-        for (group_val, group) in &sorted
-            .iter()
-            .chunk_by(|item| key.extract(item, ctx.feed_labels))
-        {
-            let group_items: Vec<&FeedItem> = group.copied().collect();
-            writeln!(out, "{indent}{bold}{prefix}{group_val}{suffix}{reset}").unwrap();
-            if depth == 0 {
-                writeln!(out).unwrap();
-            }
-            recurse(out, &group_items, rest, ctx);
-            if depth == 0 {
-                writeln!(out).unwrap();
-                writeln!(out).unwrap();
-            } else {
-                writeln!(out).unwrap();
-            }
-        }
-    }
-
-    let shorthand_width = items
-        .iter()
-        .filter_map(|item| shorthands.get(&item.raw_id))
-        .map(|s| s.len())
-        .max()
-        .unwrap_or(0);
-
-    let ctx = RenderCtx {
-        all_keys: keys,
-        shorthands,
-        feed_labels,
-        read_ids,
-        color,
-        shorthand_width,
-        max_width,
-    };
-
-    let mut out = String::new();
-    recurse(&mut out, items, keys, &ctx);
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::schema::FeedItem;
     use crate::query::DateFilter;
     use chrono::{DateTime, NaiveDate, Utc};
     use rstest::rstest;
@@ -301,13 +94,13 @@ mod tests {
             shorthand_width: 3,
             max_width: None,
         };
-        assert_eq!(format_item(&i, None, &ctx), expected);
+        assert_eq!(item::format_item(&i, None, &ctx), expected);
     }
 
     #[test]
     fn test_format_date_with_date() {
         let i = feed_item("Post", "2024-01-15", "Alice");
-        assert_eq!(format_date(&i), "2024-01-15");
+        assert_eq!(item::format_date(&i), "2024-01-15");
     }
 
     #[test]
@@ -316,7 +109,7 @@ mod tests {
             date: None,
             ..feed_item("Post", "2024-01-01", "Alice")
         };
-        assert_eq!(format_date(&i), "unknown");
+        assert_eq!(item::format_date(&i), "unknown");
     }
 
     #[test]
@@ -654,6 +447,8 @@ mod tests {
 
     #[test]
     fn test_cjk_characters_respect_display_width() {
+        use unicode_width::UnicodeWidthStr;
+
         let cjk_title = "你好世界测试标题很长";
         let items = [feed_item_with_raw_id(
             cjk_title,
@@ -692,6 +487,8 @@ mod tests {
 
     #[test]
     fn test_long_lines_are_truncated_to_max_width() {
+        use unicode_width::UnicodeWidthStr;
+
         let long_title =
             "An extremely long post title that should definitely be truncated to fit the width";
         let items = [feed_item_with_raw_id(
