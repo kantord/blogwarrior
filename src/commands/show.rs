@@ -287,9 +287,39 @@ pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use crate::query::DateFilter;
-    use crate::test_helpers::{feed_item, feed_item_with_raw_id, utc_date};
-    use chrono::{DateTime, Utc};
+    use chrono::{DateTime, NaiveDate, Utc};
     use rstest::rstest;
+
+    fn utc_date(year: i32, month: u32, day: u32) -> DateTime<Utc> {
+        NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+    }
+
+    fn feed_item(title: &str, date: &str, feed: &str) -> FeedItem {
+        FeedItem {
+            title: title.to_string(),
+            date: Some(
+                NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: feed.to_string(),
+            link: String::new(),
+            raw_id: String::new(),
+        }
+    }
+
+    fn feed_item_with_raw_id(title: &str, date: &str, feed: &str, raw_id: &str) -> FeedItem {
+        FeedItem {
+            raw_id: raw_id.to_string(),
+            ..feed_item(title, date, feed)
+        }
+    }
 
     fn no_labels() -> HashMap<String, String> {
         HashMap::new()
