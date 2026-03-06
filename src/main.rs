@@ -4,6 +4,7 @@ mod http;
 mod progress;
 mod query;
 mod schema;
+mod shorthand;
 mod store;
 
 #[cfg(test)]
@@ -12,7 +13,7 @@ mod test_helpers;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use commands::RESERVED_COMMANDS;
+use shorthand::RESERVED_COMMANDS;
 
 /// A simple RSS/Atom feed reader
 #[derive(Parser)]
