@@ -1,5 +1,6 @@
 mod commands;
 mod data;
+mod display;
 mod feed;
 mod query;
 mod shorthand;
