@@ -8,7 +8,7 @@ use anyhow::{Context, bail};
 /// host-key confirmation when the remote uses SSH transport; without it the
 /// subprocess blocks indefinitely because the closed pipe cannot display a
 /// prompt or receive input.
-pub(crate) fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
+pub fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
     Command::new("git")
         .args(args)
         .stdin(Stdio::inherit())

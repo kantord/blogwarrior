@@ -1,7 +1,6 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::store;
 use anyhow::{Context, bail};
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -46,7 +45,7 @@ pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
     sp.enable_steady_tick(Duration::from_millis(80));
     sp.set_message(format!("Cloning into {}...", store_dir.display()));
 
-    store::clone_store(store_dir, &expanded)?;
+    synctato::clone_store(store_dir, &expanded)?;
 
     sp.finish_with_message(format!("Cloned into {}.", store_dir.display()));
     Ok(())

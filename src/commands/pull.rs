@@ -2,8 +2,8 @@ use indicatif::ProgressBar;
 use rayon::prelude::*;
 
 use crate::feed::FeedMeta;
+use crate::schema::{FeedItem, FeedSource};
 use crate::store::Transaction;
-use crate::tables::{FeedItem, FeedSource};
 
 pub(crate) type FetchResult = (FeedSource, Result<(FeedMeta, Vec<FeedItem>), String>);
 

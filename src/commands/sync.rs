@@ -1,13 +1,14 @@
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
+use synctato::{SyncEvent, SyncResult};
 
 use crate::progress::spinner;
-use crate::store::{Store, SyncEvent, SyncResult};
+use crate::store::BlogData;
 
 use super::pull::{apply_fetched, fetch_feeds};
 
-pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
+pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
     let pb = ProgressBar::new(0);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -56,11 +57,15 @@ pub(crate) fn cmd_sync(store: &mut Store) -> anyhow::Result<()> {
         SyncEvent::MergingRemote => {
             sp = Some(spinner("Merging remote data..."));
         }
-        SyncEvent::MergeDone { feeds, posts } => {
+        SyncEvent::MergeDone { counts } => {
             if let Some(s) = sp.take() {
+                let detail: Vec<String> = counts
+                    .iter()
+                    .map(|(name, count)| format!("{} {}", count, name))
+                    .collect();
                 s.finish_with_message(format!(
-                    "Merging remote data... done ({} feeds, {} posts from remote).",
-                    feeds, posts
+                    "Merging remote data... done ({} from remote).",
+                    detail.join(", ")
                 ));
             }
         }

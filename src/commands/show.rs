@@ -7,8 +7,8 @@ use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 use crate::query::{DateFilter, GroupKey, Query, ReadFilter};
-use crate::store::Store;
-use crate::tables::FeedItem;
+use crate::schema::FeedItem;
+use crate::store::BlogData;
 
 use super::resolve_posts;
 
@@ -248,7 +248,7 @@ fn render_grouped(
     out
 }
 
-pub(crate) fn cmd_show(store: &Store, query: &Query) -> anyhow::Result<()> {
+pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
     let effective_query;
     let query = if query.is_empty() {
         effective_query = default_query();

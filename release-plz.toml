@@ -1,2 +1,11 @@
 [workspace]
 semver_check = false
+
+[[package]]
+name = "blogtato"
+version_group = "main"
+
+[[package]]
+name = "synctato"
+version_group = "main"
+publish = false

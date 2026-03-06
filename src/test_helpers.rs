@@ -1,6 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 
-use crate::tables::FeedItem;
+use crate::schema::FeedItem;
 
 pub fn utc_date(year: i32, month: u32, day: u32) -> DateTime<Utc> {
     NaiveDate::from_ymd_opt(year, month, day)
@@ -8,10 +8,6 @@ pub fn utc_date(year: i32, month: u32, day: u32) -> DateTime<Utc> {
         .and_hms_opt(0, 0, 0)
         .unwrap()
         .and_utc()
-}
-
-pub fn utc_rfc3339(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s).unwrap().to_utc()
 }
 
 pub fn feed_item(title: &str, date: &str, feed: &str) -> FeedItem {

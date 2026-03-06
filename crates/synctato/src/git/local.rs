@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::synctato::{Row, TableRow, parse_rows};
+use crate::{Row, TableRow, parse_rows};
 use anyhow::{Context, bail};
 use git2::{Repository, RepositoryOpenFlags, Signature};
 
@@ -101,10 +101,10 @@ pub fn auto_commit(repo: &Repository, message: &str) -> anyhow::Result<()> {
 fn signature(repo: &Repository) -> anyhow::Result<Signature<'static>> {
     match repo.signature() {
         Ok(sig) => Ok(Signature::now(
-            sig.name().unwrap_or("blogtato"),
-            sig.email().unwrap_or("blogtato@localhost"),
+            sig.name().unwrap_or("synctato"),
+            sig.email().unwrap_or("synctato@localhost"),
         )?),
-        Err(_) => Ok(Signature::now("blogtato", "blogtato@localhost")?),
+        Err(_) => Ok(Signature::now("synctato", "synctato@localhost")?),
     }
 }
 
