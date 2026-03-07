@@ -3,7 +3,7 @@ members = [".", "crates/synctato"]
 
 [package]
 name = "blogtato"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
@@ -15,7 +15,7 @@ name = "blog"
 path = "src/main.rs"
 
 [dependencies]
-synctato = { version = "=0.1.8", path = "crates/synctato" }
+synctato = { version = "=0.1.9", path = "crates/synctato" }
 anyhow = "=1.0.102"
 atom_syndication = "=0.12.7"
 clap = { version = "=4.5.60", features = ["derive"] }

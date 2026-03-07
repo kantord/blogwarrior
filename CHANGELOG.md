@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/kantord/blogtato/compare/blogtato-v0.1.8...blogtato-v0.1.9) - 2026-03-07
+
+### Added
+
+- *(synctato)* add Table::delete_where() ([#70](https://github.com/kantord/blogtato/pull/70))
+- *(synctato)* add Table::iter() for zero-clone iteration
+
+### Other
+
+- improve blog sync performance ([#76](https://github.com/kantord/blogtato/pull/76))
+- *(deps)* update release-plz/action digest to 1528104 ([#74](https://github.com/kantord/blogtato/pull/74))
+- add performance measuring scripts ([#75](https://github.com/kantord/blogtato/pull/75))
+- avoid per-item SHA-256 hashing in read status filter ([#73](https://github.com/kantord/blogtato/pull/73))
+- avoid allocations in GroupKey sort comparator
+- deduplicate shorthand lookup in FeedIndex
+- extarct MAX_FEED_CANDIDATES
+- deduplicate spinner creation
+- extract BLOG_NAME_BUDGET_PERCENT
+- explain shorthand logic and design a bit
+- replace ensure_no_query with reject_filter to avoid unnecessary parsing
+- move query execution logic from data/index to query/resolve
+- replace tautological assertion
+- small fixes
+- extract start_of_day helper
+- use partition in split_at_command
+- extract Query::or_default_view
+- replace parallel vectors in FeedIndex with Vec<FeedEntry>
+- reuse Style between group.rs and item.rs
+- break down format_item into smaller bits
+- accept &RenderCtx in render_grouped instead of 7 positional args
+
 ## [0.1.8](https://github.com/kantord/blogtato/compare/blogtato-v0.1.7...blogtato-v0.1.8) - 2026-03-06
 
 ### Added
