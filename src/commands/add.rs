@@ -4,6 +4,9 @@ use crate::data::Transaction;
 use crate::data::schema::FeedSource;
 use crate::utils::progress::spinner;
 
+/// Sanity cap on feed candidates to validate during HTML discovery.
+const MAX_FEED_CANDIDATES: usize = 20;
+
 pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
     let client = crate::utils::http::http_client()?;
 
@@ -29,7 +32,7 @@ pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
     let feeds: Vec<_> = candidates
         .iter()
         .filter(|f| seen.insert(f.url().to_string()))
-        .take(20)
+        .take(MAX_FEED_CANDIDATES)
         .filter(|f| {
             sp.set_message(format!("Checking {}...", f.url()));
             is_valid_feed(&client, f.url().as_str())
