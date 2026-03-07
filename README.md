@@ -4,10 +4,19 @@ A CLI RSS/Atom feed reader inspired by Taskwarrior.
 
 ![demo](demo/demo.gif)
 
+## Features
+
+- Subscribe to RSS and Atom feeds
+- Simple query language for filtering by feed, read status, and date, with
+  grouping and export
+- Git-based sync across machines with conflict-free merge
+  ([why git?](#why-sync-using-git))
+- No accounts, no servers, no continuous network dependency
+
 ## Install
 
 ```bash
-cargo install --path .
+cargo install blogtato
 ```
 
 ## Usage
