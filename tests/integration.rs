@@ -1935,7 +1935,7 @@ fn test_clone_merges_with_existing_store() {
     let remote_store = TempDir::new().unwrap();
     init_git_store(remote_store.path(), origin_dir.path());
     insert_feed(remote_store.path(), "https://example.com/b.xml");
-    git(remote_store.path(), &["push", "-u", "origin", "main"]);
+    git(remote_store.path(), &["push", "-u", "origin", "HEAD"]);
     drop(remote_store);
 
     // Create local store with feed A (independent git history, no remote)
