@@ -40,7 +40,33 @@ blog sync
 
 On your device(s), run the same `blog clone` to pull down your feeds and posts.
 
-## Usage
+Don't worry about setting git sync up if you are just trying `blogtato` out:
+you can set up git sync later at any time.
+
+### Quick start
+
+Once you set up your `git`-based sync, or if you decided to skip it, subscribe
+to your favorite feeds using `blog feed add`:
+
+```bash
+blog feed add https://michael.stapelberg.ch
+blog feed add https://www.justinmklam.com
+```
+
+Fetch and list latest posts:
+
+```bash
+blog sync
+blog
+```
+
+Read whatever you found interesting by referring to its shorthand
+
+```bash
+blog df read
+```
+
+## Usage examples
 
 ```bash
 # Subscribe to a feed
