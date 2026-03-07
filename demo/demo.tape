@@ -21,9 +21,6 @@ Type "clear" Enter
 Sleep 500ms
 Show
 
-Type "blog feed add https://news.ycombinator.com/rss" Sleep 500ms Enter
-Sleep 3s
-
 Type "blog feed add https://michael.stapelberg.ch/feed.xml" Sleep 500ms Enter
 Sleep 3s
 
@@ -69,5 +66,5 @@ Type "blog .unread" Sleep 500ms Enter
 Sleep 5s
 
 # Filter by feed shorthand
-Type "blog @hn" Sleep 500ms Enter
+Type "blog @s" Sleep 500ms Enter
 Sleep 5s
