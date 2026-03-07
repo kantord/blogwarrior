@@ -20,6 +20,11 @@ pub fn try_open_repo(path: &Path) -> Option<Repository> {
     open_exact(path).ok()
 }
 
+/// Open a git repo at exactly `path`, returning an error if none exists.
+pub fn open_repo(path: &Path) -> anyhow::Result<Repository> {
+    open_exact(path).context("failed to open git repository")
+}
+
 #[cfg(test)]
 pub fn open_or_init_repo(path: &Path) -> anyhow::Result<Repository> {
     match open_exact(path) {

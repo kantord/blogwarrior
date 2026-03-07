@@ -1,3 +1,4 @@
+#[doc(hidden)]
 pub mod git;
 
 use std::collections::HashMap;
@@ -10,8 +11,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[doc(hidden)]
-pub use git2;
 #[doc(hidden)]
 pub use paste::paste;
 
@@ -26,7 +25,7 @@ pub trait Schema: Sized {
     fn begin(&mut self) -> Self::Transaction<'_>;
     fn merge_remote_from_repo(
         &mut self,
-        repo: &git2::Repository,
+        repo_path: &Path,
     ) -> anyhow::Result<Vec<(&'static str, usize)>>;
 }
 
@@ -122,13 +121,11 @@ impl<S: Schema> Store<S> {
     }
 
     /// Merge remote data under lock: lock → reload → merge → save → unlock.
-    fn locked_merge_remote(
-        &mut self,
-        repo: &git2::Repository,
-    ) -> anyhow::Result<Vec<(&'static str, usize)>> {
+    fn locked_merge_remote(&mut self) -> anyhow::Result<Vec<(&'static str, usize)>> {
         let _lock = self.lock()?;
+        let path = self.path.clone();
         self.schema.reload()?;
-        let counts = self.schema.merge_remote_from_repo(repo)?;
+        let counts = self.schema.merge_remote_from_repo(&path)?;
         self.schema.save()?;
         Ok(counts)
     }
@@ -175,7 +172,7 @@ impl<S: Schema> Store<S> {
 
         // Diverged → merge remote data
         on_progress(SyncEvent::MergingRemote);
-        let counts = self.locked_merge_remote(&repo)?;
+        let counts = self.locked_merge_remote()?;
         on_progress(SyncEvent::MergeDone { counts: &counts });
 
         git::auto_commit(&repo, "sync")?;
@@ -244,7 +241,7 @@ impl<T> Row<T> {
     }
 }
 
-pub fn parse_rows<T: TableRow>(content: &str) -> anyhow::Result<HashMap<String, Row<T>>> {
+pub(crate) fn parse_rows<T: TableRow>(content: &str) -> anyhow::Result<HashMap<String, Row<T>>> {
     let mut items = HashMap::new();
     for line in content.lines() {
         if line.trim().is_empty() {
@@ -553,12 +550,13 @@ macro_rules! store {
 
                 fn merge_remote_from_repo(
                     &mut self,
-                    repo: &$crate::git2::Repository,
+                    repo_path: &::std::path::Path,
                 ) -> ::anyhow::Result<Vec<(&'static str, usize)>> {
+                    let repo = $crate::git::open_repo(repo_path)?;
                     let mut counts = Vec::new();
                     $(
                         let remote = $crate::git::read_remote_table::<$row>(
-                            repo,
+                            &repo,
                             <$row as $crate::TableRow>::TABLE_NAME,
                         )?;
                         let c = remote.len();
