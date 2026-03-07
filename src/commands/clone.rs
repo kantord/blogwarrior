@@ -1,8 +1,8 @@
 use std::path::Path;
-use std::time::Duration;
 
 use anyhow::{Context, bail};
-use indicatif::{ProgressBar, ProgressStyle};
+
+use crate::utils::progress::spinner;
 
 fn expand_url(url: &str) -> String {
     let is_full_url = url.contains(':'); // https://, git@host:, file://
@@ -36,14 +36,7 @@ pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
 
     let expanded = expand_url(url);
 
-    let sp = ProgressBar::new_spinner();
-    sp.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .unwrap(),
-    );
-    sp.enable_steady_tick(Duration::from_millis(80));
-    sp.set_message(format!("Cloning into {}...", store_dir.display()));
+    let sp = spinner(&format!("Cloning into {}...", store_dir.display()));
 
     synctato::clone_store(store_dir, &expanded)?;
 
