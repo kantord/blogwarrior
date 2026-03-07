@@ -55,9 +55,6 @@ Type "blog .read" Sleep 500ms Enter
 Sleep 3s
 
 # Date range filter
-Type "blog 1w.." Sleep 500ms Enter
-Sleep 5s
-
 Type "blog 3m..1m" Sleep 500ms Enter
 Sleep 5s
 
@@ -65,6 +62,6 @@ Sleep 5s
 Type "blog .unread" Sleep 500ms Enter
 Sleep 5s
 
-# Filter by feed shorthand
-Type "blog @s" Sleep 500ms Enter
+# Filter by feed shorthand with date range
+Type "blog @s 3m.." Sleep 500ms Enter
 Sleep 5s
