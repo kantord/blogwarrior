@@ -63,28 +63,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── Step 4: Add feeds ─────────────────────────────────────────────────
-# setup.py already validated these are real feed URLs. `blog feed add`
-# does HTTP discovery per URL which is slow for 100+ feeds, so we show
-# progress. Failures are expected (some feeds may have gone down since
-# setup.py ran).
-echo "=== Step 4: Adding $FEED_COUNT feeds ==="
-ADDED=0
-FAILED=0
-I=0
-while IFS= read -r url; do
-    [ -z "$url" ] && continue
-    I=$((I + 1))
-    if "$BLOG" feed add "$url" 2>/dev/null; then
-        ADDED=$((ADDED + 1))
-        printf "\r  [%d/%d] added: %d, failed: %d" "$I" "$FEED_COUNT" "$ADDED" "$FAILED"
-    else
-        FAILED=$((FAILED + 1))
-        printf "\r  [%d/%d] added: %d, failed: %d" "$I" "$FEED_COUNT" "$ADDED" "$FAILED"
-    fi
-done < "$FEEDS_FILE"
-echo ""
-echo "Added: $ADDED, Failed: $FAILED"
+# ── Step 4: Inject feeds directly into store ──────────────────────────
+# setup.py already validated these are feed URLs. We inject them as JSONL
+# directly into the store instead of running `blog feed add` (which does
+# HTTP discovery per URL — slow and not what we're benchmarking).
+echo "=== Step 4: Injecting $FEED_COUNT feeds into store ==="
+uv run "$PERF_DIR/inject_feeds.py" "$FEEDS_FILE" "$STORE_DIR"
 echo ""
 
 # ── Step 5: Benchmark sync (first run — full fetch) ──────────────────
