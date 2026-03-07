@@ -10,7 +10,7 @@ A CLI RSS/Atom feed reader inspired by Taskwarrior.
 - Simple query language for filtering by feed, read status, and date, with
   grouping and export
 - Git-based sync across machines with conflict-free merge
-  ([why git?](#why-sync-using-git))
+  ([why git?](#design-philosophy))
 - No accounts, no servers, no continuous network dependency
 
 ## Install
@@ -78,9 +78,11 @@ blog feed rm https://news.ycombinator.com/rss
 blog feed rm @hn
 ```
 
-## Git sync
+## Design philosophy
 
-### Why sync using git
+I built `blogtato` around the idea of subscription detox and simplicity. I just
+wanted to use a simple and RSS reader that is not distracting, but can by
+synced between different devices seamlessly.
 
 blogtato is built around the idea of subscription detox. You shouldn't need to
 create yet another account or pay for yet another service just to read some
@@ -100,7 +102,7 @@ Even though `git` was not design to store databases, to anyone who uses
 are fast. It is not scalable to large archives at not technically optimal - but
 the trad-off is worth it.
 
-### How to enable `git` based sync
+## Git sync
 
 To set it up, create a private repo on your git host, then:
 
