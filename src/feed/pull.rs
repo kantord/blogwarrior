@@ -7,6 +7,8 @@ use crate::feed::FeedMeta;
 
 pub(crate) type FetchResult = (FeedSource, Result<(FeedMeta, Vec<FeedItem>), String>);
 
+const FETCH_THREADS: usize = 48;
+
 /// Fetch all feeds in parallel.
 pub(crate) fn fetch_feeds(sources: &[FeedSource], pb: &ProgressBar) -> Vec<FetchResult> {
     let client = match crate::utils::http::http_client() {
@@ -18,15 +20,22 @@ pub(crate) fn fetch_feeds(sources: &[FeedSource], pb: &ProgressBar) -> Vec<Fetch
     };
     pb.set_length(sources.len() as u64);
 
-    sources
-        .par_iter()
-        .map(|source| {
-            pb.set_message(source.url.clone());
-            let result = crate::feed::fetch(&client, &source.url).map_err(|e| e.to_string());
-            pb.inc(1);
-            (source.clone(), result)
-        })
-        .collect()
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(FETCH_THREADS)
+        .build()
+        .expect("failed to build fetch thread pool");
+
+    pool.install(|| {
+        sources
+            .par_iter()
+            .map(|source| {
+                pb.set_message(source.url.clone());
+                let result = crate::feed::fetch(&client, &source.url).map_err(|e| e.to_string());
+                pb.inc(1);
+                (source.clone(), result)
+            })
+            .collect()
+    })
 }
 
 /// Apply fetched feed results to the store.
