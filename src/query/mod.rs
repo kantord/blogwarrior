@@ -133,12 +133,6 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
                 Token::FeedFilter(s) => {
                     filter = Some(s);
                 }
-                Token::Since(dt) => {
-                    since = Some(dt);
-                }
-                Token::Until(dt) => {
-                    until = Some(dt);
-                }
                 Token::Range(s, u) => {
                     if let Some(s) = s {
                         since = Some(s);
@@ -289,22 +283,8 @@ mod tests {
     }
 
     #[test]
-    fn test_since_arg() {
-        let q = parse_query(&args(&["since:2024-01-15"])).unwrap();
-        let dt = q.date_filter.since.unwrap();
-        assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-01-15");
-    }
-
-    #[test]
-    fn test_until_arg() {
-        let q = parse_query(&args(&["until:2024-06-01"])).unwrap();
-        let dt = q.date_filter.until.unwrap();
-        assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-06-01");
-    }
-
-    #[test]
     fn test_combined_args() {
-        let q = parse_query(&args(&["/d", "@blog", "since:2024-01-15"])).unwrap();
+        let q = parse_query(&args(&["/d", "@blog", "2024-01-15.."])).unwrap();
         assert_eq!(q.keys, vec![GroupKey::Date]);
         assert_eq!(q.filter, Some("blog".to_string()));
         assert!(q.date_filter.since.is_some());

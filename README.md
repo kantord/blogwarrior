@@ -48,9 +48,9 @@ blog .read
 blog .all
 
 # Filter by date
-blog since:1w
+blog 1w..
 blog 3m..1m
-blog /d since:2w until:1w
+blog /d 2w..1w
 
 # Combine filters
 blog @hn .unread /d
@@ -68,7 +68,7 @@ blog abc unread
 # Export matching posts as JSONL
 blog .all export
 blog @myblog export
-blog since:1w export
+blog 1w.. export
 
 # List subscriptions
 blog feed ls

@@ -55,7 +55,7 @@ Type "blog .read" Sleep 500ms Enter
 Sleep 3s
 
 # Date range filter
-Type "blog since:1w" Sleep 500ms Enter
+Type "blog 1w.." Sleep 500ms Enter
 Sleep 5s
 
 Type "blog 3m..1m" Sleep 500ms Enter

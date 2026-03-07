@@ -7,8 +7,6 @@ use crate::utils::date::start_of_day;
 pub(super) enum Token {
     Group(GroupKey),
     FeedFilter(String),
-    Since(DateTime<Utc>),
-    Until(DateTime<Utc>),
     Range(Option<DateTime<Utc>>, Option<DateTime<Utc>>),
     Shorthand(String),
     ReadStatus(ReadFilter),
@@ -61,6 +59,7 @@ fn date_value_core<'a>() -> impl Parser<'a, &'a str, DateTime<Utc>, extra::Err<R
     .labelled("date value (e.g. 2024-01-15, 3d, 2w, 1m, today, yesterday)")
 }
 
+#[cfg(test)]
 pub(super) fn date_value_parser<'a>()
 -> impl Parser<'a, &'a str, DateTime<Utc>, extra::Err<Rich<'a, char>>> {
     date_value_core().then_ignore(end().labelled("end of date value"))
@@ -83,14 +82,6 @@ pub(super) fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Ric
         .ignore_then(any().repeated().at_least(1).collect::<String>())
         .then_ignore(end().labelled("end of feed filter"))
         .map(Token::FeedFilter);
-
-    let since = just("since:")
-        .ignore_then(date_value_parser())
-        .map(Token::Since);
-
-    let until = just("until:")
-        .ignore_then(date_value_parser())
-        .map(Token::Until);
 
     let range = choice((
         date_value_core()
@@ -121,16 +112,6 @@ pub(super) fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Ric
         .then_ignore(end())
         .map(Token::Shorthand);
 
-    choice((
-        since,
-        until,
-        range,
-        group,
-        feed_filter,
-        read_status,
-        shorthand,
-    ))
-    .labelled(
-        "argument (since:, until:, 3d..1d, /d, /w, /f, @feed, .read, .unread, .all, or shorthand)",
-    )
+    choice((range, group, feed_filter, read_status, shorthand))
+        .labelled("argument (3d..1d, /d, /w, /f, @feed, .read, .unread, .all, or shorthand)")
 }

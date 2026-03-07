@@ -33,9 +33,7 @@ QUERY LANGUAGE:
     .all        Show all posts (override default filter)
 
   Date range:
-    since:<date>    Show posts from this date onward
-    until:<date>    Show posts up to this date
-    <date>..<date>  Range shorthand (e.g. 3m..1m)
+    <date>..<date>  Date range (e.g. 3m..1m)
     <date>..        Open-ended range (from date onward)
     ..<date>        Open-ended range (up to date)
 
@@ -51,9 +49,9 @@ EXAMPLES:
   blog /d                     Group by date
   blog /f /d                  Group by feed, then date
   blog @myblog                Show only posts from @myblog
-  blog since:1w               Posts from the last week
+  blog 1w..                   Posts from the last week
   blog 3m..1m                 Posts from 1-3 months ago
-  blog /d since:2w until:1w   Posts from 1-2 weeks ago, grouped by date
+  blog /d 2w..1w              Posts from 1-2 weeks ago, grouped by date
   blog a open                 Open post with shorthand 'a'
   blog a read                 Print URL of post 'a'
   blog a unread               Mark post 'a' as unread

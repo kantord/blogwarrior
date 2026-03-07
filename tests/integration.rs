@@ -274,7 +274,7 @@ fn test_show_displays_posts() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["show", "since:2020-01-01"]).success();
+    let output = ctx.run(&["show", "2020-01-01.."]).success();
     let stdout = output.stdout_str();
 
     assert!(stdout.contains("Hello World"));
@@ -345,7 +345,7 @@ fn test_show_default_no_subcommand() {
     fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
     fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
 
-    let output = ctx.run(&["since:2020-01-01"]).success();
+    let output = ctx.run(&["2020-01-01.."]).success();
     let stdout = output.stdout_str();
 
     assert!(stdout.contains("Default Show"));
@@ -366,7 +366,7 @@ fn test_sync_then_show() {
 
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show", "since:2020-01-01"]).success();
+    let output = ctx.run(&["show", "2020-01-01.."]).success();
     let stdout = output.stdout_str();
 
     assert!(stdout.contains("Roundtrip Post"));
@@ -585,7 +585,7 @@ fn test_remove_feed() {
     ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show", "since:2020-01-01"]).success();
+    let output = ctx.run(&["show", "2020-01-01.."]).success();
     let stdout = output.stdout_str();
     assert!(stdout.contains("Blog to Remove"));
 
@@ -595,7 +595,7 @@ fn test_remove_feed() {
     ctx.run(&["sync"]).success();
 
     // Feed and its posts should be gone — show should report no posts
-    let output = ctx.run(&["show", "since:2020-01-01"]).failure();
+    let output = ctx.run(&["show", "2020-01-01.."]).failure();
     let stderr = output.stderr_str();
     assert!(stderr.contains("No matching posts"));
 }
@@ -856,7 +856,7 @@ fn test_remove_then_readd_feed() {
     ctx.run(&["feed", "add", &url]).success();
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show", "since:2020-01-01"]).success();
+    let output = ctx.run(&["show", "2020-01-01.."]).success();
     let stdout = output.stdout_str();
     assert!(stdout.contains("Returning Blog"));
     assert!(stdout.contains("Old Post"));
@@ -883,7 +883,7 @@ fn test_show_displays_post_shorthands() {
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show", "since:2020-01-01"]).success();
+    let output = ctx.run(&["show", "2020-01-01.."]).success();
     let stdout = output.stdout_str();
 
     let post_alphabet: &[char] = &[
@@ -1010,10 +1010,7 @@ fn test_open_marks_post_as_read() {
     ctx.run(&["sync"]).success();
 
     // Before opening: both posts are unread (shown with *)
-    let before = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let before = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Open first post (shorthand "a")
@@ -1027,10 +1024,7 @@ fn test_open_marks_post_as_read() {
         .success();
 
     // After opening: one post is read, one is still unread
-    let after = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let after = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(
         after.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -1968,16 +1962,16 @@ fn test_show_since_filters_posts() {
 
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
-    let output = ctx.run(&["show", "since:2024-01-15"]).success();
+    let output = ctx.run(&["show", "2024-01-15.."]).success();
     let stdout = output.stdout_str();
 
     assert!(
         !stdout.contains("Old Post"),
-        "Old Post should be filtered out by since:2024-01-15"
+        "Old Post should be filtered out by 2024-01-15.."
     );
     assert!(
         stdout.contains("New Post"),
-        "New Post should be shown with since:2024-01-15"
+        "New Post should be shown with 2024-01-15.."
     );
 }
 
@@ -1992,21 +1986,21 @@ fn test_show_until_filters_posts() {
 
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
-    let output = ctx.run(&["show", "until:2024-01-14"]).success();
+    let output = ctx.run(&["show", "..2024-01-14"]).success();
     let stdout = output.stdout_str();
 
     assert!(
         stdout.contains("Old Post"),
-        "Old Post should be shown with until:2024-01-14"
+        "Old Post should be shown with ..2024-01-14"
     );
     assert!(
         !stdout.contains("New Post"),
-        "New Post should be filtered out by until:2024-01-14"
+        "New Post should be filtered out by ..2024-01-14"
     );
 }
 
 #[test]
-fn test_show_since_and_until_combined() {
+fn test_show_date_range_combined() {
     let ctx = TestContext::new();
 
     let posts = r#"{"id":"1","title":"Old Post","date":"2024-01-10T00:00:00Z","feed":"Alice","raw_id":"old1","link":""}
@@ -2017,9 +2011,7 @@ fn test_show_since_and_until_combined() {
 
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
-    let output = ctx
-        .run(&["show", "since:2024-01-14", "until:2024-01-16"])
-        .success();
+    let output = ctx.run(&["show", "2024-01-14..2024-01-16"]).success();
     let stdout = output.stdout_str();
 
     assert!(
@@ -2037,7 +2029,7 @@ fn test_show_since_and_until_combined() {
 }
 
 #[test]
-fn test_show_since_with_grouping() {
+fn test_show_range_with_grouping() {
     let ctx = TestContext::new();
 
     let posts = r#"{"id":"1","title":"Old Post","date":"2024-01-10T00:00:00Z","feed":"Alice","raw_id":"old1","link":""}
@@ -2047,7 +2039,7 @@ fn test_show_since_with_grouping() {
 
     insert_feed(ctx.dir.path(), "https://example.com/alice.xml");
 
-    let output = ctx.run(&["show", "/d", "since:2024-01-15"]).success();
+    let output = ctx.run(&["show", "/d", "2024-01-15.."]).success();
     let stdout = output.stdout_str();
 
     assert!(
@@ -2088,10 +2080,7 @@ fn test_unread_command() {
     ctx.run(&["sync"]).success();
 
     // Before opening: both posts are unread (shown with *)
-    let before = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let before = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Open first post (shorthand "a") to mark it read
@@ -2105,10 +2094,7 @@ fn test_unread_command() {
         .success();
 
     // After opening: one post is read, one is still unread
-    let after_open = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let after_open = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(
         after_open.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -2119,10 +2105,7 @@ fn test_unread_command() {
     ctx.run(&["a", "unread"]).success();
 
     // After unread: both posts should be unread again
-    let after_unread = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let after_unread = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(
         after_unread.lines().filter(|l| l.starts_with('*')).count(),
         2,
@@ -2157,10 +2140,7 @@ fn test_target_first_open() {
     ctx.run(&["sync"]).success();
 
     // Both posts are unread
-    let before = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let before = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Use target-first syntax: `a open` instead of `open a`
@@ -2174,10 +2154,7 @@ fn test_target_first_open() {
         .success();
 
     // After opening: one post is read
-    let after = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let after = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(
         after.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -2239,10 +2216,7 @@ fn test_target_first_unread() {
         .assert()
         .success();
 
-    let after_open = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let after_open = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(
         after_open.lines().filter(|l| l.starts_with('*')).count(),
         0,
@@ -2252,10 +2226,7 @@ fn test_target_first_unread() {
     // Use target-first syntax: `a unread` instead of `unread a`
     ctx.run(&["a", "unread"]).success();
 
-    let after_unread = ctx
-        .run(&["show", "since:2020-01-01"])
-        .success()
-        .stdout_str();
+    let after_unread = ctx.run(&["show", "2020-01-01.."]).success().stdout_str();
     assert_eq!(
         after_unread.lines().filter(|l| l.starts_with('*')).count(),
         1,
@@ -2461,10 +2432,7 @@ fn test_export_respects_filters() {
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    let output = ctx
-        .run(&["export", "since:2024-01-15"])
-        .success()
-        .stdout_str();
+    let output = ctx.run(&["export", "2024-01-15.."]).success().stdout_str();
     let lines: Vec<&str> = output.lines().collect();
     assert_eq!(
         lines.len(),
