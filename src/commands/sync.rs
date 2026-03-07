@@ -6,7 +6,7 @@ use synctato::{SyncEvent, SyncResult};
 use crate::data::BlogData;
 use crate::utils::progress::spinner;
 
-use super::pull::{apply_fetched, fetch_feeds};
+use crate::feed::pull::{apply_fetched, fetch_feeds};
 
 pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
     let pb = ProgressBar::new(0);

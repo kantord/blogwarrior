@@ -3,7 +3,6 @@ pub mod clone;
 pub mod export;
 pub mod feed_ls;
 pub mod open;
-mod pull;
 pub mod remove;
 pub mod show;
 pub mod sync;
