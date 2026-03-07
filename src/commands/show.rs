@@ -6,7 +6,7 @@ use anyhow::ensure;
 use crate::data::BlogData;
 use crate::data::index::resolve_posts;
 use crate::data::schema::FeedItem;
-use crate::display::render_grouped;
+use crate::display::{RenderCtx, render_grouped};
 use crate::query::{DateFilter, GroupKey, Query, ReadFilter};
 
 /// Default query when no arguments are provided: unread posts from the last
@@ -46,17 +46,15 @@ pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
     let color = std::io::stdout().is_terminal();
     let max_width = terminal_size::terminal_size().map(|(w, _)| w.0 as usize);
     let refs: Vec<&FeedItem> = resolved.items.iter().collect();
-    print!(
-        "{}",
-        render_grouped(
-            &refs,
-            &query.keys,
-            &resolved.shorthands,
-            &resolved.feed_labels,
-            &read_ids,
-            color,
-            max_width
-        )
-    );
+    let ctx = RenderCtx {
+        all_keys: &query.keys,
+        shorthands: &resolved.shorthands,
+        feed_labels: &resolved.feed_labels,
+        read_ids: &read_ids,
+        color,
+        shorthand_width: RenderCtx::shorthand_width_from(&refs, &resolved.shorthands),
+        max_width,
+    };
+    print!("{}", render_grouped(&refs, &ctx));
     Ok(())
 }

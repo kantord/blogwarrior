@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use itertools::Itertools;
@@ -9,15 +8,7 @@ use crate::query::GroupKey;
 use super::RenderCtx;
 use super::item::format_item;
 
-pub(crate) fn render_grouped(
-    items: &[&FeedItem],
-    keys: &[GroupKey],
-    shorthands: &HashMap<String, String>,
-    feed_labels: &HashMap<String, String>,
-    read_ids: &HashSet<String>,
-    color: bool,
-    max_width: Option<usize>,
-) -> String {
+pub(crate) fn render_grouped(items: &[&FeedItem], ctx: &RenderCtx) -> String {
     fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], ctx: &RenderCtx) {
         let depth = ctx.all_keys.len() - remaining.len();
         let indent = "  ".repeat(depth);
@@ -68,24 +59,7 @@ pub(crate) fn render_grouped(
         }
     }
 
-    let shorthand_width = items
-        .iter()
-        .filter_map(|item| shorthands.get(&item.raw_id))
-        .map(|s| s.len())
-        .max()
-        .unwrap_or(0);
-
-    let ctx = RenderCtx {
-        all_keys: keys,
-        shorthands,
-        feed_labels,
-        read_ids,
-        color,
-        shorthand_width,
-        max_width,
-    };
-
     let mut out = String::new();
-    recurse(&mut out, items, keys, &ctx);
+    recurse(&mut out, items, ctx.all_keys, ctx);
     out
 }

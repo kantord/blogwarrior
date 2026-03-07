@@ -17,6 +17,20 @@ pub(crate) struct RenderCtx<'a> {
     pub max_width: Option<usize>,
 }
 
+impl<'a> RenderCtx<'a> {
+    pub fn shorthand_width_from(
+        items: &[&crate::data::schema::FeedItem],
+        shorthands: &HashMap<String, String>,
+    ) -> usize {
+        items
+            .iter()
+            .filter_map(|item| shorthands.get(&item.raw_id))
+            .map(|s| s.len())
+            .max()
+            .unwrap_or(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,12 +70,35 @@ mod tests {
         }
     }
 
-    fn no_labels() -> HashMap<String, String> {
-        HashMap::new()
+    fn no_labels() -> &'static HashMap<String, String> {
+        use std::sync::LazyLock;
+        static EMPTY: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
+        &EMPTY
     }
 
-    fn no_reads() -> HashSet<String> {
-        HashSet::new()
+    fn no_reads() -> &'static HashSet<String> {
+        use std::sync::LazyLock;
+        static EMPTY: LazyLock<HashSet<String>> = LazyLock::new(HashSet::new);
+        &EMPTY
+    }
+
+    fn default_ctx<'a>(
+        keys: &'a [GroupKey],
+        shorthands: &'a HashMap<String, String>,
+        feed_labels: &'a HashMap<String, String>,
+        read_ids: &'a HashSet<String>,
+        max_width: Option<usize>,
+        items: &[&FeedItem],
+    ) -> RenderCtx<'a> {
+        RenderCtx {
+            all_keys: keys,
+            shorthand_width: RenderCtx::shorthand_width_from(items, shorthands),
+            shorthands,
+            feed_labels,
+            read_ids,
+            color: false,
+            max_width,
+        }
     }
 
     #[rstest]
@@ -88,7 +125,7 @@ mod tests {
         let ctx = RenderCtx {
             all_keys: keys,
             shorthands: &shorthands,
-            feed_labels: &no_labels(),
+            feed_labels: no_labels(),
             read_ids: &read_ids,
             color: false,
             shorthand_width: 3,
@@ -120,15 +157,8 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let ctx = default_ctx(&[], no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "* 2024-01-02   Post A (Alice)\n* 2024-01-01   Post B (Bob)\n"
@@ -144,15 +174,8 @@ mod tests {
         let refs: Vec<&FeedItem> = items.iter().collect();
         let read_ids: HashSet<String> = ["id-a".to_string()].into();
 
-        let output = render_grouped(
-            &refs,
-            &[],
-            &no_labels(),
-            &no_labels(),
-            &read_ids,
-            false,
-            None,
-        );
+        let ctx = default_ctx(&[], no_labels(), no_labels(), &read_ids, None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "  2024-01-02   Post A (Alice)\n* 2024-01-01   Post B (Bob)\n"
@@ -169,15 +192,9 @@ mod tests {
         let refs: Vec<&FeedItem> = items.iter().collect();
         let read_ids: HashSet<String> = ["id-b".to_string()].into();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Date],
-            &no_labels(),
-            &no_labels(),
-            &read_ids,
-            false,
-            None,
-        );
+        let keys = [GroupKey::Date];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), &read_ids, None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "\
@@ -205,15 +222,9 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Date],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let keys = [GroupKey::Date];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "\
@@ -240,15 +251,9 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Feed],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let keys = [GroupKey::Feed];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "\
@@ -275,15 +280,9 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Date, GroupKey::Feed],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let keys = [GroupKey::Date, GroupKey::Feed];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "\
@@ -317,15 +316,9 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Feed, GroupKey::Date],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let keys = [GroupKey::Feed, GroupKey::Date];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(
             output,
             "\
@@ -353,19 +346,10 @@ mod tests {
     #[test]
     fn test_render_empty_items() {
         let refs: Vec<&FeedItem> = vec![];
+        let keys = [GroupKey::Date];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
 
-        assert_eq!(
-            render_grouped(
-                &refs,
-                &[GroupKey::Date],
-                &no_labels(),
-                &no_labels(),
-                &no_reads(),
-                false,
-                None
-            ),
-            ""
-        );
+        assert_eq!(render_grouped(&refs, &ctx), "");
     }
 
     #[test]
@@ -377,15 +361,9 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Date],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let keys = [GroupKey::Date];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -406,15 +384,9 @@ mod tests {
         ];
         let refs: Vec<&FeedItem> = items.iter().collect();
 
-        let output = render_grouped(
-            &refs,
-            &[GroupKey::Feed],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let keys = [GroupKey::Feed];
+        let ctx = default_ctx(&keys, no_labels(), no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         let headers: Vec<&str> = output.lines().filter(|l| l.starts_with("===")).collect();
         assert_eq!(
             headers,
@@ -433,15 +405,8 @@ mod tests {
         let refs: Vec<&FeedItem> = items.iter().collect();
         let mut shorthands = HashMap::new();
         shorthands.insert("id-a".to_string(), "sDf".to_string());
-        let output = render_grouped(
-            &refs,
-            &[],
-            &shorthands,
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let ctx = default_ctx(&[], &shorthands, no_labels(), no_reads(), None, &refs);
+        let output = render_grouped(&refs, &ctx);
         assert_eq!(output, "* 2024-01-02  sDf Post A (Alice)\n");
     }
 
@@ -463,15 +428,15 @@ mod tests {
         labels.insert("feed1".to_string(), "@x Blog".to_string());
 
         let max_width = 40;
-        let output = render_grouped(
-            &refs,
+        let ctx = default_ctx(
             &[],
             &shorthands,
             &labels,
-            &no_reads(),
-            false,
+            no_reads(),
             Some(max_width),
+            &refs,
         );
+        let output = render_grouped(&refs, &ctx);
 
         for line in output.lines() {
             if line.trim().is_empty() {
@@ -507,15 +472,15 @@ mod tests {
         );
 
         let max_width = 60;
-        let output = render_grouped(
-            &refs,
+        let ctx = default_ctx(
             &[],
             &shorthands,
             &labels,
-            &no_reads(),
-            false,
+            no_reads(),
             Some(max_width),
+            &refs,
         );
+        let output = render_grouped(&refs, &ctx);
 
         for line in output.lines() {
             if line.trim().is_empty() {
@@ -554,15 +519,8 @@ mod tests {
                 true
             })
             .collect();
-        let output = render_grouped(
-            &filtered,
-            &[],
-            &no_labels(),
-            &no_labels(),
-            &no_reads(),
-            false,
-            None,
-        );
+        let ctx = default_ctx(&[], no_labels(), no_labels(), no_reads(), None, &filtered);
+        let output = render_grouped(&filtered, &ctx);
         output
             .lines()
             .filter(|l| !l.trim().is_empty())
