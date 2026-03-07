@@ -6,18 +6,22 @@ use crate::query::{Query, ReadFilter};
 use crate::shorthand::{RESERVED_COMMANDS, compute_shorthands, index_to_shorthand};
 use std::collections::HashSet;
 
+pub(crate) struct FeedEntry {
+    pub feed: FeedSource,
+    pub id: String,
+    pub shorthand: String,
+}
+
 pub(crate) struct FeedIndex {
-    pub feeds: Vec<FeedSource>,
-    pub ids: Vec<String>,
-    pub shorthands: Vec<String>,
+    pub entries: Vec<FeedEntry>,
 }
 
 impl FeedIndex {
     pub(crate) fn id_for_shorthand(&self, shorthand: &str) -> Option<&str> {
-        self.shorthands
+        self.entries
             .iter()
-            .position(|sh| sh == shorthand)
-            .map(|pos| self.ids[pos].as_str())
+            .find(|e| e.shorthand == shorthand)
+            .map(|e| e.id.as_str())
     }
 }
 
@@ -26,11 +30,17 @@ pub(crate) fn feed_index(table: &synctato::Table<FeedSource>) -> FeedIndex {
     feeds.sort_by(|a, b| a.url.cmp(&b.url));
     let ids: Vec<String> = feeds.iter().map(|f| table.id_of(f)).collect();
     let shorthands = compute_shorthands(&ids);
-    FeedIndex {
-        feeds,
-        ids,
-        shorthands,
-    }
+    let entries = feeds
+        .into_iter()
+        .zip(ids)
+        .zip(shorthands)
+        .map(|((feed, id), shorthand)| FeedEntry {
+            feed,
+            id,
+            shorthand,
+        })
+        .collect();
+    FeedIndex { entries }
 }
 
 pub(crate) struct PostIndex {
@@ -62,25 +72,22 @@ pub(crate) fn resolve_shorthand(
     shorthand: &str,
 ) -> Option<String> {
     let fi = feed_index(feeds_table);
-    fi.feeds
+    fi.entries
         .iter()
-        .zip(fi.shorthands.iter())
-        .find(|(_, sh)| sh.as_str() == shorthand)
-        .map(|(feed, _)| feed.url.clone())
+        .find(|e| e.shorthand == shorthand)
+        .map(|e| e.feed.url.clone())
 }
 
 pub(crate) fn build_feed_labels(fi: &FeedIndex) -> HashMap<String, String> {
-    fi.ids
+    fi.entries
         .iter()
-        .zip(fi.feeds.iter())
-        .zip(fi.shorthands.iter())
-        .map(|((id, feed), sh)| {
-            let label = if feed.title.is_empty() {
-                format!("@{} {}", sh, feed.url)
+        .map(|e| {
+            let label = if e.feed.title.is_empty() {
+                format!("@{} {}", e.shorthand, e.feed.url)
             } else {
-                format!("@{} {}", sh, feed.title)
+                format!("@{} {}", e.shorthand, e.feed.title)
             };
-            (id.clone(), label)
+            (e.id.clone(), label)
         })
         .collect()
 }
