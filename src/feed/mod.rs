@@ -2,7 +2,7 @@ pub mod atom;
 pub(crate) mod pull;
 pub mod rss;
 
-pub use crate::data::schema::FeedItem;
+use crate::data::schema::FeedItem;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeedMeta {
