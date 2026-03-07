@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/kantord/blogtato/compare/v0.1.9...v0.1.10) - 2026-03-07
+
+### Added
+
+- easily merge remote and local db ([#81](https://github.com/kantord/blogtato/pull/81))
+- remove redundant date filter
+
+### Fixed
+
+- fix failing test ([#82](https://github.com/kantord/blogtato/pull/82))
+
 ## [0.1.9](https://github.com/kantord/blogtato/compare/blogtato-v0.1.8...blogtato-v0.1.9) - 2026-03-07
 
 ### Added
