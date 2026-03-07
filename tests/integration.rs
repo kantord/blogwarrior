@@ -1926,26 +1926,41 @@ fn test_clone_into_empty_dir() {
 }
 
 #[test]
-fn test_clone_existing_store_fails() {
-    let store_dir = TempDir::new().unwrap();
-    insert_feed(store_dir.path(), "https://example.com/feed.xml");
+fn test_clone_merges_with_existing_store() {
+    // Set up a "remote" bare repo with feed B
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
 
-    #[allow(deprecated)]
-    let output = Command::cargo_bin("blog")
-        .unwrap()
-        .args(["clone", "https://example.com/repo.git"])
-        .env("RSS_STORE", store_dir.path())
-        .assert()
-        .failure();
+    // Create a temporary store, add feed B, push to origin
+    let remote_store = TempDir::new().unwrap();
+    init_git_store(remote_store.path(), origin_dir.path());
+    insert_feed(remote_store.path(), "https://example.com/b.xml");
+    git(remote_store.path(), &["push", "-u", "origin", "main"]);
+    drop(remote_store);
 
-    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    // Create local store with feed A (independent git history, no remote)
+    let local_store = TempDir::new().unwrap();
+    git(local_store.path(), &["init"]);
+    git_config_test_user(local_store.path());
+    insert_feed(local_store.path(), "https://example.com/a.xml");
+
+    // Clone into existing store — should add remote and merge
+    run_blog(
+        local_store.path(),
+        &["clone", &format!("file://{}", origin_dir.path().display())],
+    )
+    .success();
+
+    // Both feeds must survive
+    let feeds = read_table(&local_store.path().join("feeds"));
+    let urls: Vec<&str> = feeds.iter().filter_map(|f| f["url"].as_str()).collect();
     assert!(
-        stderr.contains("already exists"),
-        "error should mention existing database: {stderr}"
+        urls.contains(&"https://example.com/a.xml"),
+        "local feed A should survive merge, got: {urls:?}"
     );
     assert!(
-        stderr.contains(&store_dir.path().display().to_string()),
-        "error should include the store path: {stderr}"
+        urls.contains(&"https://example.com/b.xml"),
+        "remote feed B should be merged in, got: {urls:?}"
     );
 }
 

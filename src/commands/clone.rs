@@ -1,7 +1,8 @@
 use std::path::Path;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 
+use crate::data::BlogData;
 use crate::utils::progress::spinner;
 
 fn expand_url(url: &str) -> String {
@@ -20,27 +21,41 @@ fn expand_url(url: &str) -> String {
     url.to_string()
 }
 
-pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
-    if store_dir.exists() {
-        let has_entries = std::fs::read_dir(store_dir)
-            .context("failed to read store directory")?
-            .next()
-            .is_some();
-        if has_entries {
-            bail!(
-                "a local database already exists at {}; remove it first if you want to re-clone",
-                store_dir.display()
-            );
-        }
+fn has_existing_store(store_dir: &Path) -> bool {
+    if !store_dir.exists() {
+        return false;
     }
+    std::fs::read_dir(store_dir)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false)
+}
 
+pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
     let expanded = expand_url(url);
 
-    let sp = spinner(&format!("Cloning into {}...", store_dir.display()));
+    if has_existing_store(store_dir) {
+        // Existing store: add remote and sync to merge unrelated histories
+        let mut store = BlogData::open(store_dir)?;
+        store.git_passthrough(&[
+            "remote".to_string(),
+            "add".to_string(),
+            "origin".to_string(),
+            expanded.clone(),
+        ])?;
+        // Fetch first so sync_remote sees the remote branch and merges
+        // instead of trying a direct push into unrelated history.
+        store.git_passthrough(&["fetch".to_string(), "origin".to_string()])?;
 
-    synctato::clone_store(store_dir, &expanded)?;
+        let sp = spinner("Syncing with remote...");
+        store.sync_remote(|_| {})?;
+        sp.finish_with_message("Syncing with remote... done.");
+    } else {
+        // Fresh clone
+        let sp = spinner(&format!("Cloning into {}...", store_dir.display()));
+        synctato::clone_store(store_dir, &expanded).context("failed to clone store")?;
+        sp.finish_with_message(format!("Cloned into {}.", store_dir.display()));
+    }
 
-    sp.finish_with_message(format!("Cloned into {}.", store_dir.display()));
     Ok(())
 }
 

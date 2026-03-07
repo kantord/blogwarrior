@@ -41,7 +41,8 @@ blog sync
 On your device(s), run the same `blog clone` to pull down your feeds and posts.
 
 Don't worry about setting git sync up if you are just trying `blogtato` out:
-you can set up git sync later at any time.
+you can run `blog clone user/repo` later and your existing feeds will be merged
+with the remote automatically.
 
 ### Quick start
 
