@@ -53,13 +53,15 @@ impl PostIndex {
 
     fn filter_by_read_status(&mut self, filter: ReadFilter, store: &BlogData) {
         match filter {
-            ReadFilter::Read => {
+            ReadFilter::Read | ReadFilter::Unread => {
+                let read_ids: HashSet<&str> = store
+                    .reads()
+                    .iter()
+                    .map(|(_, r)| r.post_id.as_str())
+                    .collect();
+                let keep_read = matches!(filter, ReadFilter::Read);
                 self.items
-                    .retain(|item| store.reads().contains_key(&item.raw_id));
-            }
-            ReadFilter::Unread => {
-                self.items
-                    .retain(|item| !store.reads().contains_key(&item.raw_id));
+                    .retain(|item| read_ids.contains(item.raw_id.as_str()) == keep_read);
             }
             ReadFilter::Any | ReadFilter::All => {}
         }
