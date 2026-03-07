@@ -66,27 +66,20 @@ mod tests {
     use super::*;
     use crate::data::schema::FeedItem;
     use crate::query::DateFilter;
+    use crate::utils::date::start_of_day;
     use chrono::{DateTime, NaiveDate, Utc};
     use rstest::rstest;
 
     fn utc_date(year: i32, month: u32, day: u32) -> DateTime<Utc> {
-        NaiveDate::from_ymd_opt(year, month, day)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
+        start_of_day(NaiveDate::from_ymd_opt(year, month, day).unwrap())
     }
 
     fn feed_item(title: &str, date: &str, feed: &str) -> FeedItem {
         FeedItem {
             title: title.to_string(),
-            date: Some(
-                NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                    .unwrap()
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
+            date: Some(start_of_day(
+                NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap(),
+            )),
             feed: feed.to_string(),
             link: String::new(),
             raw_id: String::new(),

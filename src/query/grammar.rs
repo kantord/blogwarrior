@@ -2,6 +2,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use chumsky::prelude::*;
 
 use super::{GroupKey, ReadFilter};
+use crate::utils::date::start_of_day;
 
 pub(super) enum Token {
     Group(GroupKey),
@@ -34,22 +35,14 @@ fn date_value_core<'a>() -> impl Parser<'a, &'a str, DateTime<Utc>, extra::Err<R
 
     choice((
         named.map(|name| match name {
-            "today" => Utc::now()
-                .date_naive()
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_utc(),
-            "yesterday" => (Utc::now() - chrono::Duration::days(1))
-                .date_naive()
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_utc(),
+            "today" => start_of_day(Utc::now().date_naive()),
+            "yesterday" => start_of_day((Utc::now() - chrono::Duration::days(1)).date_naive()),
             _ => unreachable!(),
         }),
         absolute.try_map(|((year, month), day), span| {
             let s = format!("{year}-{month}-{day}");
             NaiveDate::parse_from_str(&s, "%Y-%m-%d")
-                .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
+                .map(start_of_day)
                 .map_err(|_| Rich::custom(span, format!("Invalid date: {s}")))
         }),
         relative.try_map(|(num_str, unit): (&str, &str), span| {

@@ -175,6 +175,7 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::date::start_of_day;
     use grammar::date_value_parser;
     use rstest::rstest;
 
@@ -264,11 +265,7 @@ mod tests {
     #[test]
     fn test_parse_date_value_yesterday() {
         let dt = parse_date("yesterday").unwrap();
-        let expected = (Utc::now() - chrono::Duration::days(1))
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
+        let expected = start_of_day((Utc::now() - chrono::Duration::days(1)).date_naive());
         assert_eq!(
             dt.format("%Y-%m-%d").to_string(),
             expected.format("%Y-%m-%d").to_string()
@@ -278,11 +275,7 @@ mod tests {
     #[test]
     fn test_parse_date_value_today() {
         let dt = parse_date("today").unwrap();
-        let expected = Utc::now()
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc();
+        let expected = start_of_day(Utc::now().date_naive());
         assert_eq!(
             dt.format("%Y-%m-%d").to_string(),
             expected.format("%Y-%m-%d").to_string()
