@@ -363,9 +363,16 @@ impl<T: TableRow> Table<T> {
         hash_id(&item.key(), self.id_length)
     }
 
-    pub fn contains_key(&self, key: &str) -> bool {
+    pub fn get(&self, key: &str) -> Option<&T> {
         let id = hash_id(key, self.id_length);
-        matches!(self.items.get(&id), Some(Row::Live { .. }))
+        match self.items.get(&id) {
+            Some(Row::Live { inner, .. }) => Some(inner),
+            _ => None,
+        }
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.get(key).is_some()
     }
 
     fn shard_key(&self, id: &str) -> String {
