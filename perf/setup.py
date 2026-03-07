@@ -10,6 +10,7 @@
 """Download OPML files, validate feeds, write surviving URLs to feeds.txt."""
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import feedparser
@@ -20,7 +21,7 @@ PERF_DIR = Path(__file__).parent
 SOURCES_FILE = PERF_DIR / "sources.txt"
 FEEDS_FILE = PERF_DIR / "feeds.txt"
 TIMEOUT = 10
-MAX_FEEDS_PER_OPML = 50  # cap per source to keep setup time reasonable
+WORKERS = 32
 
 
 def load_sources():
@@ -35,7 +36,7 @@ def fetch_opml_feeds(url):
         r.raise_for_status()
         result = listparser.parse(r.content)
         urls = [f.url for f in result.feeds if f.url]
-        return urls[:MAX_FEEDS_PER_OPML]
+        return urls
     except Exception as e:
         print(f"  SKIP opml {url}: {e}", file=sys.stderr)
         return []
@@ -75,12 +76,19 @@ def main():
     print(f"\n{len(all_urls)} unique feed URLs to validate")
 
     valid = []
-    for i, url in enumerate(all_urls, 1):
-        status = "OK" if is_valid_feed(url) else "DEAD"
-        tag = "+" if status == "OK" else "-"
-        print(f"  [{i}/{len(all_urls)}] {tag} {url}")
-        if status == "OK":
-            valid.append(url)
+    done = 0
+    total = len(all_urls)
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        futures = {pool.submit(is_valid_feed, url): url for url in all_urls}
+        for future in as_completed(futures):
+            done += 1
+            url = futures[future]
+            ok = future.result()
+            tag = "+" if ok else "-"
+            print(f"  [{done}/{total}] {tag} {url}")
+            if ok:
+                valid.append(url)
 
     FEEDS_FILE.write_text("\n".join(valid) + "\n")
     print(f"\nWrote {len(valid)}/{len(all_urls)} valid feeds to {FEEDS_FILE}")

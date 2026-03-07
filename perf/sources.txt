@@ -1,5 +1,39 @@
 # Public OPML files with RSS/Atom feed collections.
 # One URL per line. Lines starting with # are ignored.
+
+# Web dev feeds (~1000 feeds)
 https://raw.githubusercontent.com/simevidas/web-dev-feeds/master/feeds.opml
-https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/with_category/Tech.opml
+
+# Security feeds
 https://raw.githubusercontent.com/cudeso/OPML-Security-Feeds/master/feedly.opml
+
+# Elly Loel's RSS collection
+https://raw.githubusercontent.com/EllyLoel/RSS-feed-collection/main/subscriptions.xml
+
+# .NET creators
+https://raw.githubusercontent.com/matthiasjost/dotnet-creators-opml/main/OPML/blog-opml.xml
+
+# Plenary recommended feeds (various topics)
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Tech.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Programming.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Science.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/News.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Web Development.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Startups.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Gaming.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Space.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Android Development.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/iOS Development.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Movies.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Music.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Sports.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Food.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/without_category/Books.opml
+
+# Plenary country news feeds
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/countries/without_category/United States.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/countries/without_category/United Kingdom.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/countries/without_category/India.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/countries/without_category/Australia.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/countries/without_category/Canada.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/countries/without_category/Germany.opml
