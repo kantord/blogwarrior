@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 description = "A JSONL-based embedded database with sharding, transactions, and CRDT-style merge"
+repository = "https://github.com/kantord/blogtato"
 
 [dependencies]
 anyhow = "=1.0.102"
