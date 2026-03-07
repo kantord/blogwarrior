@@ -359,6 +359,27 @@ impl<T: TableRow> Table<T> {
         Some(id)
     }
 
+    pub fn delete_where(&mut self, pred: impl Fn(&T) -> bool) {
+        let now = Utc::now();
+        let ids: Vec<String> = self
+            .items
+            .iter()
+            .filter_map(|(id, row)| match row {
+                Row::Live { inner, .. } if pred(inner) => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        for id in ids {
+            self.items.insert(
+                id.clone(),
+                Row::Tombstone {
+                    id,
+                    deleted_at: now,
+                },
+            );
+        }
+    }
+
     pub fn id_of(&self, item: &T) -> String {
         hash_id(&item.key(), self.id_length)
     }

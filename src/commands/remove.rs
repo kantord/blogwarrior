@@ -1,5 +1,4 @@
 use anyhow::bail;
-use synctato::TableRow;
 
 use crate::data::Transaction;
 use crate::data::index::resolve_shorthand;
@@ -14,16 +13,7 @@ pub(crate) fn cmd_remove(tx: &mut Transaction, url: &str) -> anyhow::Result<()> 
 
     match tx.feeds.delete(&url) {
         Some(feed_id) => {
-            let post_keys: Vec<String> = tx
-                .posts
-                .items()
-                .iter()
-                .filter(|p| p.feed == feed_id)
-                .map(|p| p.key())
-                .collect();
-            for key in post_keys {
-                tx.posts.delete(&key);
-            }
+            tx.posts.delete_where(|p| p.feed == feed_id);
         }
         None => bail!("Feed not found: {}", url),
     }
