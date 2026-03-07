@@ -15,7 +15,7 @@ name = "blog"
 path = "src/main.rs"
 
 [dependencies]
-synctato = { path = "crates/synctato" }
+synctato = { version = "=0.1.8", path = "crates/synctato" }
 anyhow = "=1.0.102"
 atom_syndication = "=0.12.7"
 clap = { version = "=4.5.60", features = ["derive"] }
