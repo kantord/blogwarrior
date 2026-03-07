@@ -73,7 +73,7 @@ blog 1w..
 blog 3m..1m
 blog /d 2w..1w
 
-# Combine filters
+# Combine filters - list unread posts form HackerNews grouped by date
 blog @hn .unread /d
 
 # Open a post in the default browser
