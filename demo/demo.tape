@@ -39,7 +39,7 @@ Type "blog /d" Sleep 500ms Enter
 Sleep 5s
 
 # Group by feed
-Type "blog /f" Sleep 500ms Enter
+Type "blog /f 3m.." Sleep 500ms Enter
 Sleep 5s
 
 # Group by date and feed
