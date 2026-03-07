@@ -48,12 +48,12 @@ impl GroupKey {
         feed_labels: &HashMap<String, String>,
     ) -> std::cmp::Ordering {
         match self {
-            GroupKey::Date | GroupKey::Week => self
-                .extract(b, feed_labels)
-                .cmp(&self.extract(a, feed_labels)),
-            GroupKey::Feed => self
-                .extract(a, feed_labels)
-                .cmp(&self.extract(b, feed_labels)),
+            GroupKey::Date | GroupKey::Week => b.date.cmp(&a.date),
+            GroupKey::Feed => {
+                let la = feed_labels.get(&a.feed).map_or(&a.feed, |s| s);
+                let lb = feed_labels.get(&b.feed).map_or(&b.feed, |s| s);
+                la.cmp(lb)
+            }
         }
     }
 }
