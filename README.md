@@ -87,28 +87,19 @@ user account and paying another monthly subscription fee.
 
 `blogtato` uses a simple database that stores data in JSONL files and syncs
 them using `git`. From a performance standpoint, this is admittedly
-sub-optimal, and a quite esoteric design. At the same time, if you are
+sub-optimal, and an quite esoteric design. At the same time, if you are
 comfortable with CLI tools you likely has access to a remote `git` host such as
 GitHub, GitLab or a Forgejo instance: and that's all `blogtato` needs to be
-able to keep data up to date on all of your devices.
+able to keep data up to date on all of your devices. From a user perspective,
+this just works with effectively zero configuration.
 
-blogtato is built around the idea of subscription detox. You shouldn't need to
-create yet another account or pay for yet another service just to read some
-blogs. If you're comfortable with the command line, you almost certainly
-already have access to a git host - GitHub, GitLab, a self-hosted Forgejo -
-where you can store a private repo for free.
+`blogtato`'s database uses a conflict-free design: even if you have diverging
+changes between different devices, you will never have to manually resolve
+conflicts. You can forget about `git` being there.
 
-Is git the ideal database for an RSS reader? No - but it is a pragmatic one for
-these design goals. Your feeds and posts live as simple JSONL files in a repo,
-and when two machines diverge, blogtato merges them automatically based on
-timestamps. You never have to resolve conflicts or touch git yourself -
-`blog sync` handles everything. There's no additional server to run, no account
-to create, no continuous network dependency.
-
-Even though `git` was not design to store databases, to anyone who uses
-`blogtato` as intended (a personal RSS client) the repo stays small and syncs
-are fast. It is not scalable to large archives at not technically optimal - but
-the trad-off is worth it.
+Network operations are always initiated by the user. There is no need for a
+continuously running server. And all operations that don't strictly need
+network access work offline.
 
 ## Git sync
 
