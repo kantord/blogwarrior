@@ -1,0 +1,5 @@
+# Public OPML files with RSS/Atom feed collections.
+# One URL per line. Lines starting with # are ignored.
+https://raw.githubusercontent.com/simevidas/web-dev-feeds/master/feeds.opml
+https://raw.githubusercontent.com/plenaryapp/awesome-rss-feeds/master/recommended/with_category/Tech.opml
+https://raw.githubusercontent.com/cudeso/OPML-Security-Feeds/master/feedly.opml
