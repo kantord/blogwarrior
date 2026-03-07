@@ -3,7 +3,8 @@ use std::io::{BufReader, Read};
 use anyhow::Result;
 use atom_syndication::Feed;
 
-use super::{FeedItem, FeedMeta};
+use super::FeedMeta;
+use crate::data::schema::FeedItem;
 
 pub fn parse<R: Read>(reader: R) -> Result<(FeedMeta, Vec<FeedItem>)> {
     let feed = Feed::read_from(BufReader::new(reader))?;

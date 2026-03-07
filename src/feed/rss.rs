@@ -5,7 +5,8 @@ use chrono::{DateTime, FixedOffset};
 use rss::Channel;
 use url::Url;
 
-use super::{FeedItem, FeedMeta};
+use super::FeedMeta;
+use crate::data::schema::FeedItem;
 
 /// Parse an RFC 2822 date, falling back to stripping the colon from timezone
 /// offsets like `-07:00` → `-0700` which some feeds produce.
