@@ -81,8 +81,16 @@ blog feed rm @hn
 ## Design philosophy
 
 I built `blogtato` around the idea of subscription detox and simplicity. I just
-wanted to use a simple and RSS reader that is not distracting, but can by
-synced between different devices seamlessly.
+wanted to use a simple and RSS reader that is not distracting, but can be
+synced between different devices seamlessly without having to set up another
+user account and paying another monthly subscription fee.
+
+`blogtato` uses a simple database that stores data in JSONL files and syncs
+them using `git`. From a performance standpoint, this is admittedly
+sub-optimal, and a quite esoteric design. At the same time, if you are
+comfortable with CLI tools you likely has access to a remote `git` host such as
+GitHub, GitLab or a Forgejo instance: and that's all `blogtato` needs to be
+able to keep data up to date on all of your devices.
 
 blogtato is built around the idea of subscription detox. You shouldn't need to
 create yet another account or pay for yet another service just to read some
