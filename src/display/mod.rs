@@ -7,6 +7,36 @@ use crate::query::GroupKey;
 
 pub(crate) use group::render_grouped;
 
+pub(super) struct Style {
+    pub bold: &'static str,
+    pub dim: &'static str,
+    pub italic: &'static str,
+    pub date_color: &'static str,
+    pub reset: &'static str,
+}
+
+impl Style {
+    pub fn new(color: bool) -> Self {
+        if color {
+            Self {
+                bold: "\x1b[1m",
+                dim: "\x1b[2m",
+                italic: "\x1b[3m",
+                date_color: "\x1b[36m",
+                reset: "\x1b[0m",
+            }
+        } else {
+            Self {
+                bold: "",
+                dim: "",
+                italic: "",
+                date_color: "",
+                reset: "",
+            }
+        }
+    }
+}
+
 pub(crate) struct RenderCtx<'a> {
     pub all_keys: &'a [GroupKey],
     pub shorthands: &'a HashMap<String, String>,

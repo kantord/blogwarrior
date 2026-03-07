@@ -3,41 +3,11 @@ use unicode_width::UnicodeWidthStr;
 use crate::data::schema::FeedItem;
 use crate::query::GroupKey;
 
-use super::RenderCtx;
+use super::{RenderCtx, Style};
 
 const READ_MARKER_WIDTH: usize = 2; // "* " or "  "
 const META_PAREN_WIDTH: usize = 3; // " (" + ")"
 const META_TAG_SPACE: usize = 1; // space between tag and blog name
-
-struct Style {
-    bold: &'static str,
-    dim: &'static str,
-    italic: &'static str,
-    date_color: &'static str,
-    reset: &'static str,
-}
-
-impl Style {
-    fn new(color: bool) -> Self {
-        if color {
-            Self {
-                bold: "\x1b[1m",
-                dim: "\x1b[2m",
-                italic: "\x1b[3m",
-                date_color: "\x1b[36m",
-                reset: "\x1b[0m",
-            }
-        } else {
-            Self {
-                bold: "",
-                dim: "",
-                italic: "",
-                date_color: "",
-                reset: "",
-            }
-        }
-    }
-}
 
 pub(crate) fn format_date(item: &FeedItem) -> String {
     item.date

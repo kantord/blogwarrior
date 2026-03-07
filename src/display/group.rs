@@ -5,8 +5,8 @@ use itertools::Itertools;
 use crate::data::schema::FeedItem;
 use crate::query::GroupKey;
 
-use super::RenderCtx;
 use super::item::format_item;
+use super::{RenderCtx, Style};
 
 pub(crate) fn render_grouped(items: &[&FeedItem], ctx: &RenderCtx) -> String {
     fn recurse(out: &mut String, items: &[&FeedItem], remaining: &[GroupKey], ctx: &RenderCtx) {
@@ -28,11 +28,7 @@ pub(crate) fn render_grouped(items: &[&FeedItem], ctx: &RenderCtx) -> String {
         let mut sorted = items.to_vec();
         sorted.sort_by(|a, b| key.compare(a, b, ctx.feed_labels));
 
-        let (bold, reset) = if ctx.color {
-            ("\x1b[1m", "\x1b[0m")
-        } else {
-            ("", "")
-        };
+        let s = Style::new(ctx.color);
 
         let (prefix, suffix) = if depth == 0 {
             ("=== ", " ===")
@@ -45,7 +41,12 @@ pub(crate) fn render_grouped(items: &[&FeedItem], ctx: &RenderCtx) -> String {
             .chunk_by(|item| key.extract(item, ctx.feed_labels))
         {
             let group_items: Vec<&FeedItem> = group.copied().collect();
-            writeln!(out, "{indent}{bold}{prefix}{group_val}{suffix}{reset}").unwrap();
+            writeln!(
+                out,
+                "{indent}{}{prefix}{group_val}{suffix}{}",
+                s.bold, s.reset
+            )
+            .unwrap();
             if depth == 0 {
                 writeln!(out).unwrap();
             }
