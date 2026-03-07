@@ -147,3 +147,12 @@ conflicts. You can forget about `git` being there.
 Network operations are always initiated by the user. There is no need for a
 continuously running server. And all operations that don't strictly need
 network access work offline.
+
+It is my goal to keep the feature-set and the complexity of this project down,
+so that it can be maintained with minimal effort and can be considered to be
+"done".
+
+## Naming
+
+The naming is meant to symbolize simplicity and pragmatic silliness: I just
+mashed the word "blog" together with the first word I could think of: potato.

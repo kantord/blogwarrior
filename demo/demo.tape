@@ -21,10 +21,10 @@ Type "clear" Enter
 Sleep 500ms
 Show
 
-Type "blog feed add https://michael.stapelberg.ch/feed.xml" Sleep 500ms Enter
+Type "blog feed add https://michael.stapelberg.ch" Sleep 500ms Enter
 Sleep 3s
 
-Type "blog feed add https://www.justinmklam.com/index.xml" Sleep 500ms Enter
+Type "blog feed add https://www.justinmklam.com" Sleep 500ms Enter
 Sleep 3s
 
 Type "blog sync" Sleep 500ms Enter
