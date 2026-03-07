@@ -16,7 +16,7 @@ fn open_exact(path: &Path) -> Result<Repository, git2::Error> {
 
 /// Try to open a git repo at exactly `path`. Returns None if no repo exists there.
 /// Does NOT search parent directories.
-pub fn try_open_repo(path: &Path) -> Option<Repository> {
+pub(crate) fn try_open_repo(path: &Path) -> Option<Repository> {
     open_exact(path).ok()
 }
 
@@ -44,7 +44,7 @@ fn is_data_file(path: &str) -> bool {
     path.contains('/') && path.ends_with(".jsonl")
 }
 
-pub fn is_clean(repo: &Repository) -> anyhow::Result<bool> {
+pub(crate) fn is_clean(repo: &Repository) -> anyhow::Result<bool> {
     let statuses = repo.statuses(None).context("failed to get repo status")?;
     let dirty = statuses
         .iter()
@@ -52,14 +52,14 @@ pub fn is_clean(repo: &Repository) -> anyhow::Result<bool> {
     Ok(!dirty)
 }
 
-pub fn ensure_clean(repo: &Repository) -> anyhow::Result<()> {
+pub(crate) fn ensure_clean(repo: &Repository) -> anyhow::Result<()> {
     if !is_clean(repo)? {
         bail!("store has uncommitted changes; commit or discard them before proceeding");
     }
     Ok(())
 }
 
-pub fn auto_commit(repo: &Repository, message: &str) -> anyhow::Result<()> {
+pub(crate) fn auto_commit(repo: &Repository, message: &str) -> anyhow::Result<()> {
     if is_clean(repo)? {
         return Ok(());
     }
@@ -133,12 +133,12 @@ fn find_remote_ref(repo: &Repository) -> Option<git2::Reference<'_>> {
     None
 }
 
-pub fn has_remote_branch(repo: &Repository) -> bool {
+pub(crate) fn has_remote_branch(repo: &Repository) -> bool {
     find_remote_ref(repo).is_some()
 }
 
 /// Returns true if HEAD and the remote tracking branch point to the same commit.
-pub fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
+pub(crate) fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
     let head = repo
         .head()
         .context("no HEAD")?
@@ -155,7 +155,7 @@ pub fn is_up_to_date(repo: &Repository) -> anyhow::Result<bool> {
 }
 
 /// Returns true when the remote tracking branch is a strict ancestor of HEAD (local is ahead, just push).
-pub fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
+pub(crate) fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
     let head = repo.head()?.peel_to_commit()?;
     let remote_ref = match find_remote_ref(repo) {
         Some(r) => r,
@@ -175,7 +175,7 @@ pub fn is_remote_ancestor(repo: &Repository) -> anyhow::Result<bool> {
 /// The actual data merge (CRDT last-writer-wins) has already happened at
 /// the application layer via `Table::merge_remote` before this is called.
 /// This commit just unifies the git history so future pulls see both lineages.
-pub fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
+pub(crate) fn merge_ours(repo: &Repository) -> anyhow::Result<()> {
     let remote_ref = match find_remote_ref(repo) {
         Some(r) => r,
         None => return Ok(()),

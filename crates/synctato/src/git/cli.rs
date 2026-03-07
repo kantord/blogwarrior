@@ -8,7 +8,7 @@ use anyhow::{Context, bail};
 /// host-key confirmation when the remote uses SSH transport; without it the
 /// subprocess blocks indefinitely because the closed pipe cannot display a
 /// prompt or receive input.
-pub fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
+pub(crate) fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
     Command::new("git")
         .args(args)
         .stdin(Stdio::inherit())
@@ -16,7 +16,7 @@ pub fn git_output(args: &[&str]) -> anyhow::Result<std::process::Output> {
         .context("failed to run git")
 }
 
-pub fn fetch(path: &Path) -> anyhow::Result<()> {
+pub(crate) fn fetch(path: &Path) -> anyhow::Result<()> {
     let output = git_output(&["-C", &path.to_string_lossy(), "fetch", "origin"])?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -25,7 +25,7 @@ pub fn fetch(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn push(path: &Path) -> anyhow::Result<()> {
+pub(crate) fn push(path: &Path) -> anyhow::Result<()> {
     let output = git_output(&["-C", &path.to_string_lossy(), "push", "origin", "HEAD"])?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -34,14 +34,14 @@ pub fn push(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn has_remote(path: &Path) -> bool {
+pub(crate) fn has_remote(path: &Path) -> bool {
     Command::new("git")
         .args(["-C", &path.to_string_lossy(), "remote", "get-url", "origin"])
         .output()
         .is_ok_and(|o| o.status.success())
 }
 
-pub fn git_passthrough(path: &Path, args: &[String]) -> anyhow::Result<()> {
+pub(crate) fn git_passthrough(path: &Path, args: &[String]) -> anyhow::Result<()> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(path);
     cmd.args(args);
