@@ -17,7 +17,7 @@ from datetime import datetime
 
 def parse_iso_date(s):
     """Try to parse an ISO 8601 datetime string."""
-    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%.f%z"):
+    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ"):
         try:
             return datetime.strptime(s, fmt)
         except (ValueError, TypeError):
@@ -69,12 +69,6 @@ def validate_line(line_num, obj):
 
 
 def main():
-    lines = sys.stdin.read().splitlines()
-
-    if not lines:
-        print("ERROR: no output from export")
-        sys.exit(1)
-
     total = 0
     hard_failures = 0
     issue_counter = Counter()
@@ -84,8 +78,9 @@ def main():
     dates_present = 0
     dates_missing = 0
 
-    for i, line in enumerate(lines, 1):
-        if not line.strip():
+    for i, line in enumerate(sys.stdin, 1):
+        line = line.rstrip("\n")
+        if not line:
             continue
 
         # Parse JSON
@@ -144,6 +139,10 @@ def main():
             print(f"  {count:>5}x  {issue}")
     else:
         print(f"\nNo issues found.")
+
+    if total == 0:
+        print("ERROR: no output from export")
+        sys.exit(1)
 
     print(f"\nHard failures:    {hard_failures}")
 

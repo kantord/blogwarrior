@@ -100,7 +100,7 @@ echo ""
 
 # ── Step 8: Validate export output ────────────────────────────────────
 echo "=== Step 8: Export validation ==="
-"$BLOG" .all export | uv run "$PERF_DIR/validate.py"
+RSS_STORE=$STORE_DIR "$BLOG" .all export | uv run "$PERF_DIR/validate.py"
 VALIDATE_EXIT=$?
 echo ""
 
