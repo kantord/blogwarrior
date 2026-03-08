@@ -67,7 +67,8 @@ Read whatever you found interesting by referring to its shorthand
 blog df read
 ```
 
-You can subscribe to `blogtato` releases to know when new features or fixes are available:
+You can subscribe to `blogtato` releases to know when new features or fixes are
+available:
 
 ```bash
 blog feed add https://github.com/kantord/blogtato/releases.atom
