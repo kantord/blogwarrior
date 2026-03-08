@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use synctato::TableRow;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FeedSource {
     pub url: String,
@@ -11,6 +15,8 @@ pub struct FeedSource {
     pub site_url: String,
     #[serde(default)]
     pub description: String,
+    #[serde(default = "default_true")]
+    pub is_fetched: bool,
 }
 
 impl TableRow for FeedSource {

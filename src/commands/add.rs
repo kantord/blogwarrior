@@ -80,6 +80,7 @@ pub(crate) fn cmd_add(tx: &mut Transaction, url: &str) -> anyhow::Result<()> {
         title: String::new(),
         site_url: String::new(),
         description: String::new(),
+        is_fetched: false,
     });
     Ok(())
 }

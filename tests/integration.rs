@@ -10,6 +10,12 @@ use assert_cmd::assert::Assert;
 use httpmock::prelude::*;
 use tempfile::TempDir;
 
+/// Return an RFC 2822 date string `days_ago` days before now.
+fn recent_rss_date(days_ago: i64) -> String {
+    let dt = chrono::Utc::now() - chrono::Duration::days(days_ago);
+    dt.format("%a, %d %b %Y %H:%M:%S +0000").to_string()
+}
+
 trait AssertExt {
     fn stderr_str(&self) -> String;
     fn stdout_str(&self) -> String;
@@ -866,15 +872,13 @@ fn test_remove_then_readd_feed() {
 fn test_show_displays_post_shorthands() {
     let ctx = TestContext::new();
 
+    let date_a = recent_rss_date(2);
+    let date_b = recent_rss_date(3);
     let xml = rss_xml_with_guids(
         "Shorthand Blog",
         &[
-            (
-                "Post Alpha",
-                "Mon, 01 Jan 2024 00:00:00 +0000",
-                "guid-alpha",
-            ),
-            ("Post Beta", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-beta"),
+            ("Post Alpha", &date_a, "guid-alpha"),
+            ("Post Beta", &date_b, "guid-beta"),
         ],
     );
     ctx.mock_rss_feed("/shorthand.xml", &xml);
@@ -883,7 +887,7 @@ fn test_show_displays_post_shorthands() {
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    let output = ctx.run(&["show", "2020-01-01.."]).success();
+    let output = ctx.run(&["show", ".all", "2020-01-01.."]).success();
     let stdout = output.stdout_str();
 
     let post_alphabet: &[char] = &[
@@ -987,21 +991,13 @@ fn test_open_post_without_link() {
 fn test_open_marks_post_as_read() {
     let ctx = TestContext::new();
 
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
     let xml = rss_xml_with_links(
         "Read Blog",
         &[
-            (
-                "Post A",
-                "Tue, 02 Jan 2024 00:00:00 +0000",
-                "guid-a",
-                "https://example.com/a",
-            ),
-            (
-                "Post B",
-                "Mon, 01 Jan 2024 00:00:00 +0000",
-                "guid-b",
-                "https://example.com/b",
-            ),
+            ("Post A", &date_a, "guid-a", "https://example.com/a"),
+            ("Post B", &date_b, "guid-b", "https://example.com/b"),
         ],
     );
     ctx.mock_rss_feed("/read.xml", &xml);
@@ -1183,7 +1179,8 @@ fn insert_feed(store_dir: &Path, url: &str) {
         "url": url,
         "title": "",
         "site_url": "",
-        "description": ""
+        "description": "",
+        "is_fetched": false
     });
     let mut file = fs::OpenOptions::new()
         .create(true)
@@ -2072,21 +2069,13 @@ fn test_show_range_with_grouping() {
 fn test_unread_command() {
     let ctx = TestContext::new();
 
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
     let xml = rss_xml_with_links(
         "Unread Blog",
         &[
-            (
-                "Post A",
-                "Tue, 02 Jan 2024 00:00:00 +0000",
-                "guid-a",
-                "https://example.com/a",
-            ),
-            (
-                "Post B",
-                "Mon, 01 Jan 2024 00:00:00 +0000",
-                "guid-b",
-                "https://example.com/b",
-            ),
+            ("Post A", &date_a, "guid-a", "https://example.com/a"),
+            ("Post B", &date_b, "guid-b", "https://example.com/b"),
         ],
     );
     ctx.mock_rss_feed("/unread.xml", &xml);
@@ -2132,21 +2121,13 @@ fn test_unread_command() {
 fn test_target_first_open() {
     let ctx = TestContext::new();
 
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
     let xml = rss_xml_with_links(
         "Target First Blog",
         &[
-            (
-                "Post A",
-                "Tue, 02 Jan 2024 00:00:00 +0000",
-                "guid-a",
-                "https://example.com/a",
-            ),
-            (
-                "Post B",
-                "Mon, 01 Jan 2024 00:00:00 +0000",
-                "guid-b",
-                "https://example.com/b",
-            ),
+            ("Post A", &date_a, "guid-a", "https://example.com/a"),
+            ("Post B", &date_b, "guid-b", "https://example.com/b"),
         ],
     );
     ctx.mock_rss_feed("/tf.xml", &xml);
@@ -2360,21 +2341,13 @@ fn test_show_all_bypasses_default_query() {
 fn test_export_outputs_jsonl() {
     let ctx = TestContext::new();
 
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
     let xml = rss_xml_with_links(
         "Export Blog",
         &[
-            (
-                "Post A",
-                "Mon, 15 Jan 2024 00:00:00 +0000",
-                "guid-a",
-                "https://example.com/a",
-            ),
-            (
-                "Post B",
-                "Sun, 14 Jan 2024 00:00:00 +0000",
-                "guid-b",
-                "https://example.com/b",
-            ),
+            ("Post A", &date_a, "guid-a", "https://example.com/a"),
+            ("Post B", &date_b, "guid-b", "https://example.com/b"),
         ],
     );
     ctx.mock_rss_feed("/export.xml", &xml);
@@ -2455,4 +2428,87 @@ fn test_export_respects_filters() {
         "expected 1 filtered JSONL line, got:\n{output}"
     );
     assert!(lines[0].contains("Post A"));
+}
+
+/// When a feed rotates all its posts between syncs (no overlapping GUIDs),
+/// the second batch should NOT get initial read marks — only the first pull should.
+#[test]
+fn test_second_sync_with_rotated_posts_stays_unread() {
+    let ctx = TestContext::new();
+
+    // First sync: 3 old posts — initial_read_ids marks 2 as read, keeps 1 unread
+    let xml1 = rss_xml_with_guids(
+        "Rotating Blog",
+        &[
+            (
+                "Old Post A",
+                "Mon, 01 Jan 2024 00:00:00 +0000",
+                "guid-old-a",
+            ),
+            (
+                "Old Post B",
+                "Tue, 02 Jan 2024 00:00:00 +0000",
+                "guid-old-b",
+            ),
+            (
+                "Old Post C",
+                "Wed, 03 Jan 2024 00:00:00 +0000",
+                "guid-old-c",
+            ),
+        ],
+    );
+    let mut mock1 = ctx.server.mock(|when, then| {
+        when.method(httpmock::Method::GET).path("/rotating.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .body(&xml1);
+    });
+    let url = ctx.server.url("/rotating.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Verify: 1 unread (most recent of all-old batch)
+    let before = ctx
+        .run(&["show", ".unread", "2020-01-01.."])
+        .success()
+        .stdout_str();
+    assert_eq!(
+        before.lines().filter(|l| !l.trim().is_empty()).count(),
+        1,
+        "first sync: expected 1 unread post, got:\n{before}"
+    );
+
+    // Replace mock with completely different posts
+    mock1.delete();
+    let date_x = recent_rss_date(1);
+    let date_y = recent_rss_date(2);
+    let xml2 = rss_xml_with_guids(
+        "Rotating Blog",
+        &[
+            ("New Post X", &date_x, "guid-new-x"),
+            ("New Post Y", &date_y, "guid-new-y"),
+        ],
+    );
+    ctx.server.mock(|when, then| {
+        when.method(httpmock::Method::GET).path("/rotating.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .body(&xml2);
+    });
+    ctx.run(&["sync"]).success();
+
+    // Both new posts should be unread — they arrived after the initial subscribe
+    let after = ctx
+        .run(&["show", ".unread", "2020-01-01.."])
+        .success()
+        .stdout_str();
+    let unread_lines: Vec<&str> = after.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert!(
+        unread_lines.iter().any(|l| l.contains("New Post X")),
+        "New Post X should be unread, got:\n{after}"
+    );
+    assert!(
+        unread_lines.iter().any(|l| l.contains("New Post Y")),
+        "New Post Y should be unread, got:\n{after}"
+    );
 }
