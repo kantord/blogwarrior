@@ -239,6 +239,7 @@ dependencies = [
  "itertools",
  "libc",
  "open",
+ "quick-xml",
  "rayon",
  "reqwest",
  "rss",

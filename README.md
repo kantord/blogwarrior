@@ -54,6 +54,23 @@ blog feed add https://michael.stapelberg.ch
 blog feed add https://www.justinmklam.com
 ```
 
+You can import your subscriptions from other RSS readers
+([Feedly](https://docs.feedly.com/article/52-how-can-i-export-my-sources-and-feeds-through-opml),
+[Inoreader](https://www.inoreader.com/blog/2014/05/opml-subscriptions.html),
+[Readwise Reader](https://docs.readwise.io/reader/exporting-data),
+[NetNewsWire](https://netnewswire.com/help/mac/5.0/en/export-opml.html),
+[Miniflux](https://miniflux.app/docs/api.html#opml-export),
+[FreshRSS](https://freshrss.github.io/FreshRSS/en/admins/05_Backup.html),
+[The Old Reader](https://github.com/theoldreader/api/blob/master/README.md#subscriptions-opml),
+[Feeder](https://news.nononsenseapps.com/posts/2.5.0_opml/),
+[Tiny Tiny RSS](https://tt-rss.org/docs/Installation-Guide.html#opml),
+[Outlook](https://support.microsoft.com/en-us/office/share-or-export-rss-feeds-5b514f38-8671-447c-8c25-7f02cc0833e0),
+and others) using an OPML file:
+
+```bash
+blog feed import feeds.opml
+```
+
 Fetch and list latest posts:
 
 ```bash
@@ -143,8 +160,8 @@ user account and paying another monthly subscription fee.
 `blogtato` uses a simple database that stores data in JSONL files and syncs
 them using `git`. From a performance standpoint, this is admittedly
 sub-optimal, and an quite esoteric design. At the same time, if you are
-comfortable with CLI tools you likely have access to a remote `git` host such as
-GitHub, GitLab or a Forgejo instance: and that's all `blogtato` needs to be
+comfortable with CLI tools you likely have access to a remote `git` host such
+as GitHub, GitLab or a Forgejo instance: and that's all `blogtato` needs to be
 able to keep data up to date on all of your devices. From a user perspective,
 this just works with effectively zero configuration.
 

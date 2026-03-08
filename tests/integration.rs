@@ -2512,3 +2512,41 @@ fn test_second_sync_with_rotated_posts_stays_unread() {
         "New Post Y should be unread, got:\n{after}"
     );
 }
+
+#[test]
+fn test_feed_import_opml() {
+    let ctx = TestContext::new();
+
+    let opml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Blog A" xmlUrl="https://example.com/a.xml" />
+    <outline text="Blog B" xmlUrl="https://example.com/b.xml" />
+    <outline text="Nested" title="Nested">
+      <outline text="Blog C" xmlUrl="https://example.com/c.xml" />
+    </outline>
+  </body>
+</opml>"#;
+
+    let opml_path = ctx.dir.path().join("feeds.opml");
+    fs::write(&opml_path, opml).unwrap();
+
+    ctx.run(&["feed", "import", opml_path.to_str().unwrap()])
+        .success();
+
+    let feeds = ctx.read_feeds();
+    let urls: Vec<&str> = feeds.iter().filter_map(|f| f["url"].as_str()).collect();
+    assert!(
+        urls.contains(&"https://example.com/a.xml"),
+        "should have feed A, got: {urls:?}"
+    );
+    assert!(
+        urls.contains(&"https://example.com/b.xml"),
+        "should have feed B, got: {urls:?}"
+    );
+    assert!(
+        urls.contains(&"https://example.com/c.xml"),
+        "should have nested feed C, got: {urls:?}"
+    );
+    assert_eq!(urls.len(), 3, "should have exactly 3 feeds, got: {urls:?}");
+}
