@@ -143,7 +143,7 @@ user account and paying another monthly subscription fee.
 `blogtato` uses a simple database that stores data in JSONL files and syncs
 them using `git`. From a performance standpoint, this is admittedly
 sub-optimal, and an quite esoteric design. At the same time, if you are
-comfortable with CLI tools you likely has access to a remote `git` host such as
+comfortable with CLI tools you likely have access to a remote `git` host such as
 GitHub, GitLab or a Forgejo instance: and that's all `blogtato` needs to be
 able to keep data up to date on all of your devices. From a user perspective,
 this just works with effectively zero configuration.
