@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/kantord/blogtato/compare/v0.1.10...v0.1.11) - 2026-03-08
+
+### Added
+
+- mark old posts as read when subscribing to feed ([#83](https://github.com/kantord/blogtato/pull/83))
+
+### Other
+
+- *(deps)* update rust crate libc to v0.2.183 ([#85](https://github.com/kantord/blogtato/pull/85))
+
 ## [0.1.10](https://github.com/kantord/blogtato/compare/v0.1.9...v0.1.10) - 2026-03-07
 
 ### Added
