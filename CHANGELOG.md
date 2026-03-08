@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/kantord/blogtato/compare/v0.1.11...v0.1.12) - 2026-03-08
+
+### Added
+
+- prevent data loss due to old versions after future migrations ([#93](https://github.com/kantord/blogtato/pull/93))
+- allow importing opml files ([#92](https://github.com/kantord/blogtato/pull/92))
+
+### Other
+
+- fix typo: s/you likely has/you likely have/ ([#90](https://github.com/kantord/blogtato/pull/90))
+- fix markdown formatting ([#88](https://github.com/kantord/blogtato/pull/88))
+- mention subscribing to blogtato releases ([#86](https://github.com/kantord/blogtato/pull/86))
+
 ## [0.1.11](https://github.com/kantord/blogtato/compare/v0.1.10...v0.1.11) - 2026-03-08
 
 ### Added
