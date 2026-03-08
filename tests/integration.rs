@@ -2550,3 +2550,65 @@ fn test_feed_import_opml() {
     );
     assert_eq!(urls.len(), 3, "should have exactly 3 feeds, got: {urls:?}");
 }
+
+/// Write a meta entry directly into the store's meta table.
+fn insert_meta(store_dir: &Path, key: &str, value: &str) {
+    let meta_dir = store_dir.join("meta");
+    fs::create_dir_all(&meta_dir).unwrap();
+    let file_path = meta_dir.join("items_.jsonl");
+    let hash = format!("{:x}", Sha256::digest(key.as_bytes()));
+    let id = &hash[..11]; // same id_length as MetaEntry (EXPECTED_CAPACITY=100 → short hash)
+    let entry = serde_json::json!({
+        "id": id,
+        "key": key,
+        "value": value
+    });
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file_path)
+        .unwrap();
+    writeln!(file, "{}", entry).unwrap();
+}
+
+#[test]
+fn test_schema_version_newer_than_binary_refuses_to_run() {
+    let ctx = TestContext::new();
+
+    // Simulate a store written by a much newer version of blogtato
+    insert_meta(ctx.dir.path(), "schema_version", "999");
+
+    // Any command that opens the store should fail
+    let output = ctx.run(&["show"]).failure();
+    let stderr = output.stderr_str();
+    assert!(
+        stderr.contains("newer") || stderr.contains("update") || stderr.contains("upgrade"),
+        "expected error about newer/incompatible version, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_fresh_store_writes_schema_version() {
+    let ctx = TestContext::new();
+    let xml = rss_xml("Test Blog", &[("Post 1", &recent_rss_date(1))]);
+    ctx.mock_rss_feed("/feed.xml", &xml);
+    let url = ctx.server.url("/feed.xml");
+
+    ctx.run(&["feed", "add", &url]).success();
+    ctx.run(&["sync"]).success();
+
+    // After running commands, the schema version should be written to the meta table
+    let meta = read_table(&ctx.dir.path().join("meta"));
+    let version_entry = meta
+        .iter()
+        .find(|e| e.get("key").and_then(|k| k.as_str()) == Some("schema_version"));
+    assert!(
+        version_entry.is_some(),
+        "expected schema_version in meta table, got: {meta:?}"
+    );
+    assert_eq!(
+        version_entry.unwrap()["value"].as_str().unwrap(),
+        "1",
+        "schema_version should be '1'"
+    );
+}

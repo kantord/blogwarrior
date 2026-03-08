@@ -57,11 +57,8 @@ blog feed add https://www.justinmklam.com
 You can import your subscriptions from other RSS readers
 ([Feedly](https://docs.feedly.com/article/52-how-can-i-export-my-sources-and-feeds-through-opml),
 [Inoreader](https://www.inoreader.com/blog/2014/05/opml-subscriptions.html),
-[Readwise Reader](https://docs.readwise.io/reader/exporting-data),
 [NetNewsWire](https://netnewswire.com/help/mac/5.0/en/export-opml.html),
-[Miniflux](https://miniflux.app/docs/api.html#opml-export),
-[FreshRSS](https://freshrss.github.io/FreshRSS/en/admins/05_Backup.html),
-[The Old Reader](https://github.com/theoldreader/api/blob/master/README.md#subscriptions-opml),
+[FreshRSS](https://freshrss.github.io/FreshRSS/en/developers/OPML.html),
 [Feeder](https://news.nononsenseapps.com/posts/2.5.0_opml/),
 [Tiny Tiny RSS](https://tt-rss.org/docs/Installation-Guide.html#opml),
 [Outlook](https://support.microsoft.com/en-us/office/share-or-export-rss-feeds-5b514f38-8671-447c-8c25-7f02cc0833e0),
