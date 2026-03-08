@@ -2612,3 +2612,47 @@ fn test_fresh_store_writes_schema_version() {
         "schema_version should be '1'"
     );
 }
+
+#[test]
+fn test_feed_export_import_roundtrip() {
+    let ctx = TestContext::new();
+    let xml_a = rss_xml("Blog Alpha", &[("Post A", &recent_rss_date(1))]);
+    let xml_b = rss_xml("Blog Beta", &[("Post B", &recent_rss_date(2))]);
+    ctx.mock_rss_feed("/alpha.xml", &xml_a);
+    ctx.mock_rss_feed("/beta.xml", &xml_b);
+
+    let url_a = ctx.server.url("/alpha.xml");
+    let url_b = ctx.server.url("/beta.xml");
+    ctx.run(&["feed", "add", &url_a]).success();
+    ctx.run(&["feed", "add", &url_b]).success();
+    ctx.run(&["sync"]).success();
+
+    // Export OPML from the first store
+    let output = ctx.run(&["feed", "export"]).success();
+    let opml = output.stdout_str();
+
+    // Write the exported OPML to a file and import into a fresh store
+    let opml_path = ctx.dir.path().join("export.opml");
+    fs::write(&opml_path, &opml).unwrap();
+
+    let ctx2 = TestContext::new();
+    ctx2.run(&["feed", "import", opml_path.to_str().unwrap()])
+        .success();
+
+    // The second store should have the same feeds
+    let feeds = ctx2.read_feeds();
+    let urls: Vec<&str> = feeds.iter().filter_map(|f| f["url"].as_str()).collect();
+    assert!(
+        urls.contains(&url_a.as_str()),
+        "imported store should have feed A, got: {urls:?}"
+    );
+    assert!(
+        urls.contains(&url_b.as_str()),
+        "imported store should have feed B, got: {urls:?}"
+    );
+    assert_eq!(
+        urls.len(),
+        2,
+        "imported store should have exactly 2 feeds, got: {urls:?}"
+    );
+}

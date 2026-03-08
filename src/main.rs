@@ -119,6 +119,8 @@ enum FeedCommand {
         /// Path to the OPML file
         path: std::path::PathBuf,
     },
+    /// Export feeds as OPML to stdout
+    Export,
 }
 
 fn split_at_command(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -224,6 +226,12 @@ fn run() -> anyhow::Result<()> {
         }) => {
             reject_filter(&filter, "feed")?;
             commands::feed_ls::cmd_feed_ls(&store)?;
+        }
+        Some(Command::Feed {
+            command: FeedCommand::Export,
+        }) => {
+            reject_filter(&filter, "feed")?;
+            commands::feed_export::cmd_feed_export(&store)?;
         }
         Some(Command::Feed {
             command: FeedCommand::Import { ref path },
