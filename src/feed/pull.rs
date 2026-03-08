@@ -138,43 +138,42 @@ mod tests {
     }
 }
 
+fn apply_feed(tx: &mut Transaction, mut source: FeedSource, meta: FeedMeta, items: Vec<FeedItem>) {
+    let feed_id = tx.feeds.id_of(&source);
+    let now = Utc::now();
+
+    if !source.is_fetched {
+        for id in initial_read_ids(&items, now) {
+            tx.reads.upsert(ReadMark {
+                post_id: id,
+                read_at: now,
+            });
+        }
+    }
+
+    for mut item in items {
+        item.feed = feed_id.clone();
+        tx.posts.upsert(item);
+    }
+
+    source.is_fetched = true;
+    source.title = meta.title;
+    source.site_url = meta.site_url;
+    source.description = meta.description;
+    tx.feeds.upsert(source);
+}
+
 /// Apply fetched feed results to the store.
 pub(crate) fn apply_fetched(
     tx: &mut Transaction,
     results: Vec<FetchResult>,
     pb: &ProgressBar,
 ) -> anyhow::Result<()> {
-    for (mut source, result) in results {
-        let (meta, items) = match result {
-            Ok(r) => r,
-            Err(e) => {
-                pb.suspend(|| eprintln!("Error fetching {}: {}", source.url, e));
-                continue;
-            }
-        };
-        let feed_id = tx.feeds.id_of(&source);
-        let now = Utc::now();
-        let is_first_pull = !source.is_fetched;
-        let read_ids = if is_first_pull {
-            initial_read_ids(&items, now)
-        } else {
-            Vec::new()
-        };
-        for mut item in items {
-            item.feed = feed_id.clone();
-            tx.posts.upsert(item);
+    for (source, result) in results {
+        match result {
+            Ok((meta, items)) => apply_feed(tx, source, meta, items),
+            Err(e) => pb.suspend(|| eprintln!("Error fetching {}: {}", source.url, e)),
         }
-        for id in read_ids {
-            tx.reads.upsert(ReadMark {
-                post_id: id,
-                read_at: now,
-            });
-        }
-        source.is_fetched = true;
-        source.title = meta.title;
-        source.site_url = meta.site_url;
-        source.description = meta.description;
-        tx.feeds.upsert(source);
     }
     Ok(())
 }
