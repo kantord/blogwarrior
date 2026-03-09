@@ -2656,3 +2656,55 @@ fn test_feed_export_import_roundtrip() {
         "imported store should have exactly 2 feeds, got: {urls:?}"
     );
 }
+
+#[test]
+fn test_sync_fetches_posts_from_remotely_added_feed_on_first_sync() {
+    let server = MockServer::start();
+    let xml = rss_xml(
+        "Remote Feed",
+        &[("Post from remote feed", &recent_rss_date(1))],
+    );
+    server.mock(|when, then| {
+        when.method(GET).path("/remote-feed.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .body(&xml);
+    });
+
+    let feed_url = format!("{}/remote-feed.xml", server.base_url());
+
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    // Clone 1 (local)
+    let store1 = TempDir::new().unwrap();
+    init_git_store(store1.path(), origin_dir.path());
+
+    // Clone 2 (remote device) adds a feed and pushes
+    let (other_td, other_dir) = clone_store(origin_dir.path());
+    insert_feed(&other_dir, &feed_url);
+    git(&other_dir, &["push", "origin", "HEAD"]);
+    drop(other_td);
+
+    // Clone 1 syncs ONCE — should discover the remote feed AND fetch its posts
+    run_blog(store1.path(), &["sync"]).success();
+
+    // The feed should exist locally
+    let feeds = read_table(&store1.path().join("feeds"));
+    assert!(
+        feeds
+            .iter()
+            .any(|f| f["url"].as_str() == Some(feed_url.as_str())),
+        "local should have the remotely-added feed after one sync"
+    );
+
+    // The posts from that feed should also have been fetched
+    let posts = read_table(&store1.path().join("posts"));
+    assert!(
+        posts
+            .iter()
+            .any(|p| p["title"].as_str() == Some("Post from remote feed")),
+        "posts from the remotely-added feed should be fetched on the first sync, \
+         but got: {posts:?}"
+    );
+}

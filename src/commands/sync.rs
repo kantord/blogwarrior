@@ -8,26 +8,9 @@ use crate::utils::progress::spinner;
 
 use crate::feed::pull::{apply_fetched, fetch_feeds};
 
-pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
-    let pb = ProgressBar::new(0);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.cyan} Pulling feeds [{bar:20.cyan/dim}] {pos}/{len} {msg}")
-            .unwrap()
-            .progress_chars("=> "),
-    );
-    pb.enable_steady_tick(Duration::from_millis(100));
-
-    // Fetch feeds outside the transaction (network I/O, no lock held)
-    let sources = store.feeds().items();
-    let results = fetch_feeds(&sources, &pb);
-    pb.finish_and_clear();
-
-    // Apply results inside a locked transaction
-    store.transact("pull feeds", |tx| apply_fetched(tx, results, &pb))?;
-
+fn do_sync_remote(store: &mut BlogData) -> anyhow::Result<SyncResult> {
     let mut sp: Option<ProgressBar> = None;
-    let result = store.sync_remote(|event| match event {
+    store.sync_remote(|event| match event {
         SyncEvent::Fetching => {
             sp = Some(spinner("Fetching..."));
         }
@@ -69,17 +52,52 @@ pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
                 ));
             }
         }
-    })?;
+    })
+}
 
-    match result {
-        SyncResult::NoGitRepo | SyncResult::Synced => {}
+pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
+    // Sync with remote first so we discover feeds added on other devices
+    let result = do_sync_remote(store)?;
+
+    let needs_push = match result {
         SyncResult::NoRemote => {
             eprintln!(
                 "warning: no remote configured; run `blog git remote add origin <url>` to enable sync"
             );
+            false
         }
-        SyncResult::AlreadyUpToDate => {
-            eprintln!("Already up to date.");
+        SyncResult::NoGitRepo => false,
+        SyncResult::Synced | SyncResult::AlreadyUpToDate => true,
+    };
+
+    // Fetch feeds outside the transaction (network I/O, no lock held)
+    let pb = ProgressBar::new(0);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.cyan} Pulling feeds [{bar:20.cyan/dim}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=> "),
+    );
+    pb.enable_steady_tick(Duration::from_millis(100));
+
+    let sources = store.feeds().items();
+    let results = fetch_feeds(&sources, &pb);
+    pb.finish_and_clear();
+
+    // Apply results inside a locked transaction
+    store.transact("pull feeds", |tx| apply_fetched(tx, results, &pb))?;
+
+    // Sync again to push the freshly fetched feed data back to remote
+    if needs_push {
+        let push_result = do_sync_remote(store)?;
+        match push_result {
+            SyncResult::Synced => {} // pushed successfully, spinners already shown
+            SyncResult::AlreadyUpToDate => {
+                eprintln!("Already up to date.");
+            }
+            SyncResult::NoRemote | SyncResult::NoGitRepo => {
+                // Shouldn't happen since we already confirmed remote exists
+            }
         }
     }
 
