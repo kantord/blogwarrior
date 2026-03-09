@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/kantord/blogtato/compare/v0.1.13...v0.1.14) - 2026-03-09
+
+### Fixed
+
+- fetch posts also from new feeds coming from remote ([#100](https://github.com/kantord/blogtato/pull/100))
+
 ## [0.1.13](https://github.com/kantord/blogtato/compare/v0.1.12...v0.1.13) - 2026-03-08
 
 ### Added
