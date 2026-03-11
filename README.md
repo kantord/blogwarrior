@@ -193,3 +193,10 @@ if want to use a remote service or self-host one, then it is a great option. In
 that case, the only reason you'd pick `blogtato` is if you prefer the
 Taskwarrior-like interface or you just want your RSS client to be even more
 minimalistic.
+
+### FreshRSS & Tiny Tiny RSS
+
+These are mature, self-hostable web-based RSS readers/aggregators. What
+`blogtato` offers in comparison is a minimalistic CLI interface and effectively
+zero-setup sync between different machines using `git`, without the need for an
+additional, continuously running server.
