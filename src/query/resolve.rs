@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::data::BlogData;
-use crate::data::index::{FeedIndex, build_feed_labels, feed_index};
+use crate::data::index::{FeedIndex, feed_index};
 use crate::data::schema::FeedItem;
+use crate::display::build_feed_labels;
 use crate::shorthand::{RESERVED_COMMANDS, index_to_shorthand};
 
 use super::{Query, ReadFilter};

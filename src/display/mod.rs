@@ -3,9 +3,24 @@ mod item;
 
 use std::collections::{HashMap, HashSet};
 
+use crate::data::index::FeedIndex;
 use crate::query::GroupKey;
 
 pub(crate) use group::render_grouped;
+
+pub(crate) fn build_feed_labels(fi: &FeedIndex) -> HashMap<String, String> {
+    fi.entries
+        .iter()
+        .map(|e| {
+            let label = if e.feed.title.is_empty() {
+                format!("@{} {}", e.shorthand, e.feed.url)
+            } else {
+                format!("@{} {}", e.shorthand, e.feed.title)
+            };
+            (e.id.clone(), label)
+        })
+        .collect()
+}
 
 pub(super) struct Style {
     pub bold: &'static str,

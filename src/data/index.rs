@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::data::schema::FeedSource;
 use crate::shorthand::compute_shorthands;
 
@@ -55,18 +53,4 @@ pub(crate) fn resolve_shorthand(
     feed_index(feeds_table)
         .url_for_shorthand(shorthand)
         .map(|s| s.to_string())
-}
-
-pub(crate) fn build_feed_labels(fi: &FeedIndex) -> HashMap<String, String> {
-    fi.entries
-        .iter()
-        .map(|e| {
-            let label = if e.feed.title.is_empty() {
-                format!("@{} {}", e.shorthand, e.feed.url)
-            } else {
-                format!("@{} {}", e.shorthand, e.feed.title)
-            };
-            (e.id.clone(), label)
-        })
-        .collect()
 }
