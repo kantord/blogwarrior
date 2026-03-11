@@ -178,3 +178,18 @@ so that it can be maintained with minimal effort and can be considered to be
 
 The naming is meant to symbolize simplicity and pragmatic silliness: I just
 mashed the word "blog" together with the first word I could think of: potato.
+
+## Comparison with alternatives
+
+`blogtato` is relatively new and there are several good, and more mature
+alternatives. This section attempts to summarize how they differ from
+`blogtato`.
+
+### Newsboat
+
+Newsboat is a very mature TUI RSS client with a wide range of features that
+`blogtato` does *not* have. It can also act as a client to remote servers, so
+if want to use a remote service or self-host one, then it is a great option. In
+that case, the only reason you'd pick `blogtato` is if you prefer the
+Taskwarrior-like interface or you just want your RSS client to be even more
+minimalistic.
