@@ -198,7 +198,12 @@ sync feature is not a relevant differentiator for you.
 Another reason why `blogtato` might be relevant to you is that it has a
 Taskwarrior-like interface that is even more minimalistic than Newsboat.
 
-### FreshRSS & Tiny Tiny RSS
+### Newsraft
+
+Newsraft is a more minimalistic alternative to Newsboat. Compares to
+\`blogtato\`\`
+
+### FreshRSS, Miniflux & Tiny Tiny RSS
 
 These are mature, self-hostable web-based RSS readers/aggregators. What
 `blogtato` offers in comparison is a minimalistic CLI interface and effectively
@@ -209,6 +214,7 @@ additional, continuously running server.
 
 These are full-featured web-based services. If you are a heavy RSS-user and
 like the user interfaces and features they offer (such as GUI apps for iOS and
-Android, content recommendations). You could find `blogtato` interesting if
-you'd prefer a more minimalistic, distraction-free CLI interface and do not
-need their advanced features.
+Android, content recommendations) you will likely prefer one of these options.
+
+You could find `blogtato` interesting if you'd prefer a more minimalistic,
+distraction-free CLI interface and do not need their advanced features.
