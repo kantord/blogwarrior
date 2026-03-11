@@ -191,7 +191,7 @@ Newsboat is a very mature TUI RSS client with a wide range of features that
 `blogtato` does *not* have. Just like `blogtato`, it supports local-only
 workflows.
 
-It can also act as a client to remote servers, so if are ok with having to
+It can also act as a client to remote servers, so if you are ok with having to
 self-host a server or signing up to a hosted server, then `blogtato`'s `git`
 sync feature is not a relevant differentiator for you.
 
@@ -201,7 +201,7 @@ Taskwarrior-like interface that is even more minimalistic than Newsboat.
 ### Newsraft
 
 Newsraft is a more minimalistic alternative to Newsboat. Compares to
-\`blogtato\`\`
+`blogtato`.
 
 ### FreshRSS, Miniflux & Tiny Tiny RSS
 
