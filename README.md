@@ -198,7 +198,7 @@ sync feature is not a relevant differentiator for you.
 Another reason why `blogtato` might be relevant to you is that it has a
 Taskwarrior-like interface that is even more minimalistic than Newsboat.
 
-### [Newsraft](https://codeberg.org/grstrm/newsraft)
+### [Newsraft](https://codeberg.org/newsraft/newsraft)
 
 Newsraft is a more minimalistic alternative to Newsboat. The
 [Newsboat](#newsboat) breakdown mostly applies.
