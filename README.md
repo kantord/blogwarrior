@@ -185,7 +185,7 @@ mashed the word "blog" together with the first word I could think of: potato.
 alternatives. This section attempts to summarize how they differ from
 `blogtato` and why some users might still prefer to use `blogtato` instead.
 
-### Newsboat
+### [Newsboat](https://newsboat.org/)
 
 Newsboat is a very mature TUI RSS client with a wide range of features that
 `blogtato` does *not* have. Just like `blogtato`, it supports local-only
@@ -198,19 +198,19 @@ sync feature is not a relevant differentiator for you.
 Another reason why `blogtato` might be relevant to you is that it has a
 Taskwarrior-like interface that is even more minimalistic than Newsboat.
 
-### Newsraft
+### [Newsraft](https://codeberg.org/grstrm/newsraft)
 
-Newsraft is a more minimalistic alternative to Newsboat. Compares to
-`blogtato`.
+Newsraft is a more minimalistic alternative to Newsboat. The
+[Newsboat](#newsboat) breakdown mostly applies.
 
-### FreshRSS, Miniflux & Tiny Tiny RSS
+### [FreshRSS](https://freshrss.org/), [Miniflux](https://miniflux.app/) & [Tiny Tiny RSS](https://tt-rss.org/)
 
 These are mature, self-hostable web-based RSS readers/aggregators. What
 `blogtato` offers in comparison is a minimalistic CLI interface and effectively
 zero-setup sync between different machines using `git`, without the need for an
 additional, continuously running server.
 
-### Feedly, Inoreader
+### [Feedly](https://feedly.com/), [Inoreader](https://www.inoreader.com/)
 
 These are full-featured web-based services. If you are a heavy RSS-user and
 like the user interfaces and features they offer (such as GUI apps for iOS and
