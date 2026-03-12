@@ -183,3 +183,43 @@ so that it can be maintained with minimal effort and can be considered to be
 
 The naming is meant to symbolize simplicity and pragmatic silliness: I just
 mashed the word "blog" together with the first word I could think of: potato.
+
+## Comparison with alternatives
+
+`blogtato` is relatively new and there are several good, and more mature
+alternatives. This section attempts to summarize how they differ from
+`blogtato` and why some users might still prefer to use `blogtato` instead.
+
+### [Newsboat](https://newsboat.org/)
+
+Newsboat is a very mature TUI RSS client with a wide range of features that
+`blogtato` does *not* have. Just like `blogtato`, it supports local-only
+workflows.
+
+It can also act as a client to remote servers, so if you are ok with having to
+self-host a server or signing up to a hosted server, then `blogtato`'s `git`
+sync feature is not a relevant differentiator for you.
+
+Another reason why `blogtato` might be relevant to you is that it has a
+Taskwarrior-like interface that is even more minimalistic than Newsboat.
+
+### [Newsraft](https://codeberg.org/newsraft/newsraft)
+
+Newsraft is a more minimalistic alternative to Newsboat. The
+[Newsboat](#newsboat) breakdown mostly applies.
+
+### [FreshRSS](https://freshrss.org/), [Miniflux](https://miniflux.app/) & [Tiny Tiny RSS](https://tt-rss.org/)
+
+These are mature, self-hostable web-based RSS readers/aggregators. What
+`blogtato` offers in comparison is a minimalistic CLI interface and effectively
+zero-setup sync between different machines using `git`, without the need for an
+additional, continuously running server.
+
+### [Feedly](https://feedly.com/), [Inoreader](https://www.inoreader.com/)
+
+These are full-featured web-based services. If you are a heavy RSS-user and
+like the user interfaces and features they offer (such as GUI apps for iOS and
+Android, content recommendations) you will likely prefer one of these options.
+
+You could find `blogtato` interesting if you'd prefer a more minimalistic,
+distraction-free CLI interface and do not need their advanced features.
