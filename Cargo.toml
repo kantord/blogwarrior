@@ -15,7 +15,7 @@ path = "src/main.rs"
 synctato = "=0.1.9"
 anyhow = "=1.0.102"
 atom_syndication = "=0.12.7"
-clap = { version = "=4.5.60", features = ["derive"] }
+clap = { version = "=4.6.0", features = ["derive"] }
 chrono = { version = "=0.4.44", features = ["serde"] }
 reqwest = { version = "=0.13.2", features = ["blocking"] }
 serde = { version = "=1.0.228", features = ["derive"] }
