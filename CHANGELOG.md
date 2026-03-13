@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/kantord/blogtato/compare/v0.1.14...v0.1.15) - 2026-03-13
+
+### Added
+
+- warn user when using outdated version ([#112](https://github.com/kantord/blogtato/pull/112))
+
+### Fixed
+
+- *(deps)* update rust crate clap to v4.6.0 ([#109](https://github.com/kantord/blogtato/pull/109))
+
+### Other
+
+- simplify default query logic ([#110](https://github.com/kantord/blogtato/pull/110))
+- *(deps)* update swatinem/rust-cache digest to e18b497 ([#107](https://github.com/kantord/blogtato/pull/107))
+- add comparison with alternatives ([#106](https://github.com/kantord/blogtato/pull/106))
+- move build_feed_labels to a more appropriate place ([#105](https://github.com/kantord/blogtato/pull/105))
+
 ## [0.1.14](https://github.com/kantord/blogtato/compare/v0.1.13...v0.1.14) - 2026-03-09
 
 ### Fixed
