@@ -92,6 +92,7 @@ impl TestContext {
             .unwrap()
             .args(args)
             .env("RSS_STORE", self.dir.path())
+            .env("XDG_CONFIG_HOME", self.dir.path())
             .assert()
     }
 
@@ -121,6 +122,12 @@ impl TestContext {
                 .body(xml);
         });
     }
+}
+
+fn write_config(config_home: &Path, contents: &str) {
+    let config_dir = config_home.join("blogtato");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::write(config_dir.join("config.toml"), contents).unwrap();
 }
 
 fn rss_xml_with_links(title: &str, items: &[(&str, &str, &str, &str)]) -> String {
@@ -2428,6 +2435,178 @@ fn test_export_respects_filters() {
         "expected 1 filtered JSONL line, got:\n{output}"
     );
     assert!(lines[0].contains("Post A"));
+}
+
+#[test]
+fn test_without_filters_file_shorts_are_visible() {
+    let ctx = TestContext::new();
+
+    let watch_date = recent_rss_date(2);
+    let shorts_date = recent_rss_date(1);
+    let xml = rss_xml_with_links(
+        "Video Blog",
+        &[
+            (
+                "Regular Video",
+                &watch_date,
+                "guid-watch",
+                "https://www.youtube.com/watch?v=abc123",
+            ),
+            (
+                "Short Video",
+                &shorts_date,
+                "guid-shorts",
+                "https://www.youtube.com/shorts/xyz987",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/videos.xml", &xml);
+    let url = ctx.server.url("/videos.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    let output = ctx.run(&[]).success().stdout_str();
+    assert!(
+        output.contains("Regular Video"),
+        "regular video should be shown, got:\n{output}"
+    );
+    assert!(
+        output.contains("Short Video"),
+        "short should be visible without filters, got:\n{output}"
+    );
+}
+
+#[test]
+fn test_filters_file_hides_matching_links_without_marking_read() {
+    let ctx = TestContext::new();
+    write_config(
+        ctx.dir.path(),
+        r#"[filters]
+hide_link_regex = ["/shorts/"]"#,
+    );
+
+    let watch_date = recent_rss_date(2);
+    let shorts_date = recent_rss_date(1);
+    let xml = rss_xml_with_links(
+        "Video Blog",
+        &[
+            (
+                "Regular Video",
+                &watch_date,
+                "guid-watch",
+                "https://www.youtube.com/watch?v=abc123",
+            ),
+            (
+                "Short Video",
+                &shorts_date,
+                "guid-shorts",
+                "https://www.youtube.com/shorts/xyz987",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/videos-all.xml", &xml);
+    let url = ctx.server.url("/videos-all.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    let show_all = ctx.run(&[".all"]).success().stdout_str();
+    assert!(
+        show_all.contains("Regular Video"),
+        "regular video should be shown by .all, got:\n{show_all}"
+    );
+    assert!(
+        !show_all.contains("Short Video"),
+        "short should still be hidden by .all, got:\n{show_all}"
+    );
+
+    let reads = read_table(&ctx.dir.path().join("reads"));
+    assert!(
+        reads.is_empty(),
+        "hidden shorts should not be marked read, got: {reads:?}"
+    );
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 2, "both posts should still be stored");
+
+    let exported = ctx.run(&[".all", "export"]).success().stdout_str();
+    assert!(
+        exported.contains("Regular Video"),
+        "regular video should be exported, got:\n{exported}"
+    );
+    assert!(
+        !exported.contains("Short Video"),
+        "short should not be exported, got:\n{exported}"
+    );
+}
+
+#[test]
+fn test_filters_file_blocks_targeted_commands() {
+    let ctx = TestContext::new();
+    write_config(
+        ctx.dir.path(),
+        r#"[filters]
+hide_link_regex = ["/shorts/"]"#,
+    );
+
+    let watch_date = recent_rss_date(2);
+    let shorts_date = recent_rss_date(1);
+    let xml = rss_xml_with_links(
+        "Video Blog",
+        &[
+            (
+                "Regular Video",
+                &watch_date,
+                "guid-watch",
+                "https://www.youtube.com/watch?v=abc123",
+            ),
+            (
+                "Short Video",
+                &shorts_date,
+                "guid-shorts",
+                "https://www.youtube.com/shorts/xyz987",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/videos-commands.xml", &xml);
+    let url = ctx.server.url("/videos-commands.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    let read_err = ctx.run(&["a", "read"]).failure().stderr_str();
+    assert!(
+        read_err.contains("No matching posts"),
+        "hidden short should not resolve for read, got: {read_err}"
+    );
+
+    let unread_err = ctx.run(&["a", "unread"]).failure().stderr_str();
+    assert!(
+        unread_err.contains("No matching posts"),
+        "hidden short should not resolve for unread, got: {unread_err}"
+    );
+
+    #[allow(deprecated)]
+    let open_err = Command::cargo_bin("blog")
+        .unwrap()
+        .args(["a", "open"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("XDG_CONFIG_HOME", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .failure()
+        .stderr_str();
+    assert!(
+        open_err.contains("No matching posts"),
+        "hidden short should not resolve for open, got: {open_err}"
+    );
+}
+
+#[test]
+fn test_invalid_filters_file_returns_error() {
+    let ctx = TestContext::new();
+    write_config(ctx.dir.path(), "not = [valid");
+
+    let err = ctx.run(&["show"]).failure().stderr_str();
+    assert!(err.contains("config.toml"), "got: {err}");
 }
 
 /// When a feed rotates all its posts between syncs (no overlapping GUIDs),

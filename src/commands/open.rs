@@ -7,6 +7,7 @@ use crate::query::resolve::resolve_posts;
 
 pub(crate) fn cmd_open(store: &mut BlogData, query: &Query) -> anyhow::Result<()> {
     let resolved = resolve_posts(store, query)?;
+    ensure!(!resolved.items.is_empty(), "No matching posts");
     ensure!(
         resolved.items.len() == 1,
         "Expected exactly 1 post, got {}",

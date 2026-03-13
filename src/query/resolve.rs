@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use regex::Regex;
+
 use crate::data::BlogData;
 use crate::data::index::{FeedIndex, feed_index};
 use crate::data::schema::FeedItem;
@@ -14,6 +16,14 @@ pub(crate) struct PostIndex {
 }
 
 impl PostIndex {
+    fn filter_hidden_items(&mut self, hidden_link_regexes: &[Regex]) {
+        if hidden_link_regexes.is_empty() {
+            return;
+        }
+        self.items
+            .retain(|item| !is_hidden_item(item, hidden_link_regexes));
+    }
+
     fn filter_by_shorthands(&mut self, shorthands: &[String]) -> anyhow::Result<()> {
         if shorthands.is_empty() {
             return Ok(());
@@ -69,6 +79,13 @@ impl PostIndex {
     }
 }
 
+fn is_hidden_item(item: &FeedItem, hidden_link_regexes: &[Regex]) -> bool {
+    !item.link.is_empty()
+        && hidden_link_regexes
+            .iter()
+            .any(|pattern| pattern.is_match(&item.link))
+}
+
 pub(crate) fn post_index(table: &synctato::Table<FeedItem>) -> PostIndex {
     let mut items = table.items();
     items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
@@ -98,6 +115,7 @@ pub(crate) fn resolve_posts(store: &BlogData, query: &Query) -> anyhow::Result<R
     let fi = feed_index(store.feeds());
     let feed_labels = build_feed_labels(&fi);
     let mut posts = post_index(store.posts());
+    let hidden_link_regexes = crate::data::hidden_link_regexes()?;
 
     posts.filter_by_shorthands(&query.shorthands)?;
     if let Some(ref shorthand) = query.filter {
@@ -105,10 +123,66 @@ pub(crate) fn resolve_posts(store: &BlogData, query: &Query) -> anyhow::Result<R
     }
     posts.filter_by_date(query);
     posts.filter_by_read_status(query.read_filter, store);
+    posts.filter_hidden_items(&hidden_link_regexes);
 
     Ok(ResolvedPosts {
         items: posts.items,
         shorthands: posts.shorthands,
         feed_labels,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn regexes(patterns: &[&str]) -> Vec<Regex> {
+        patterns.iter().map(|p| Regex::new(p).unwrap()).collect()
+    }
+
+    fn item(link: &str) -> FeedItem {
+        FeedItem {
+            title: "Post".to_string(),
+            date: Some(
+                NaiveDate::from_ymd_opt(2024, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            feed: "feed".to_string(),
+            link: link.to_string(),
+            raw_id: "id".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_is_hidden_item_matches_shorts_url() {
+        assert!(is_hidden_item(
+            &item("https://youtube.com/shorts/abc"),
+            &regexes(&["/shorts/"])
+        ));
+    }
+
+    #[test]
+    fn test_is_hidden_item_keeps_regular_watch_url() {
+        assert!(!is_hidden_item(
+            &item("https://youtube.com/watch?v=abc"),
+            &regexes(&["/shorts/"])
+        ));
+    }
+
+    #[test]
+    fn test_is_hidden_item_ignores_empty_link() {
+        assert!(!is_hidden_item(&item(""), &regexes(&["/shorts/"])));
+    }
+
+    #[test]
+    fn test_is_hidden_item_supports_multiple_patterns() {
+        assert!(is_hidden_item(
+            &item("https://example.com/live/abc"),
+            &regexes(&["/shorts/", "/live/"])
+        ));
+    }
 }

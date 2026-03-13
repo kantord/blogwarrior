@@ -139,6 +139,11 @@ blog .all export
 blog @myblog export
 blog 1w.. export
 
+# Hide matching links from results using regexes in ~/.config/blogtato/config.toml
+# Example: hide YouTube Shorts everywhere they would normally resolve
+# [filters]
+# hide_link_regex = ["/shorts/"]
+
 # List subscriptions
 blog feed ls
 
