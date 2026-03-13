@@ -20,8 +20,7 @@ struct ExportItem<'a> {
 }
 
 pub(crate) fn cmd_export(store: &BlogData, query: &Query) -> anyhow::Result<()> {
-    let query = query.or_default_view();
-    let resolved = resolve_posts(store, &query)?;
+    let resolved = resolve_posts(store, query)?;
 
     let feeds_by_id: HashMap<String, &FeedSource> = store
         .feeds()

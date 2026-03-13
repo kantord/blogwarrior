@@ -149,6 +149,14 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
+fn parse_query_or_default(args: &[String]) -> anyhow::Result<query::Query> {
+    if args.is_empty() {
+        query::parse_query_str(query::DEFAULT_QUERY)
+    } else {
+        query::parse_query(args)
+    }
+}
+
 fn reject_filter(filter: &[String], command: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         filter.is_empty(),
@@ -173,12 +181,12 @@ fn run() -> anyhow::Result<()> {
         // Commands that accept a query/filter
         Some(Command::Show { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = query::parse_query(&all_args)?;
+            let q = parse_query_or_default(&all_args)?;
             commands::show::cmd_show(&store, &q)?;
         }
         Some(Command::Export { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = query::parse_query(&all_args)?;
+            let q = parse_query_or_default(&all_args)?;
             commands::export::cmd_export(&store, &q)?;
         }
         Some(Command::Open) => {
@@ -194,7 +202,7 @@ fn run() -> anyhow::Result<()> {
             commands::open::cmd_unread(&mut store, &q)?;
         }
         None => {
-            let q = query::parse_query(&filter)?;
+            let q = parse_query_or_default(&filter)?;
             commands::show::cmd_show(&store, &q)?;
         }
 

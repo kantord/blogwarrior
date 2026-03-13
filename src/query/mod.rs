@@ -77,40 +77,11 @@ pub(crate) struct Query {
     pub read_filter: ReadFilter,
 }
 
-impl Query {
-    pub(crate) fn is_empty(&self) -> bool {
-        self.keys.is_empty()
-            && self.filter.is_none()
-            && self.date_filter.since.is_none()
-            && self.date_filter.until.is_none()
-            && self.shorthands.is_empty()
-            && matches!(self.read_filter, ReadFilter::Any)
-    }
+pub(crate) const DEFAULT_QUERY: &str = ".unread 90d.. /w";
 
-    /// Default query when no arguments are provided: unread posts from the last
-    /// 90 days, grouped by week.
-    pub(crate) fn default_view() -> Self {
-        let since = chrono::Utc::now() - chrono::Duration::days(90);
-        Self {
-            keys: vec![GroupKey::Week],
-            filter: None,
-            date_filter: DateFilter {
-                since: Some(since),
-                until: None,
-            },
-            shorthands: Vec::new(),
-            read_filter: ReadFilter::Unread,
-        }
-    }
-
-    /// Returns `self` if non-empty, otherwise the default view query.
-    pub(crate) fn or_default_view(&self) -> std::borrow::Cow<'_, Self> {
-        if self.is_empty() {
-            std::borrow::Cow::Owned(Self::default_view())
-        } else {
-            std::borrow::Cow::Borrowed(self)
-        }
-    }
+pub(crate) fn parse_query_str(input: &str) -> anyhow::Result<Query> {
+    let args: Vec<String> = input.split_whitespace().map(String::from).collect();
+    parse_query(&args)
 }
 
 pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
@@ -353,7 +324,6 @@ mod tests {
     fn test_all_filter() {
         let q = parse_query(&args(&[".all"])).unwrap();
         assert_eq!(q.read_filter, ReadFilter::All);
-        assert!(!q.is_empty(), ".all should make the query non-empty");
     }
 
     #[test]

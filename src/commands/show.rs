@@ -10,8 +10,7 @@ use crate::query::Query;
 use crate::query::resolve::resolve_posts;
 
 pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
-    let query = query.or_default_view();
-    let resolved = resolve_posts(store, &query)?;
+    let resolved = resolve_posts(store, query)?;
     ensure!(!resolved.items.is_empty(), "No matching posts");
 
     let read_ids: HashSet<String> = store
