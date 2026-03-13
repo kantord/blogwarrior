@@ -5,8 +5,11 @@ use synctato::{SyncEvent, SyncResult};
 
 use crate::data::BlogData;
 use crate::utils::progress::spinner;
+use crate::utils::version_check::check_for_newer_version;
 
 use crate::feed::pull::{apply_fetched, fetch_feeds};
+
+const CRATES_IO_URL: &str = "https://crates.io/api/v1/crates/blogtato";
 
 fn do_sync_remote(store: &mut BlogData) -> anyhow::Result<SyncResult> {
     let mut sp: Option<ProgressBar> = None;
@@ -99,6 +102,13 @@ pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
                 // Shouldn't happen since we already confirmed remote exists
             }
         }
+    }
+
+    if let Ok(Some(status)) = check_for_newer_version(CRATES_IO_URL, env!("CARGO_PKG_VERSION")) {
+        eprintln!(
+            "Note: blogtato {} is available (you have {}). Run `cargo install blogtato` to update.",
+            status.latest, status.current
+        );
     }
 
     Ok(())
