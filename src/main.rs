@@ -88,6 +88,11 @@ enum Command {
         /// Query arguments (see below)
         args: Vec<String>,
     },
+    /// Manage configuration
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
     /// Run git commands in the store directory
     Git {
         /// Arguments to pass to git
@@ -97,6 +102,27 @@ enum Command {
     Clone {
         /// Git-clonable URL
         url: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommand {
+    /// Set a config value
+    Set {
+        /// Config key
+        key: String,
+        /// Config value
+        value: String,
+    },
+    /// Get a config value
+    Get {
+        /// Config key
+        key: String,
+    },
+    /// Remove a config value
+    Unset {
+        /// Config key
+        key: String,
     },
 }
 
@@ -149,9 +175,10 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
-fn parse_query_or_default(args: &[String]) -> anyhow::Result<query::Query> {
+fn parse_query_or_default(args: &[String], store: &data::BlogData) -> anyhow::Result<query::Query> {
     if args.is_empty() {
-        query::parse_query_str(query::DEFAULT_QUERY)
+        let default = commands::config::get_config_value(store, "default_query");
+        query::parse_query_str(default.as_deref().unwrap_or(query::DEFAULT_QUERY))
     } else {
         query::parse_query(args)
     }
@@ -181,12 +208,12 @@ fn run() -> anyhow::Result<()> {
         // Commands that accept a query/filter
         Some(Command::Show { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = parse_query_or_default(&all_args)?;
+            let q = parse_query_or_default(&all_args, &store)?;
             commands::show::cmd_show(&store, &q)?;
         }
         Some(Command::Export { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = parse_query_or_default(&all_args)?;
+            let q = parse_query_or_default(&all_args, &store)?;
             commands::export::cmd_export(&store, &q)?;
         }
         Some(Command::Open) => {
@@ -202,7 +229,7 @@ fn run() -> anyhow::Result<()> {
             commands::open::cmd_unread(&mut store, &q)?;
         }
         None => {
-            let q = parse_query_or_default(&filter)?;
+            let q = parse_query_or_default(&filter, &store)?;
             commands::show::cmd_show(&store, &q)?;
         }
 
@@ -255,6 +282,24 @@ fn run() -> anyhow::Result<()> {
         Some(Command::Git { ref args }) => {
             reject_filter(&filter, "git")?;
             store.git_passthrough(args)?;
+        }
+        Some(Command::Config {
+            command: ConfigCommand::Set { ref key, ref value },
+        }) => {
+            reject_filter(&filter, "config")?;
+            commands::config::cmd_config_set(&mut store, key, value)?;
+        }
+        Some(Command::Config {
+            command: ConfigCommand::Get { ref key },
+        }) => {
+            reject_filter(&filter, "config")?;
+            commands::config::cmd_config_get(&store, key)?;
+        }
+        Some(Command::Config {
+            command: ConfigCommand::Unset { ref key },
+        }) => {
+            reject_filter(&filter, "config")?;
+            commands::config::cmd_config_unset(&mut store, key)?;
         }
         Some(Command::Clone { .. }) => unreachable!(),
     }
