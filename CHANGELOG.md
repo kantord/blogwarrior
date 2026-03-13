@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/kantord/blogtato/compare/v0.1.15...v0.1.16) - 2026-03-13
+
+### Fixed
+
+- *(deps)* pin rust crate ureq to =3.2.0 ([#115](https://github.com/kantord/blogtato/pull/115))
+- *(deps)* update rust crate quick-xml to v0.39.2 ([#94](https://github.com/kantord/blogtato/pull/94))
+
+### Other
+
+- use hand-rolled feed finder logic ([#116](https://github.com/kantord/blogtato/pull/116))
+- replace reqwest with ureq ([#113](https://github.com/kantord/blogtato/pull/113))
+
 ## [0.1.15](https://github.com/kantord/blogtato/compare/v0.1.14...v0.1.15) - 2026-03-13
 
 ### Added
