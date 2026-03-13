@@ -23,18 +23,15 @@ pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
     sp.set_message(format!("Looking for feeds on {url}..."));
     let html = String::from_utf8_lossy(&bytes);
     let base_url = url::Url::parse(url)?;
-    let candidates = feedfinder::detect_feeds(&base_url, &html)
-        .map_err(|e| anyhow::anyhow!("feed discovery failed: {e:?}"))?;
+    let candidates = crate::feed::discover::discover_feed_urls(&html, &base_url);
 
-    // Validate candidates by fetching and parsing each one, dedup by URL
-    let mut seen = std::collections::HashSet::new();
+    // Validate candidates by fetching and parsing each one
     let feeds: Vec<_> = candidates
-        .iter()
-        .filter(|f| seen.insert(f.url().to_string()))
+        .into_iter()
         .take(MAX_FEED_CANDIDATES)
-        .filter(|f| {
-            sp.set_message(format!("Checking {}...", f.url()));
-            is_valid_feed(&client, f.url().as_str())
+        .filter(|u| {
+            sp.set_message(format!("Checking {u}..."));
+            is_valid_feed(&client, u)
         })
         .collect();
 
@@ -42,15 +39,11 @@ pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
 
     match feeds.len() {
         0 => bail!("no feeds found at {url}"),
-        1 => {
-            let feed_url = feeds[0].url().to_string();
-            Ok(feed_url)
-        }
+        1 => Ok(feeds.into_iter().next().unwrap()),
         _ => {
             eprintln!("Multiple feeds found at {url}:");
-            for feed in &feeds {
-                let title = feed.title().unwrap_or("(untitled)");
-                eprintln!("  {} — {title}", feed.url());
+            for feed_url in &feeds {
+                eprintln!("  {feed_url}");
             }
             bail!(
                 "multiple feeds found; run `blog feed add <feed-url>` with a specific URL from the list above"

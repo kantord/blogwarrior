@@ -1,4 +1,5 @@
 pub mod atom;
+pub(crate) mod discover;
 pub(crate) mod pull;
 pub mod rss;
 
