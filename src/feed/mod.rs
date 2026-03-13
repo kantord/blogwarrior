@@ -11,12 +11,8 @@ pub struct FeedMeta {
     pub description: String,
 }
 
-pub fn fetch(
-    client: &reqwest::blocking::Client,
-    url: &str,
-) -> anyhow::Result<(FeedMeta, Vec<FeedItem>)> {
-    let response = client.get(url).send()?.error_for_status()?;
-    let bytes = response.bytes()?;
+pub fn fetch(client: &ureq::Agent, url: &str) -> anyhow::Result<(FeedMeta, Vec<FeedItem>)> {
+    let bytes = client.get(url).call()?.body_mut().read_to_vec()?;
 
     rss::parse(&bytes[..]).or_else(|_| atom::parse(&bytes[..]))
 }

@@ -15,13 +15,7 @@ const FETCH_THREADS: usize = 48;
 
 /// Fetch all feeds in parallel.
 pub(crate) fn fetch_feeds(sources: &[FeedSource], pb: &ProgressBar) -> Vec<FetchResult> {
-    let client = match crate::utils::http::http_client() {
-        Ok(c) => c,
-        Err(e) => {
-            pb.suspend(|| eprintln!("Error creating HTTP client: {e}"));
-            return Vec::new();
-        }
-    };
+    let client = crate::utils::http::http_client();
     pb.set_length(sources.len() as u64);
 
     let pool = rayon::ThreadPoolBuilder::new()
