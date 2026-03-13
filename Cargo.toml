@@ -31,7 +31,7 @@ rayon = "=1.11.0"
 terminal_size = "=0.4.3"
 unicode-width = "=0.2.2"
 chumsky = "=0.12.0"
-quick-xml = "=0.37.5"
+quick-xml = "=0.39.2"
 
 [dev-dependencies]
 sha2 = "=0.10.9"
