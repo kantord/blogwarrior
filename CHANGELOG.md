@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17](https://github.com/kantord/blogtato/compare/v0.1.16...v0.1.17) - 2026-03-13
+
+### Fixed
+
+- use proper headers for version check request ([#117](https://github.com/kantord/blogtato/pull/117))
+
 ## [0.1.16](https://github.com/kantord/blogtato/compare/v0.1.15...v0.1.16) - 2026-03-13
 
 ### Fixed
