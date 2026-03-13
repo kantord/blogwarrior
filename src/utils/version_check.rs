@@ -13,6 +13,7 @@ pub(crate) fn check_for_newer_version(
 ) -> anyhow::Result<Option<VersionStatus>> {
     let client = ureq::Agent::config_builder()
         .timeout_global(Some(VERSION_CHECK_TIMEOUT))
+        .user_agent("blogtato (https://github.com/kantord/blogtato)")
         .build()
         .new_agent();
     let body = client
@@ -44,7 +45,10 @@ mod tests {
 
     fn mock_crates_io(server: &MockServer, version: &str) {
         server.mock(|when, then| {
-            when.method(GET).path("/api/v1/crates/blogtato");
+            when.method(GET).path("/api/v1/crates/blogtato").header(
+                "User-Agent",
+                "blogtato (https://github.com/kantord/blogtato)",
+            );
             then.status(200)
                 .header("Content-Type", "application/json")
                 .body(
