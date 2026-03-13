@@ -11,10 +11,15 @@ pub(crate) fn check_for_newer_version(
     crates_io_url: &str,
     current_version: &str,
 ) -> anyhow::Result<Option<VersionStatus>> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(VERSION_CHECK_TIMEOUT)
-        .build()?;
-    let body = client.get(crates_io_url).send()?.text()?;
+    let client = ureq::Agent::config_builder()
+        .timeout_global(Some(VERSION_CHECK_TIMEOUT))
+        .build()
+        .new_agent();
+    let body = client
+        .get(crates_io_url)
+        .call()?
+        .body_mut()
+        .read_to_string()?;
     let response: serde_json::Value = serde_json::from_str(&body)?;
 
     let latest = response["crate"]["max_version"]

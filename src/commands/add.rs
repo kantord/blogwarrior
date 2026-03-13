@@ -8,11 +8,10 @@ use crate::utils::progress::spinner;
 const MAX_FEED_CANDIDATES: usize = 20;
 
 pub(crate) fn resolve_feed_url(url: &str) -> anyhow::Result<String> {
-    let client = crate::utils::http::http_client()?;
+    let client = crate::utils::http::http_client();
 
     let sp = spinner(&format!("Fetching {url}..."));
-    let response = client.get(url).send()?.error_for_status()?;
-    let bytes = response.bytes()?;
+    let bytes = client.get(url).call()?.body_mut().read_to_vec()?;
 
     // Try parsing as RSS/Atom — if it works, the URL is already a feed
     if is_feed_content(&bytes) {
@@ -64,11 +63,11 @@ fn is_feed_content(bytes: &[u8]) -> bool {
     crate::feed::rss::parse(bytes).is_ok() || crate::feed::atom::parse(bytes).is_ok()
 }
 
-fn is_valid_feed(client: &reqwest::blocking::Client, url: &str) -> bool {
-    let Ok(resp) = client.get(url).send().and_then(|r| r.error_for_status()) else {
+fn is_valid_feed(client: &ureq::Agent, url: &str) -> bool {
+    let Ok(mut resp) = client.get(url).call() else {
         return false;
     };
-    let Ok(bytes) = resp.bytes() else {
+    let Ok(bytes) = resp.body_mut().read_to_vec() else {
         return false;
     };
     is_feed_content(&bytes)

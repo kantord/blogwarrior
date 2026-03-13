@@ -1,8 +1,10 @@
-pub(crate) fn http_client() -> anyhow::Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
+use std::time::Duration;
+
+pub(crate) fn http_client() -> ureq::Agent {
+    ureq::Agent::config_builder()
         .user_agent("Mozilla/5.0 (compatible; blogtato RSS reader)")
-        .timeout(std::time::Duration::from_secs(10))
-        .pool_max_idle_per_host(0)
+        .timeout_global(Some(Duration::from_secs(10)))
+        .max_idle_connections(0)
         .build()
-        .map_err(|e| anyhow::anyhow!("failed to build HTTP client: {}", e))
+        .new_agent()
 }
