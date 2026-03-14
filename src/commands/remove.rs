@@ -13,7 +13,15 @@ pub(crate) fn cmd_remove(tx: &mut Transaction, url: &str) -> anyhow::Result<()> 
 
     match tx.feeds.delete(&url) {
         Some(feed_id) => {
+            let post_ids: Vec<String> = tx
+                .posts
+                .items()
+                .iter()
+                .filter(|p| p.feed == feed_id)
+                .map(|p| p.raw_id.clone())
+                .collect();
             tx.posts.delete_where(|p| p.feed == feed_id);
+            tx.reads.delete_where(|r| post_ids.contains(&r.post_id));
         }
         None => bail!("Feed not found: {}", url),
     }
