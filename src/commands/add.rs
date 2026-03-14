@@ -66,9 +66,15 @@ fn is_valid_feed(client: &ureq::Agent, url: &str) -> bool {
     is_feed_content(&bytes)
 }
 
+fn normalize_feed_url(url: &str) -> String {
+    url_normalize::normalize_url(url, &url_normalize::Options::default())
+        .unwrap_or_else(|_| url.to_string())
+}
+
 pub(crate) fn cmd_add(tx: &mut Transaction, url: &str) -> anyhow::Result<()> {
+    let url = normalize_feed_url(url);
     tx.feeds.upsert(FeedSource {
-        url: url.to_string(),
+        url,
         title: String::new(),
         site_url: String::new(),
         description: String::new(),

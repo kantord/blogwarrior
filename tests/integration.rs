@@ -744,6 +744,28 @@ fn test_feed_ls_no_feeds_prints_error() {
 }
 
 #[test]
+fn test_trailing_slash_does_not_duplicate_feed() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml("Slash Blog", &[("Post", "Mon, 01 Jan 2024 00:00:00 +0000")]);
+    ctx.mock_rss_feed("/feed.xml", &xml);
+    ctx.mock_rss_feed("/feed.xml/", &xml);
+
+    let url = ctx.server.url("/feed.xml");
+    let url_slash = format!("{}/", url);
+
+    ctx.run(&["feed", "add", &url]).success();
+    ctx.run(&["feed", "add", &url_slash]).success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(
+        feeds.len(),
+        1,
+        "trailing slash should not create a duplicate feed, got: {feeds:?}"
+    );
+}
+
+#[test]
 fn test_feed_remove_by_shorthand() {
     let ctx = TestContext::new();
 
