@@ -7,6 +7,21 @@ use synctato::Store;
 pub(crate) type BlogData = Store<BlogDataSchema>;
 pub(crate) type Transaction<'a> = schema::BlogDataSchemaTransaction<'a>;
 
+impl Transaction<'_> {
+    /// Delete posts matching `pred` and cascade-delete their ReadMarks.
+    pub(crate) fn delete_posts_where(&mut self, pred: impl Fn(&schema::FeedItem) -> bool) {
+        let post_ids: Vec<String> = self
+            .posts
+            .items()
+            .iter()
+            .filter(|p| pred(p))
+            .map(|p| p.raw_id.clone())
+            .collect();
+        self.posts.delete_where(pred);
+        self.reads.delete_where(|r| post_ids.contains(&r.post_id));
+    }
+}
+
 pub(crate) const SCHEMA_VERSION: u32 = 1;
 
 /// Check that the store's schema version is compatible with this binary.
