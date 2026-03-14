@@ -36,7 +36,12 @@ pub(crate) fn check_schema_version(store: &mut BlogData) -> anyhow::Result<()> {
 
     match existing {
         Some(entry) => {
-            let db_version: u32 = entry.value.parse().unwrap_or(0);
+            let db_version: u32 = entry.value.parse().map_err(|_| {
+                anyhow::anyhow!(
+                    "Corrupted schema_version in store metadata: {:?}",
+                    entry.value
+                )
+            })?;
             if db_version > SCHEMA_VERSION {
                 anyhow::bail!(
                     "This database was written by a newer version of blogtato (schema v{db_version}). \
