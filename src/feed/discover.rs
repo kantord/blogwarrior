@@ -41,12 +41,11 @@ fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
         };
         search_from = end;
 
-        let tag = &html[tag_start..end];
         let tag_lower = &lower[tag_start..end];
 
-        let rel = extract_attr(tag, tag_lower, "rel");
-        let link_type = extract_attr(tag, tag_lower, "type");
-        let href = extract_attr(tag, tag_lower, "href");
+        let rel = extract_attr(tag_lower, "rel");
+        let link_type = extract_attr(tag_lower, "type");
+        let href = extract_attr(tag_lower, "href");
 
         let is_alternate = rel
             .as_deref()
@@ -71,9 +70,8 @@ fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
     urls
 }
 
-/// Extract an attribute value from an HTML tag. `tag` is the original-case tag,
-/// `tag_lower` is the lowercased version for searching.
-fn extract_attr(tag: &str, tag_lower: &str, attr_name: &str) -> Option<String> {
+/// Extract an attribute value from a lowercased HTML tag.
+fn extract_attr(tag_lower: &str, attr_name: &str) -> Option<String> {
     // Find attr_name= preceded by whitespace to avoid matching data-type= when looking for type=
     let needle = format!("{attr_name}=");
     let mut search_from = 0;
@@ -87,7 +85,7 @@ fn extract_attr(tag: &str, tag_lower: &str, attr_name: &str) -> Option<String> {
         search_from = pos + 1;
     };
     let after_eq = pos + needle.len();
-    let rest = &tag[after_eq..];
+    let rest = &tag_lower[after_eq..];
 
     let quote = rest.as_bytes().first()?;
     if *quote != b'"' && *quote != b'\'' {
@@ -403,6 +401,16 @@ mod tests {
     #[test]
     fn test_link_tag_with_extra_attributes() {
         let html = r#"<link rel="alternate" type="application/rss+xml" title="My Blog Feed" href="/feed.xml">"#;
+        let url = parse_url("https://example.com/");
+        let result = discover_feed_urls(html, &url);
+        assert_eq!(result, vec!["https://example.com/feed.xml"]);
+    }
+
+    #[test]
+    fn test_unicode_before_link_tag() {
+        // İ (U+0130) lowercases to i + combining dot (2 bytes → 3 bytes),
+        // shifting byte indices between html and html.to_lowercase()
+        let html = r#"<title>İstanbul Blog</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
         let url = parse_url("https://example.com/");
         let result = discover_feed_urls(html, &url);
         assert_eq!(result, vec!["https://example.com/feed.xml"]);
