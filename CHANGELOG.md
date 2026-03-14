@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/kantord/blogtato/compare/v0.1.18...v0.1.19) - 2026-03-14
+
+### Fixed
+
+- *(deps)* pin rust crate url-normalize to =0.1.1 ([#128](https://github.com/kantord/blogtato/pull/128))
+- normalize feed urls ([#127](https://github.com/kantord/blogtato/pull/127))
+- correctly validate date ranges ([#126](https://github.com/kantord/blogtato/pull/126))
+- do not leave dangling read marks ([#125](https://github.com/kantord/blogtato/pull/125))
+- sanitize control characters from input strings ([#124](https://github.com/kantord/blogtato/pull/124))
+- prevent panic in feed discovery on non-ASCII HTML ([#123](https://github.com/kantord/blogtato/pull/123))
+- allow stable feed shorthand matching ([#121](https://github.com/kantord/blogtato/pull/121))
+
 ## [0.1.18](https://github.com/kantord/blogtato/compare/v0.1.17...v0.1.18) - 2026-03-14
 
 ### Fixed
