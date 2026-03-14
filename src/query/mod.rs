@@ -129,6 +129,16 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
         }
     }
 
+    if let (Some(s), Some(u)) = (since, until) {
+        ensure!(
+            s <= u,
+            "Invalid date range: {} is after {}. \
+             The start date must be before the end date, e.g. 3w..1w instead of 1w..3w.",
+            s.format("%Y-%m-%d"),
+            u.format("%Y-%m-%d"),
+        );
+    }
+
     Ok(Query {
         keys,
         filter,
@@ -300,6 +310,17 @@ mod tests {
         assert!(q.date_filter.since.is_some());
         assert!(q.date_filter.until.is_some());
         assert!(q.date_filter.since.unwrap() < q.date_filter.until.unwrap());
+    }
+
+    #[test]
+    fn test_inverted_date_range_errors() {
+        let result = parse_query(&args(&["1w..3w"]));
+        assert!(result.is_err(), "inverted range 1w..3w should fail");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("Invalid date range"),
+            "error should mention invalid date range, got: {msg}"
+        );
     }
 
     #[test]
