@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/kantord/blogtato/compare/v0.1.17...v0.1.18) - 2026-03-14
+
+### Fixed
+
+- discover feeds on deep URLs by trying root paths first ([#119](https://github.com/kantord/blogtato/pull/119))
+
 ## [0.1.17](https://github.com/kantord/blogtato/compare/v0.1.16...v0.1.17) - 2026-03-13
 
 ### Fixed
