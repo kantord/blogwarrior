@@ -106,8 +106,8 @@ fn guess_common_paths(page_url: &url::Url) -> Vec<String> {
     let mut urls = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    // From deepest parent to root
-    for depth in (0..=segments.len()).rev() {
+    // From root to deepest parent (root feeds are most common)
+    for depth in 0..=segments.len() {
         let parent = if depth == 0 {
             "/".to_string()
         } else {
@@ -325,21 +325,21 @@ mod tests {
     }
 
     #[test]
-    fn test_fallback_tries_deepest_parent_first() {
+    fn test_fallback_tries_root_first() {
         let html = "<html></html>";
         let url = parse_url("https://example.com/blog/post");
         let result = discover_feed_urls(html, &url);
-        let blog_feed = result
-            .iter()
-            .position(|u| u == "https://example.com/blog/feed.xml")
-            .expect("should contain /blog/feed.xml");
         let root_feed = result
             .iter()
             .position(|u| u == "https://example.com/feed.xml")
             .expect("should contain /feed.xml");
+        let blog_feed = result
+            .iter()
+            .position(|u| u == "https://example.com/blog/feed.xml")
+            .expect("should contain /blog/feed.xml");
         assert!(
-            blog_feed < root_feed,
-            "/blog/feed.xml should come before /feed.xml"
+            root_feed < blog_feed,
+            "/feed.xml should come before /blog/feed.xml"
         );
     }
 
