@@ -642,6 +642,55 @@ fn test_remove_feed_deletes_its_posts() {
 }
 
 #[test]
+fn test_remove_feed_cleans_up_read_marks() {
+    let ctx = TestContext::new();
+
+    let date_a = recent_rss_date(1);
+    let xml = rss_xml_with_links(
+        "Doomed Blog",
+        &[(
+            "Doomed Post",
+            &date_a,
+            "guid-doomed",
+            "https://example.com/doomed",
+        )],
+    );
+    ctx.mock_rss_feed("/doomed.xml", &xml);
+    let url = ctx.server.url("/doomed.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Mark the post as read by opening it
+    #[allow(deprecated)]
+    Command::cargo_bin("blog")
+        .unwrap()
+        .args(["a", "open"])
+        .env("RSS_STORE", ctx.dir.path())
+        .env("BROWSER", "true")
+        .assert()
+        .success();
+
+    // Verify we have a read mark
+    let reads_before = read_table(&ctx.dir.path().join("reads"));
+    assert_eq!(
+        reads_before.len(),
+        1,
+        "expected 1 read mark before removal, got: {reads_before:?}"
+    );
+
+    // Now remove the feed
+    ctx.run(&["feed", "rm", &url]).success();
+
+    // Read marks for deleted posts should be cleaned up
+    let reads_after = read_table(&ctx.dir.path().join("reads"));
+    assert_eq!(
+        reads_after.len(),
+        0,
+        "expected 0 read marks after feed removal (orphaned ReadMarks), got: {reads_after:?}"
+    );
+}
+
+#[test]
 fn test_feed_ls() {
     let ctx = TestContext::new();
 
