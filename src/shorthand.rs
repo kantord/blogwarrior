@@ -23,7 +23,7 @@ const POST_ALPHABET: [char; 34] = [
 ];
 
 pub(crate) const RESERVED_COMMANDS: &[&str] = &[
-    "show", "open", "read", "unread", "feed", "sync", "git", "clone", "export",
+    "show", "open", "read", "unread", "feed", "sync", "git", "clone", "export", "config",
 ];
 
 /// Convert a hex string to a custom base using the given alphabet.

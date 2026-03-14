@@ -2708,3 +2708,82 @@ fn test_sync_fetches_posts_from_remotely_added_feed_on_first_sync() {
          but got: {posts:?}"
     );
 }
+
+#[test]
+fn test_config_set_and_get() {
+    let ctx = TestContext::new();
+    ctx.run(&["config", "set", "default_query", ".all"])
+        .success();
+    let output = ctx
+        .run(&["config", "get", "default_query"])
+        .success()
+        .stdout_str();
+    assert_eq!(output.trim(), ".all");
+}
+
+#[test]
+fn test_config_unset() {
+    let ctx = TestContext::new();
+    ctx.run(&["config", "set", "default_query", ".all"])
+        .success();
+    ctx.run(&["config", "unset", "default_query"]).success();
+    ctx.run(&["config", "get", "default_query"]).failure();
+}
+
+#[test]
+fn test_custom_default_query_shows_all() {
+    let ctx = TestContext::new();
+
+    // Create an old post that the built-in default (90d) would hide
+    let posts = r#"{"id":"1","title":"Old Post","date":"2020-01-15T00:00:00Z","feed":"Alice"}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    // Built-in default hides it
+    ctx.run(&[]).failure();
+
+    // Set a custom default query that shows all posts
+    ctx.run(&["config", "set", "default_query", ".all"])
+        .success();
+
+    // Now the default show should display the old post
+    let output = ctx.run(&[]).success().stdout_str();
+    assert!(
+        output.contains("Old Post"),
+        "custom default_query should override built-in default, got:\n{output}"
+    );
+}
+
+#[test]
+fn test_custom_default_query_groups_by_date() {
+    let ctx = TestContext::new();
+
+    let date = (chrono::Utc::now() - chrono::Duration::days(1))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let posts = format!(r#"{{"id":"1","title":"Post A","date":"{date}","feed":"Alice"}}"#);
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), &posts).unwrap();
+
+    // Built-in default groups by week (-W)
+    let output = ctx.run(&[]).success().stdout_str();
+    assert!(
+        output.contains("-W"),
+        "built-in default should group by week"
+    );
+
+    // Set custom default that groups by date instead of week
+    ctx.run(&["config", "set", "default_query", ".unread 90d.. /d"])
+        .success();
+
+    // Now show should group by date (YYYY-MM-DD header, no -W)
+    let output = ctx.run(&[]).success().stdout_str();
+    assert!(
+        !output.lines().any(|l| l.contains("-W")),
+        "custom default with /d should not group by week, got:\n{output}"
+    );
+    assert!(
+        output.contains(&date[..10]),
+        "custom default with /d should group by date, got:\n{output}"
+    );
+}
