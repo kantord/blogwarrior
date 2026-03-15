@@ -2511,101 +2511,45 @@ fn test_export_respects_filters() {
 }
 
 #[test]
-fn test_without_filters_file_shorts_are_visible() {
+fn test_without_ingest_filter_all_posts_are_visible() {
     let ctx = TestContext::new();
 
-    let watch_date = recent_rss_date(2);
-    let shorts_date = recent_rss_date(1);
+    let date1 = recent_rss_date(2);
+    let date2 = recent_rss_date(1);
     let xml = rss_xml_with_links(
-        "Video Blog",
+        "Tech News",
         &[
             (
-                "Regular Video",
-                &watch_date,
-                "guid-watch",
-                "https://www.youtube.com/watch?v=abc123",
+                "Real Article",
+                &date1,
+                "guid-1",
+                "https://example.com/article",
             ),
             (
-                "Short Video",
-                &shorts_date,
-                "guid-shorts",
-                "https://www.youtube.com/shorts/xyz987",
+                "[Sponsored] Buy Stuff",
+                &date2,
+                "guid-2",
+                "https://example.com/ad",
             ),
         ],
     );
-    ctx.mock_rss_feed("/videos.xml", &xml);
-    let url = ctx.server.url("/videos.xml");
+    ctx.mock_rss_feed("/feed.xml", &xml);
+    let url = ctx.server.url("/feed.xml");
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
     let output = ctx.run(&[]).success().stdout_str();
+    assert!(output.contains("Real Article"), "got:\n{output}");
     assert!(
-        output.contains("Regular Video"),
-        "regular video should be shown, got:\n{output}"
-    );
-    assert!(
-        output.contains("Short Video"),
-        "short should be visible without filters, got:\n{output}"
+        output.contains("[Sponsored]"),
+        "without filter, sponsored should be visible, got:\n{output}"
     );
 }
 
 #[test]
-fn test_hide_link_regex_filters_at_ingest() {
+fn test_invalid_ingest_filter_returns_error_on_sync() {
     let ctx = TestContext::new();
-
-    // Set filter BEFORE sync so items are filtered at ingest
-    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
-        .success();
-
-    let watch_date = recent_rss_date(2);
-    let shorts_date = recent_rss_date(1);
-    let xml = rss_xml_with_links(
-        "Video Blog",
-        &[
-            (
-                "Regular Video",
-                &watch_date,
-                "guid-watch",
-                "https://www.youtube.com/watch?v=abc123",
-            ),
-            (
-                "Short Video",
-                &shorts_date,
-                "guid-shorts",
-                "https://www.youtube.com/shorts/xyz987",
-            ),
-        ],
-    );
-    ctx.mock_rss_feed("/videos-all.xml", &xml);
-    let url = ctx.server.url("/videos-all.xml");
-    ctx.write_feeds(&[&url]);
-    ctx.run(&["sync"]).success();
-
-    let show_all = ctx.run(&[".all"]).success().stdout_str();
-    assert!(
-        show_all.contains("Regular Video"),
-        "regular video should be shown by .all, got:\n{show_all}"
-    );
-    assert!(
-        !show_all.contains("Short Video"),
-        "short should be filtered at ingest, got:\n{show_all}"
-    );
-
-    // Hidden items should not be stored in the DB at all
-    let posts = ctx.read_posts();
-    assert_eq!(posts.len(), 1, "only non-hidden post should be stored");
-
-    let reads = read_table(&ctx.dir.path().join("reads"));
-    assert!(
-        reads.is_empty(),
-        "hidden shorts should not create read marks, got: {reads:?}"
-    );
-}
-
-#[test]
-fn test_invalid_hide_link_regex_returns_error_on_sync() {
-    let ctx = TestContext::new();
-    ctx.run(&["config", "set", "hide_link_regex", "not json"])
+    ctx.run(&["config", "set", "ingest_filter", "[invalid jq"])
         .success();
 
     let xml = rss_xml_with_links(
@@ -2617,7 +2561,74 @@ fn test_invalid_hide_link_regex_returns_error_on_sync() {
     ctx.write_feeds(&[&url]);
 
     let err = ctx.run(&["sync"]).failure().stderr_str();
-    assert!(err.contains("hide_link_regex"), "got: {err}");
+    assert!(err.contains("jq"), "got: {err}");
+}
+
+#[test]
+fn test_ingest_filter_removes_sponsored_posts_during_sync() {
+    let ctx = TestContext::new();
+
+    // Configure a jq-based ingest filter to drop sponsored content
+    ctx.run(&[
+        "config",
+        "set",
+        "ingest_filter",
+        r#"map(select(.title | test("\\[Sponsored\\]|Partner Content") | not))"#,
+    ])
+    .success();
+
+    let post_date = recent_rss_date(3);
+    let sponsored_date = recent_rss_date(2);
+    let partner_date = recent_rss_date(1);
+    let xml = rss_xml_with_links(
+        "Tech News Daily",
+        &[
+            (
+                "Linux 7.0 Released With Exciting New Features",
+                &post_date,
+                "guid-real-1",
+                "https://technews.example.com/linux-7",
+            ),
+            (
+                "[Sponsored] Try CloudDB - The Future of Databases",
+                &sponsored_date,
+                "guid-sponsored-1",
+                "https://technews.example.com/clouddb-ad",
+            ),
+            (
+                "Partner Content: Why Every Dev Needs AI Insurance",
+                &partner_date,
+                "guid-partner-1",
+                "https://technews.example.com/ai-insurance",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/technews.xml", &xml);
+    let url = ctx.server.url("/technews.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Only the real article should be stored
+    let posts = ctx.read_posts();
+    assert_eq!(
+        posts.len(),
+        1,
+        "only non-sponsored post should be stored, got: {posts:?}"
+    );
+
+    let output = ctx.run(&[".all"]).success().stdout_str();
+    assert!(
+        output.contains("Linux 7.0"),
+        "real article should be shown, got:\n{output}"
+    );
+    assert!(
+        !output.contains("Sponsored"),
+        "sponsored post should have been filtered at ingest, got:\n{output}"
+    );
+    assert!(
+        !output.contains("Partner Content"),
+        "partner content should have been filtered at ingest, got:\n{output}"
+    );
 }
 
 /// When a feed rotates all its posts between syncs (no overlapping GUIDs),
