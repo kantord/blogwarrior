@@ -1896,9 +1896,9 @@ dependencies = [
 
 [[package]]
 name = "synctato"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdd2aa129f83695030e664b7b125a553be745fdb862084677b4039c6d3d24167"
+checksum = "f88c3a1617b843a581cc5ed84f098618a68446c941fbbe87f9096f029d31dc76"
 dependencies = [
  "anyhow",
  "chrono",
