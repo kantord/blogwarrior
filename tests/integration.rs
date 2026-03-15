@@ -92,7 +92,6 @@ impl TestContext {
             .unwrap()
             .args(args)
             .env("RSS_STORE", self.dir.path())
-            .env("XDG_CONFIG_HOME", self.dir.path())
             .assert()
     }
 
@@ -122,12 +121,6 @@ impl TestContext {
                 .body(xml);
         });
     }
-}
-
-fn write_config(config_home: &Path, contents: &str) {
-    let config_dir = config_home.join("blogtato");
-    fs::create_dir_all(&config_dir).unwrap();
-    fs::write(config_dir.join("config.toml"), contents).unwrap();
 }
 
 fn rss_xml_with_links(title: &str, items: &[(&str, &str, &str, &str)]) -> String {
@@ -2557,13 +2550,8 @@ fn test_without_filters_file_shorts_are_visible() {
 }
 
 #[test]
-fn test_filters_file_hides_matching_links_without_marking_read() {
+fn test_hide_link_regex_hides_matching_links_without_marking_read() {
     let ctx = TestContext::new();
-    write_config(
-        ctx.dir.path(),
-        r#"[filters]
-hide_link_regex = ["/shorts/"]"#,
-    );
 
     let watch_date = recent_rss_date(2);
     let shorts_date = recent_rss_date(1);
@@ -2588,6 +2576,9 @@ hide_link_regex = ["/shorts/"]"#,
     let url = ctx.server.url("/videos-all.xml");
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
+
+    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
+        .success();
 
     let show_all = ctx.run(&[".all"]).success().stdout_str();
     assert!(
@@ -2620,13 +2611,8 @@ hide_link_regex = ["/shorts/"]"#,
 }
 
 #[test]
-fn test_filters_file_blocks_targeted_commands() {
+fn test_hide_link_regex_blocks_targeted_commands() {
     let ctx = TestContext::new();
-    write_config(
-        ctx.dir.path(),
-        r#"[filters]
-hide_link_regex = ["/shorts/"]"#,
-    );
 
     let watch_date = recent_rss_date(2);
     let shorts_date = recent_rss_date(1);
@@ -2652,6 +2638,9 @@ hide_link_regex = ["/shorts/"]"#,
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
+    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
+        .success();
+
     let read_err = ctx.run(&["a", "read"]).failure().stderr_str();
     assert!(
         read_err.contains("No matching posts"),
@@ -2669,7 +2658,6 @@ hide_link_regex = ["/shorts/"]"#,
         .unwrap()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
-        .env("XDG_CONFIG_HOME", ctx.dir.path())
         .env("BROWSER", "true")
         .assert()
         .failure()
@@ -2681,12 +2669,13 @@ hide_link_regex = ["/shorts/"]"#,
 }
 
 #[test]
-fn test_invalid_filters_file_returns_error() {
+fn test_invalid_hide_link_regex_returns_error() {
     let ctx = TestContext::new();
-    write_config(ctx.dir.path(), "not = [valid");
+    ctx.run(&["config", "set", "hide_link_regex", "not json"])
+        .success();
 
     let err = ctx.run(&["show"]).failure().stderr_str();
-    assert!(err.contains("config.toml"), "got: {err}");
+    assert!(err.contains("hide_link_regex"), "got: {err}");
 }
 
 /// When a feed rotates all its posts between syncs (no overlapping GUIDs),

@@ -14,9 +14,8 @@ pub(crate) fn cmd_config_set(store: &mut BlogData, key: &str, value: &str) -> an
 }
 
 pub(crate) fn cmd_config_get(store: &BlogData, key: &str) -> anyhow::Result<()> {
-    let full_key = format!("{CONFIG_PREFIX}{key}");
-    match store.meta().items().into_iter().find(|e| e.key == full_key) {
-        Some(entry) => println!("{}", entry.value),
+    match crate::data::get_config_value(store, key) {
+        Some(value) => println!("{value}"),
         None => anyhow::bail!("No value set for '{key}'"),
     }
     Ok(())
@@ -30,14 +29,4 @@ pub(crate) fn cmd_config_unset(store: &mut BlogData, key: &str) -> anyhow::Resul
         tx.meta.delete(&full_key);
         Ok(())
     })
-}
-
-pub(crate) fn get_config_value(store: &BlogData, key: &str) -> Option<String> {
-    let full_key = format!("{CONFIG_PREFIX}{key}");
-    store
-        .meta()
-        .items()
-        .into_iter()
-        .find(|e| e.key == full_key)
-        .map(|e| e.value)
 }

@@ -177,7 +177,7 @@ fn store_dir() -> anyhow::Result<PathBuf> {
 
 fn parse_query_or_default(args: &[String], store: &data::BlogData) -> anyhow::Result<query::Query> {
     if args.is_empty() {
-        let default = commands::config::get_config_value(store, "default_query");
+        let default = data::get_config_value(store, "default_query");
         query::parse_query_str(default.as_deref().unwrap_or(query::DEFAULT_QUERY))
     } else {
         query::parse_query(args)

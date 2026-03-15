@@ -115,7 +115,7 @@ pub(crate) fn resolve_posts(store: &BlogData, query: &Query) -> anyhow::Result<R
     let fi = feed_index(store.feeds());
     let feed_labels = build_feed_labels(&fi);
     let mut posts = post_index(store.posts());
-    let hidden_link_regexes = crate::data::hidden_link_regexes()?;
+    let hidden_link_regexes = crate::data::hidden_link_regexes(store)?;
 
     posts.filter_by_shorthands(&query.shorthands)?;
     if let Some(ref shorthand) = query.filter {
