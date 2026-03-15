@@ -1265,12 +1265,14 @@ fn insert_feed(store_dir: &Path, url: &str) {
         "description": "",
         "is_fetched": false
     });
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&file_path)
-        .unwrap();
-    writeln!(file, "{}", entry).unwrap();
+    {
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file_path)
+            .unwrap();
+        writeln!(file, "{}", entry).unwrap();
+    } // file is dropped/flushed here before git add
 
     let git_check = std::process::Command::new("git")
         .args(["-C", &store_dir.to_string_lossy(), "rev-parse", "--git-dir"])
