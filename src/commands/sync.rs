@@ -88,7 +88,10 @@ pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
     pb.finish_and_clear();
 
     // Apply results inside a locked transaction
-    store.transact("pull feeds", |tx| apply_fetched(tx, results, &pb))?;
+    let hidden_link_regexes = crate::data::hidden_link_regexes(store)?;
+    store.transact("pull feeds", |tx| {
+        apply_fetched(tx, results, &pb, &hidden_link_regexes)
+    })?;
 
     // Sync again to push the freshly fetched feed data back to remote
     if needs_push {

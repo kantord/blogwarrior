@@ -132,7 +132,13 @@ mod tests {
     }
 }
 
-fn apply_feed(tx: &mut Transaction, mut source: FeedSource, meta: FeedMeta, items: Vec<FeedItem>) {
+fn apply_feed(
+    tx: &mut Transaction,
+    mut source: FeedSource,
+    meta: FeedMeta,
+    items: Vec<FeedItem>,
+    hidden_link_regexes: &[regex::Regex],
+) {
     let feed_id = tx.feeds.id_of(&source);
     let now = Utc::now();
 
@@ -146,6 +152,12 @@ fn apply_feed(tx: &mut Transaction, mut source: FeedSource, meta: FeedMeta, item
     }
 
     for mut item in items {
+        if !hidden_link_regexes.is_empty()
+            && !item.link.is_empty()
+            && hidden_link_regexes.iter().any(|r| r.is_match(&item.link))
+        {
+            continue;
+        }
         item.feed = feed_id.clone();
         tx.posts.upsert(item);
     }
@@ -162,10 +174,11 @@ pub(crate) fn apply_fetched(
     tx: &mut Transaction,
     results: Vec<FetchResult>,
     pb: &ProgressBar,
+    hidden_link_regexes: &[regex::Regex],
 ) -> anyhow::Result<()> {
     for (source, result) in results {
         match result {
-            Ok((meta, items)) => apply_feed(tx, source, meta, items),
+            Ok((meta, items)) => apply_feed(tx, source, meta, items, hidden_link_regexes),
             Err(e) => pb.suspend(|| eprintln!("Error fetching {}: {}", source.url, e)),
         }
     }

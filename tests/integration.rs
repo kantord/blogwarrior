@@ -2550,8 +2550,12 @@ fn test_without_filters_file_shorts_are_visible() {
 }
 
 #[test]
-fn test_hide_link_regex_hides_matching_links_without_marking_read() {
+fn test_hide_link_regex_filters_at_ingest() {
     let ctx = TestContext::new();
+
+    // Set filter BEFORE sync so items are filtered at ingest
+    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
+        .success();
 
     let watch_date = recent_rss_date(2);
     let shorts_date = recent_rss_date(1);
@@ -2577,9 +2581,6 @@ fn test_hide_link_regex_hides_matching_links_without_marking_read() {
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
-        .success();
-
     let show_all = ctx.run(&[".all"]).success().stdout_str();
     assert!(
         show_all.contains("Regular Video"),
@@ -2587,94 +2588,35 @@ fn test_hide_link_regex_hides_matching_links_without_marking_read() {
     );
     assert!(
         !show_all.contains("Short Video"),
-        "short should still be hidden by .all, got:\n{show_all}"
+        "short should be filtered at ingest, got:\n{show_all}"
     );
+
+    // Hidden items should not be stored in the DB at all
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1, "only non-hidden post should be stored");
 
     let reads = read_table(&ctx.dir.path().join("reads"));
     assert!(
         reads.is_empty(),
-        "hidden shorts should not be marked read, got: {reads:?}"
-    );
-
-    let posts = ctx.read_posts();
-    assert_eq!(posts.len(), 2, "both posts should still be stored");
-
-    let exported = ctx.run(&[".all", "export"]).success().stdout_str();
-    assert!(
-        exported.contains("Regular Video"),
-        "regular video should be exported, got:\n{exported}"
-    );
-    assert!(
-        !exported.contains("Short Video"),
-        "short should not be exported, got:\n{exported}"
+        "hidden shorts should not create read marks, got: {reads:?}"
     );
 }
 
 #[test]
-fn test_hide_link_regex_blocks_targeted_commands() {
-    let ctx = TestContext::new();
-
-    let watch_date = recent_rss_date(2);
-    let shorts_date = recent_rss_date(1);
-    let xml = rss_xml_with_links(
-        "Video Blog",
-        &[
-            (
-                "Regular Video",
-                &watch_date,
-                "guid-watch",
-                "https://www.youtube.com/watch?v=abc123",
-            ),
-            (
-                "Short Video",
-                &shorts_date,
-                "guid-shorts",
-                "https://www.youtube.com/shorts/xyz987",
-            ),
-        ],
-    );
-    ctx.mock_rss_feed("/videos-commands.xml", &xml);
-    let url = ctx.server.url("/videos-commands.xml");
-    ctx.write_feeds(&[&url]);
-    ctx.run(&["sync"]).success();
-
-    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
-        .success();
-
-    let read_err = ctx.run(&["a", "read"]).failure().stderr_str();
-    assert!(
-        read_err.contains("No matching posts"),
-        "hidden short should not resolve for read, got: {read_err}"
-    );
-
-    let unread_err = ctx.run(&["a", "unread"]).failure().stderr_str();
-    assert!(
-        unread_err.contains("No matching posts"),
-        "hidden short should not resolve for unread, got: {unread_err}"
-    );
-
-    #[allow(deprecated)]
-    let open_err = Command::cargo_bin("blog")
-        .unwrap()
-        .args(["a", "open"])
-        .env("RSS_STORE", ctx.dir.path())
-        .env("BROWSER", "true")
-        .assert()
-        .failure()
-        .stderr_str();
-    assert!(
-        open_err.contains("No matching posts"),
-        "hidden short should not resolve for open, got: {open_err}"
-    );
-}
-
-#[test]
-fn test_invalid_hide_link_regex_returns_error() {
+fn test_invalid_hide_link_regex_returns_error_on_sync() {
     let ctx = TestContext::new();
     ctx.run(&["config", "set", "hide_link_regex", "not json"])
         .success();
 
-    let err = ctx.run(&["show"]).failure().stderr_str();
+    let xml = rss_xml_with_links(
+        "Blog",
+        &[("Post", &recent_rss_date(1), "g1", "https://example.com")],
+    );
+    ctx.mock_rss_feed("/feed.xml", &xml);
+    let url = ctx.server.url("/feed.xml");
+    ctx.write_feeds(&[&url]);
+
+    let err = ctx.run(&["sync"]).failure().stderr_str();
     assert!(err.contains("hide_link_regex"), "got: {err}");
 }
 
