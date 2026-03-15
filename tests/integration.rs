@@ -1230,6 +1230,19 @@ fn git(dir: &Path, args: &[&str]) {
     );
 }
 
+/// Convert a filesystem path to a proper file:// URL.
+/// On Windows, backslashes are replaced with forward slashes and the path
+/// is prefixed with an extra `/` so `C:\foo` becomes `file:///C:/foo`.
+fn path_to_file_url(path: &Path) -> String {
+    let s = path.display().to_string().replace('\\', "/");
+    if s.starts_with('/') {
+        format!("file://{s}")
+    } else {
+        // Windows absolute path like C:/foo
+        format!("file:///{s}")
+    }
+}
+
 fn git_config_test_user(dir: &Path) {
     git(dir, &["config", "user.name", "Test"]);
     git(dir, &["config", "user.email", "test@test.com"]);
@@ -1277,12 +1290,7 @@ fn init_git_store(store_dir: &Path, origin_dir: &Path) {
     git_config_test_user(store_dir);
     git(
         store_dir,
-        &[
-            "remote",
-            "add",
-            "origin",
-            &format!("file://{}", origin_dir.display()),
-        ],
+        &["remote", "add", "origin", &path_to_file_url(origin_dir)],
     );
     // Make an initial commit so we have HEAD
     fs::write(store_dir.join(".keep"), "").unwrap();
@@ -1297,7 +1305,7 @@ fn clone_store(origin_dir: &Path) -> (TempDir, std::path::PathBuf) {
     let output = std::process::Command::new("git")
         .args([
             "clone",
-            &format!("file://{}", origin_dir.display()),
+            &path_to_file_url(origin_dir),
             &dir.path().to_string_lossy(),
         ])
         .output()
@@ -1372,7 +1380,7 @@ fn test_sync_first_push() {
             "remote",
             "add",
             "origin",
-            &format!("file://{}", origin_dir.path().display()),
+            &path_to_file_url(origin_dir.path()),
         ],
     );
 
@@ -1962,7 +1970,7 @@ fn test_clone_into_empty_dir() {
     // Create a temporary working repo, add data, push to origin
     let work_dir = TempDir::new().unwrap();
     std::process::Command::new("git")
-        .args(["clone", &format!("file://{}", origin_dir.path().display())])
+        .args(["clone", &path_to_file_url(origin_dir.path())])
         .arg(work_dir.path())
         .output()
         .unwrap();
@@ -1979,7 +1987,7 @@ fn test_clone_into_empty_dir() {
     #[allow(deprecated)]
     Command::cargo_bin("blog")
         .unwrap()
-        .args(["clone", &format!("file://{}", origin_dir.path().display())])
+        .args(["clone", &path_to_file_url(origin_dir.path())])
         .env("RSS_STORE", &target)
         .assert()
         .success();
@@ -2015,7 +2023,7 @@ fn test_clone_merges_with_existing_store() {
     // Clone into existing store — should add remote and merge
     run_blog(
         local_store.path(),
-        &["clone", &format!("file://{}", origin_dir.path().display())],
+        &["clone", &path_to_file_url(origin_dir.path())],
     )
     .success();
 
