@@ -1,5 +1,6 @@
 pub mod add;
 pub mod clone;
+pub mod config;
 pub mod export;
 pub mod feed_export;
 pub mod feed_ls;
