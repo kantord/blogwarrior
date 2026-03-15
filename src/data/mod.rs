@@ -1,6 +1,8 @@
 pub mod index;
 pub mod schema;
 
+use std::path::Path;
+
 use schema::{BlogDataSchema, MetaEntry};
 use synctato::Store;
 
@@ -60,5 +62,16 @@ pub(crate) fn check_schema_version(store: &mut BlogData) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Ensure the store has a `.gitattributes` that prevents line-ending conversion
+/// on JSONL data files. This avoids cross-platform dirty-worktree issues when
+/// syncing between Windows and Unix.
+pub(crate) fn ensure_gitattributes(store_path: &Path) -> anyhow::Result<()> {
+    let path = store_path.join(".gitattributes");
+    if !path.exists() {
+        std::fs::write(&path, "*.jsonl -text\n")?;
+    }
     Ok(())
 }

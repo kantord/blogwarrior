@@ -176,6 +176,7 @@ fn run() -> anyhow::Result<()> {
 
     let mut store = data::BlogData::open(&store_dir)?;
     data::check_schema_version(&mut store)?;
+    data::ensure_gitattributes(&store_dir)?;
 
     match args.command {
         // Commands that accept a query/filter
