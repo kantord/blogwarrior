@@ -69,9 +69,28 @@ pub(crate) fn check_schema_version(store: &mut BlogData) -> anyhow::Result<()> {
 /// on JSONL data files. This avoids cross-platform dirty-worktree issues when
 /// syncing between Windows and Unix.
 pub(crate) fn ensure_gitattributes(store_path: &Path) -> anyhow::Result<()> {
-    let path = store_path.join(".gitattributes");
-    if !path.exists() {
-        std::fs::write(&path, "*.jsonl -text\n")?;
+    let ga_path = store_path.join(".gitattributes");
+    if ga_path.exists() {
+        return Ok(());
+    }
+    std::fs::write(&ga_path, "*.jsonl -text\n")?;
+
+    // If the store is a git repo, commit .gitattributes so the repo stays clean.
+    let git_dir = store_path.join(".git");
+    if git_dir.exists() {
+        use std::process::Command;
+        let _ = Command::new("git")
+            .args(["add", ".gitattributes"])
+            .current_dir(store_path)
+            .output();
+        let _ = Command::new("git")
+            .args([
+                "commit",
+                "-m",
+                "add .gitattributes for cross-platform compat",
+            ])
+            .current_dir(store_path)
+            .output();
     }
     Ok(())
 }
