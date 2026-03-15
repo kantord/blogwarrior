@@ -1367,64 +1367,6 @@ fn test_sync_dirty_repo_fails() {
 }
 
 #[test]
-fn test_windows_dirty_diagnostic() {
-    let origin_dir = TempDir::new().unwrap();
-    git(origin_dir.path(), &["init", "--bare"]);
-
-    let store_dir = TempDir::new().unwrap();
-    init_git_store(store_dir.path(), origin_dir.path());
-    insert_feed(store_dir.path(), "https://example.com/diag.xml");
-
-    // Print diagnostics before running blog sync
-    let status = std::process::Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(store_dir.path())
-        .output()
-        .unwrap();
-    let diff = std::process::Command::new("git")
-        .args(["diff"])
-        .current_dir(store_dir.path())
-        .output()
-        .unwrap();
-    let config = std::process::Command::new("git")
-        .args(["config", "--list", "--local"])
-        .current_dir(store_dir.path())
-        .output()
-        .unwrap();
-    let ls = std::process::Command::new("git")
-        .args(["ls-files", "-s"])
-        .current_dir(store_dir.path())
-        .output()
-        .unwrap();
-
-    eprintln!(
-        "=== DIAGNOSTIC: git status ===\n{}",
-        String::from_utf8_lossy(&status.stdout)
-    );
-    eprintln!(
-        "=== DIAGNOSTIC: git diff ===\n{}",
-        String::from_utf8_lossy(&diff.stdout)
-    );
-    eprintln!(
-        "=== DIAGNOSTIC: git config ===\n{}",
-        String::from_utf8_lossy(&config.stdout)
-    );
-    eprintln!(
-        "=== DIAGNOSTIC: git ls-files -s ===\n{}",
-        String::from_utf8_lossy(&ls.stdout)
-    );
-
-    // Now try blog sync
-    let result = run_blog(store_dir.path(), &["sync"]);
-    let stderr = String::from_utf8(result.get_output().stderr.clone()).unwrap();
-    let stdout = String::from_utf8(result.get_output().stdout.clone()).unwrap();
-    eprintln!("=== DIAGNOSTIC: blog sync stderr ===\n{stderr}");
-    eprintln!("=== DIAGNOSTIC: blog sync stdout ===\n{stdout}");
-
-    result.success();
-}
-
-#[test]
 fn test_sync_first_push() {
     let origin_dir = TempDir::new().unwrap();
     git(origin_dir.path(), &["init", "--bare"]);
