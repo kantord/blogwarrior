@@ -1,8 +1,6 @@
 pub mod index;
 pub mod schema;
 
-use std::path::Path;
-
 use schema::{BlogDataSchema, MetaEntry};
 use synctato::Store;
 
@@ -62,59 +60,5 @@ pub(crate) fn check_schema_version(store: &mut BlogData) -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
-}
-
-/// Ensure the store has a `.gitattributes` that prevents line-ending conversion
-/// on JSONL data files. This avoids cross-platform dirty-worktree issues when
-/// syncing between Windows and Unix.
-pub(crate) fn ensure_gitattributes(store_path: &Path) -> anyhow::Result<()> {
-    let ga_path = store_path.join(".gitattributes");
-    if ga_path.exists() {
-        return Ok(());
-    }
-    std::fs::write(&ga_path, "*.jsonl -text\n")?;
-
-    // If the store is a git repo, commit .gitattributes and renormalize
-    // existing files so the working tree matches the new line-ending rules.
-    let git_dir = store_path.join(".git");
-    if git_dir.exists() {
-        use std::process::Command;
-        // Stage and commit .gitattributes
-        Command::new("git")
-            .args(["add", ".gitattributes"])
-            .current_dir(store_path)
-            .output()
-            .ok();
-        Command::new("git")
-            .args([
-                "commit",
-                "--author",
-                "blogtato <blogtato@localhost>",
-                "-m",
-                "add .gitattributes for cross-platform compat",
-            ])
-            .current_dir(store_path)
-            .output()
-            .ok();
-        // Renormalize: re-apply .gitattributes to already-tracked files
-        // so their working tree copies match the new -text rule.
-        Command::new("git")
-            .args(["add", "--renormalize", "."])
-            .current_dir(store_path)
-            .output()
-            .ok();
-        Command::new("git")
-            .args([
-                "commit",
-                "--author",
-                "blogtato <blogtato@localhost>",
-                "-m",
-                "renormalize line endings",
-            ])
-            .current_dir(store_path)
-            .output()
-            .ok();
-    }
     Ok(())
 }

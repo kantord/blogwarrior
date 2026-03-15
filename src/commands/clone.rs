@@ -34,7 +34,6 @@ pub(crate) fn cmd_clone(store_dir: &Path, url: &str) -> anyhow::Result<()> {
     let expanded = expand_url(url);
 
     if has_existing_store(store_dir) {
-        crate::data::ensure_gitattributes(store_dir)?;
         // Existing store: add remote and sync to merge unrelated histories
         let mut store = BlogData::open(store_dir)?;
         store.git_passthrough(&[

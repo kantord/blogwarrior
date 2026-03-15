@@ -174,7 +174,6 @@ fn run() -> anyhow::Result<()> {
         return commands::clone::cmd_clone(&store_dir, url);
     }
 
-    data::ensure_gitattributes(&store_dir)?;
     let mut store = data::BlogData::open(&store_dir)?;
     data::check_schema_version(&mut store)?;
 
