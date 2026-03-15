@@ -75,22 +75,46 @@ pub(crate) fn ensure_gitattributes(store_path: &Path) -> anyhow::Result<()> {
     }
     std::fs::write(&ga_path, "*.jsonl -text\n")?;
 
-    // If the store is a git repo, commit .gitattributes so the repo stays clean.
+    // If the store is a git repo, commit .gitattributes and renormalize
+    // existing files so the working tree matches the new line-ending rules.
     let git_dir = store_path.join(".git");
     if git_dir.exists() {
         use std::process::Command;
-        let _ = Command::new("git")
+        // Stage and commit .gitattributes
+        Command::new("git")
             .args(["add", ".gitattributes"])
             .current_dir(store_path)
-            .output();
-        let _ = Command::new("git")
+            .output()
+            .ok();
+        Command::new("git")
             .args([
                 "commit",
+                "--author",
+                "blogtato <blogtato@localhost>",
                 "-m",
                 "add .gitattributes for cross-platform compat",
             ])
             .current_dir(store_path)
-            .output();
+            .output()
+            .ok();
+        // Renormalize: re-apply .gitattributes to already-tracked files
+        // so their working tree copies match the new -text rule.
+        Command::new("git")
+            .args(["add", "--renormalize", "."])
+            .current_dir(store_path)
+            .output()
+            .ok();
+        Command::new("git")
+            .args([
+                "commit",
+                "--author",
+                "blogtato <blogtato@localhost>",
+                "-m",
+                "renormalize line endings",
+            ])
+            .current_dir(store_path)
+            .output()
+            .ok();
     }
     Ok(())
 }

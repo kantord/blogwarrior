@@ -1233,7 +1233,6 @@ fn git(dir: &Path, args: &[&str]) {
 fn git_config_test_user(dir: &Path) {
     git(dir, &["config", "user.name", "Test"]);
     git(dir, &["config", "user.email", "test@test.com"]);
-    git(dir, &["config", "core.autocrlf", "false"]);
 }
 
 /// Write a feed URL directly to the store, bypassing the CLI.
