@@ -180,7 +180,7 @@ of post objects and must return an array.
 blog config set ingest_filter 'map(select(.title | test("\\[Sponsored\\]|Partner Content") | not))'
 
 # Strip tracking parameters from links
-blog config set ingest_filter 'map(.link |= split("?utm") | first)'
+blog config set ingest_filter 'map(.link |= (split("?utm") | first))'
 
 # Remove the filter
 blog config unset ingest_filter

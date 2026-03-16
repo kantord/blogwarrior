@@ -158,6 +158,10 @@ fn apply_feed(tx: &mut Transaction, mut source: FeedSource, meta: FeedMeta, item
 }
 
 /// Apply fetched feed results to the store.
+///
+/// If `ingest_filter` is set and jq fails, the entire sync is aborted rather
+/// than skipping the feed. This is intentional: a broken filter would silently
+/// drop all posts from every feed if we continued.
 pub(crate) fn apply_fetched(
     tx: &mut Transaction,
     results: Vec<FetchResult>,

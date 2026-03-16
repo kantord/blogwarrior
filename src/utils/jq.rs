@@ -49,7 +49,11 @@ pub(crate) fn map_through_jq<T: Serialize + DeserializeOwned>(
 
     serde_json::from_str(&stdout).map_err(|e| {
         let preview = if stdout.len() > 200 {
-            format!("{}...", &stdout[..200])
+            let mut boundary = 200;
+            while !stdout.is_char_boundary(boundary) {
+                boundary -= 1;
+            }
+            format!("{}...", &stdout[..boundary])
         } else {
             stdout.trim().to_string()
         };
