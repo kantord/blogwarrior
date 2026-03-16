@@ -219,8 +219,24 @@ blog config unset ingest_filter
 
 Each post object has these fields: `title`, `date`, `link`, `raw_id`, `feed`.
 
-Requires `jq` to be installed. When no `ingest_filter` is set, all posts are
-stored as-is.
+Note: `blogtato` does not have a built-in scripting language. It calls
+[jq](https://jqlang.github.io/jq/) as an external process. `jq` was chosen over
+arbitrary shell scripting because feed data is structured JSON, which is
+difficult to manipulate correctly with most other shell tools, so users would
+otherwise just create shell script files that are a boilerplate wrapper over
+jq.
+
+Also, calling an arbitrary binary/script file would be a runtime dependency
+that does not automatically sync to other machines, so one could easily create
+runtime errors or inconsistent workflows.
+
+Storing a jq expression in the synced database means it automatically carries
+over to all your devices. `jq` is the standard tool for this purpose that most
+CLI users already have installed and are familiar with.
+
+It is not bundled with `blogtato` — it is an optional runtime dependency, only
+needed if you configure an `ingest_filter`. When no filter is set, all posts
+are stored as-is.
 
 ## Naming
 
