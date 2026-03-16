@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use assert_cmd::Command;
 use assert_cmd::assert::Assert;
 use httpmock::prelude::*;
+use rstest::rstest;
 use tempfile::TempDir;
 
 /// Return an RFC 2822 date string `days_ago` days before now.
@@ -2511,101 +2512,9 @@ fn test_export_respects_filters() {
 }
 
 #[test]
-fn test_without_filters_file_shorts_are_visible() {
+fn test_invalid_ingest_filter_returns_error_on_sync() {
     let ctx = TestContext::new();
-
-    let watch_date = recent_rss_date(2);
-    let shorts_date = recent_rss_date(1);
-    let xml = rss_xml_with_links(
-        "Video Blog",
-        &[
-            (
-                "Regular Video",
-                &watch_date,
-                "guid-watch",
-                "https://www.youtube.com/watch?v=abc123",
-            ),
-            (
-                "Short Video",
-                &shorts_date,
-                "guid-shorts",
-                "https://www.youtube.com/shorts/xyz987",
-            ),
-        ],
-    );
-    ctx.mock_rss_feed("/videos.xml", &xml);
-    let url = ctx.server.url("/videos.xml");
-    ctx.write_feeds(&[&url]);
-    ctx.run(&["sync"]).success();
-
-    let output = ctx.run(&[]).success().stdout_str();
-    assert!(
-        output.contains("Regular Video"),
-        "regular video should be shown, got:\n{output}"
-    );
-    assert!(
-        output.contains("Short Video"),
-        "short should be visible without filters, got:\n{output}"
-    );
-}
-
-#[test]
-fn test_hide_link_regex_filters_at_ingest() {
-    let ctx = TestContext::new();
-
-    // Set filter BEFORE sync so items are filtered at ingest
-    ctx.run(&["config", "set", "hide_link_regex", r#"["/shorts/"]"#])
-        .success();
-
-    let watch_date = recent_rss_date(2);
-    let shorts_date = recent_rss_date(1);
-    let xml = rss_xml_with_links(
-        "Video Blog",
-        &[
-            (
-                "Regular Video",
-                &watch_date,
-                "guid-watch",
-                "https://www.youtube.com/watch?v=abc123",
-            ),
-            (
-                "Short Video",
-                &shorts_date,
-                "guid-shorts",
-                "https://www.youtube.com/shorts/xyz987",
-            ),
-        ],
-    );
-    ctx.mock_rss_feed("/videos-all.xml", &xml);
-    let url = ctx.server.url("/videos-all.xml");
-    ctx.write_feeds(&[&url]);
-    ctx.run(&["sync"]).success();
-
-    let show_all = ctx.run(&[".all"]).success().stdout_str();
-    assert!(
-        show_all.contains("Regular Video"),
-        "regular video should be shown by .all, got:\n{show_all}"
-    );
-    assert!(
-        !show_all.contains("Short Video"),
-        "short should be filtered at ingest, got:\n{show_all}"
-    );
-
-    // Hidden items should not be stored in the DB at all
-    let posts = ctx.read_posts();
-    assert_eq!(posts.len(), 1, "only non-hidden post should be stored");
-
-    let reads = read_table(&ctx.dir.path().join("reads"));
-    assert!(
-        reads.is_empty(),
-        "hidden shorts should not create read marks, got: {reads:?}"
-    );
-}
-
-#[test]
-fn test_invalid_hide_link_regex_returns_error_on_sync() {
-    let ctx = TestContext::new();
-    ctx.run(&["config", "set", "hide_link_regex", "not json"])
+    ctx.run(&["config", "set", "ingest_filter", "[invalid jq"])
         .success();
 
     let xml = rss_xml_with_links(
@@ -2617,7 +2526,101 @@ fn test_invalid_hide_link_regex_returns_error_on_sync() {
     ctx.write_feeds(&[&url]);
 
     let err = ctx.run(&["sync"]).failure().stderr_str();
-    assert!(err.contains("hide_link_regex"), "got: {err}");
+    assert!(err.contains("jq"), "got: {err}");
+}
+
+/// Parametric test covering all ingest_filter examples from the README.
+/// Each case uses the same feed fixture with a real post, a sponsored post,
+/// a partner content post, and tracking parameters on all links.
+#[rstest]
+#[case::filter_sponsored(
+    r#"[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not)]"#,
+    &["Linux 7.0"],
+    &["Sponsored", "Partner Content"],
+    &["utm"],
+)]
+#[case::strip_utm(
+    r#"[.[] | .link |= sub("\\?utm.*"; "")]"#,
+    &["Linux 7.0", "Sponsored", "Partner Content"],
+    &["utm"],
+    &[],
+)]
+#[case::combined(
+    r#"[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not) | .link |= sub("\\?utm.*"; "")]"#,
+    &["Linux 7.0"],
+    &["Sponsored", "Partner Content", "utm"],
+    &[],
+)]
+fn test_ingest_filter_readme_examples(
+    #[case] filter: &str,
+    #[case] expect_visible: &[&str],
+    #[case] expect_hidden: &[&str],
+    #[case] expect_in_export: &[&str],
+) {
+    let ctx = TestContext::new();
+
+    ctx.run(&["config", "set", "ingest_filter", filter])
+        .success();
+
+    let post_date = recent_rss_date(3);
+    let sponsored_date = recent_rss_date(2);
+    let partner_date = recent_rss_date(1);
+    let xml = rss_xml_with_links(
+        "Tech News Daily",
+        &[
+            (
+                "Linux 7.0 Released With Exciting New Features",
+                &post_date,
+                "guid-real-1",
+                "https://technews.example.com/linux-7?utm_source=rss",
+            ),
+            (
+                "[Sponsored] Try CloudDB - The Future of Databases",
+                &sponsored_date,
+                "guid-sponsored-1",
+                "https://technews.example.com/clouddb-ad?utm_source=rss",
+            ),
+            (
+                "Partner Content: Why Every Dev Needs AI Insurance",
+                &partner_date,
+                "guid-partner-1",
+                "https://technews.example.com/ai-insurance?utm_source=rss",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/technews.xml", &xml);
+    let url = ctx.server.url("/technews.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    let output = ctx.run(&[".all"]).success().stdout_str();
+    for s in expect_visible {
+        assert!(
+            output.contains(s),
+            "expected '{s}' visible, filter={filter}, got:\n{output}"
+        );
+    }
+    for s in expect_hidden {
+        assert!(
+            !output.contains(s),
+            "expected '{s}' hidden, filter={filter}, got:\n{output}"
+        );
+    }
+
+    let exported = ctx.run(&[".all", "export"]).success().stdout_str();
+    for s in expect_in_export {
+        assert!(
+            exported.contains(s),
+            "expected '{s}' in export, filter={filter}, got:\n{exported}"
+        );
+    }
+    // everything in expect_hidden should also be absent from export
+    for s in expect_hidden {
+        assert!(
+            !exported.contains(s),
+            "expected '{s}' not in export, filter={filter}, got:\n{exported}"
+        );
+    }
 }
 
 /// When a feed rotates all its posts between syncs (no overlapping GUIDs),

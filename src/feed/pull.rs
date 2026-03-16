@@ -132,13 +132,7 @@ mod tests {
     }
 }
 
-fn apply_feed(
-    tx: &mut Transaction,
-    mut source: FeedSource,
-    meta: FeedMeta,
-    items: Vec<FeedItem>,
-    hidden_link_regexes: &[regex::Regex],
-) {
+fn apply_feed(tx: &mut Transaction, mut source: FeedSource, meta: FeedMeta, items: Vec<FeedItem>) {
     let feed_id = tx.feeds.id_of(&source);
     let now = Utc::now();
 
@@ -152,12 +146,6 @@ fn apply_feed(
     }
 
     for mut item in items {
-        if !hidden_link_regexes.is_empty()
-            && !item.link.is_empty()
-            && hidden_link_regexes.iter().any(|r| r.is_match(&item.link))
-        {
-            continue;
-        }
         item.feed = feed_id.clone();
         tx.posts.upsert(item);
     }
@@ -170,15 +158,22 @@ fn apply_feed(
 }
 
 /// Apply fetched feed results to the store.
+///
+/// If `ingest_filter` is set and jq fails, the entire sync is aborted rather
+/// than skipping the feed. This is intentional: a broken filter would silently
+/// drop all posts from every feed if we continued.
 pub(crate) fn apply_fetched(
     tx: &mut Transaction,
     results: Vec<FetchResult>,
     pb: &ProgressBar,
-    hidden_link_regexes: &[regex::Regex],
+    ingest_filter: Option<&str>,
 ) -> anyhow::Result<()> {
     for (source, result) in results {
         match result {
-            Ok((meta, items)) => apply_feed(tx, source, meta, items, hidden_link_regexes),
+            Ok((meta, items)) => {
+                let items = crate::utils::jq::map_through_jq(items, ingest_filter)?;
+                apply_feed(tx, source, meta, items);
+            }
             Err(e) => pb.suspend(|| eprintln!("Error fetching {}: {}", source.url, e)),
         }
     }

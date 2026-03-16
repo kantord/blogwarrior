@@ -174,6 +174,74 @@ It is my goal to keep the feature-set and the complexity of this project down,
 so that it can be maintained with minimal effort and can be considered to be
 "done".
 
+## Optional configuration
+
+**`blogtato` is designed to work out of the box without any configuration.**
+Most users should never need to change any settings. Nevertheless, a few things
+can be configured, when the nature of the synchronized database calls for
+measures to protect data consistency, or in other cases where taking advantage
+of the synced database for storing the configuration would be convenient.
+
+Configuration is stored in the same git-based database as your feeds and posts,
+so settings automatically sync across all your devices.
+
+### Custom default query
+
+By default, `blog` with no arguments shows unread posts from the last 3 months
+grouped by week. You can change this:
+
+```bash
+# Show posts from the past 3 months grouped by date instead
+blog config set default_query '.all /d 3m..'
+
+# Show unread posts from the last week
+blog config set default_query '.unread 1w..'
+
+# Reset to built-in default
+blog config unset default_query
+```
+
+### Ingest filter
+
+You can configure a [jq](https://jqlang.github.io/jq/) expression that
+transforms posts during `blog sync`, before they are stored. This lets you
+filter out unwanted content or rewrite fields. The expression receives an array
+of post objects and must return an array.
+
+`blogtato` calls [jq](https://jqlang.github.io/jq/) as an external process. It
+is not bundled with `blogtato`
+
+- it is an optional runtime dependency, only needed if you configure an
+  `ingest_filter`. When no filter is set, all posts are stored as-is.
+
+`jq` was chosen over arbitrary shell scripting because feed data is structured
+JSON, which is difficult to manipulate correctly with most other shell tools,
+so users would otherwise just create shell script files that are a boilerplate
+wrapper over `jq`. `jq` is the standard tool for this purpose that most CLI
+users already have installed and are familiar with.
+
+Also, calling an arbitrary binary/script file would be a runtime dependency
+that does not automatically sync to other machines, so one could easily create
+runtime errors or load inconsistent data in the database. Storing a `jq`
+expression in the synced database means it automatically carries over to all
+your devices.
+
+```bash
+# Filter out sponsored posts
+blog config set ingest_filter '[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not)]'
+
+# Strip tracking parameters from links
+blog config set ingest_filter '[.[] | .link |= sub("\\?utm.*"; "")]'
+
+# Combine both: filter sponsored posts and strip tracking parameters
+blog config set ingest_filter '[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not) | .link |= sub("\\?utm.*"; "")]'
+
+# Remove the filter
+blog config unset ingest_filter
+```
+
+Each post object has these fields: `title`, `date`, `link`, `raw_id`, `feed`.
+
 ## Naming
 
 The naming is meant to symbolize simplicity and pragmatic silliness: I just
