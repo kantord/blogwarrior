@@ -179,23 +179,11 @@ so that it can be maintained with minimal effort and can be considered to be
 **`blogtato` is designed to work out of the box without any configuration.**
 Most users should never need to change any settings. Nevertheless, a few things
 can be configured, when the nature of the synchronized database calls for
-measures to protect data consistency. Configuration is stored in the same
-git-based database as your feeds and posts, so settings automatically sync
-across all your devices.
+measures to protect data consistency, or in other cases where taking advantage
+of the synced database for storing the configuration would be convenient.
 
-`blogtato` does not have a built-in scripting language. It calls
-[jq](https://jqlang.github.io/jq/) as an external process. `jq` was chosen over
-arbitrary shell scripting because feed data is structured JSON, which is
-difficult to manipulate correctly with most other shell tools, so users would
-otherwise just create shell script files that are a boilerplate wrapper over
-`jq`. Also, calling an arbitrary binary/script file would be a runtime
-dependency that does not automatically sync to other machines, so one could
-easily create runtime errors or inconsistent workflows. Storing a `jq`
-expression in the synced database means it automatically carries over to all
-your devices. `jq` is the standard tool for this purpose that most CLI users
-already have installed and are familiar with. It is not bundled with `blogtato`
-— it is an optional runtime dependency, only needed if you configure an
-`ingest_filter`. When no filter is set, all posts are stored as-is.
+Configuration is stored in the same git-based database as your feeds and posts,
+so settings automatically sync across all your devices.
 
 ### Custom default query
 
@@ -203,8 +191,8 @@ By default, `blog` with no arguments shows unread posts from the last 3 months
 grouped by week. You can change this:
 
 ```bash
-# Show all posts grouped by date instead
-blog config set default_query '.all /d'
+# Show posts from the past 3 months grouped by date instead
+blog config set default_query '.all /d 3m..'
 
 # Show unread posts from the last week
 blog config set default_query '.unread 1w..'
@@ -219,6 +207,26 @@ You can configure a [jq](https://jqlang.github.io/jq/) expression that
 transforms posts during `blog sync`, before they are stored. This lets you
 filter out unwanted content or rewrite fields. The expression receives an array
 of post objects and must return an array.
+
+`blogtato` calls [jq](https://jqlang.github.io/jq/) as an external process. It
+is not bundled with `blogtato`
+
+- it is an optional runtime dependency, only needed if you configure an
+  `ingest_filter`. When no filter is set, all posts are stored as-is.
+
+`jq` was chosen over arbitrary shell scripting because feed data is structured
+JSON, which is difficult to manipulate correctly with most other shell tools,
+so users would otherwise just create shell script files that are a boilerplate
+wrapper over `jq`. `jq` is the standard tool for this purpose that most CLI
+users
+
+Also, calling an arbitrary binary/script file would be a runtime dependency
+that does not automatically sync to other machines, so one could easily create
+runtime errors or load inconsistent data in the database. Storing a `jq`
+expression in the synced database means it automatically carries over to all
+your devices.
+
+already have installed and are familiar with.
 
 ```bash
 # Filter out sponsored posts
