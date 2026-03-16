@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/kantord/blogtato/compare/v0.1.18...v0.1.19) - 2026-03-16
+
+### Added
+
+- allow configuring default query ([#111](https://github.com/kantord/blogtato/pull/111))
+- allow ingest filtering
+
+### Fixed
+
+- *(deps)* update rust crate synctato to v0.1.11 ([#132](https://github.com/kantord/blogtato/pull/132))
+- *(deps)* update rust crate synctato to v0.1.10 ([#130](https://github.com/kantord/blogtato/pull/130))
+- *(deps)* pin rust crate url-normalize to =0.1.1 ([#128](https://github.com/kantord/blogtato/pull/128))
+- normalize feed urls ([#127](https://github.com/kantord/blogtato/pull/127))
+- correctly validate date ranges ([#126](https://github.com/kantord/blogtato/pull/126))
+- do not leave dangling read marks ([#125](https://github.com/kantord/blogtato/pull/125))
+- sanitize control characters from input strings ([#124](https://github.com/kantord/blogtato/pull/124))
+- prevent panic in feed discovery on non-ASCII HTML ([#123](https://github.com/kantord/blogtato/pull/123))
+- allow stable feed shorthand matching ([#121](https://github.com/kantord/blogtato/pull/121))
+
+### Other
+
+- add jq based ingest filtering ([#138](https://github.com/kantord/blogtato/pull/138))
+- move content filtering to ingest layer ([#137](https://github.com/kantord/blogtato/pull/137))
+- unifiy config system ([#136](https://github.com/kantord/blogtato/pull/136))
+- enable testing on windows ([#133](https://github.com/kantord/blogtato/pull/133))
+
 ## [0.1.18](https://github.com/kantord/blogtato/compare/v0.1.17...v0.1.18) - 2026-03-14
 
 ### Fixed
