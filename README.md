@@ -147,50 +147,6 @@ blog feed rm https://news.ycombinator.com/rss
 blog feed rm @hn
 ```
 
-## Configuration
-
-Configuration is stored in the synced database, so settings automatically carry
-over to all your devices.
-
-### Custom default query
-
-By default, `blog` with no arguments shows unread posts from the last 3 months
-grouped by week. You can change this:
-
-```bash
-# Show all posts grouped by date instead
-blog config set default_query '.all /d'
-
-# Show unread posts from the last week
-blog config set default_query '.unread 1w..'
-
-# Reset to built-in default
-blog config unset default_query
-```
-
-### Ingest filter
-
-You can configure a [jq](https://jqlang.github.io/jq/) expression that
-transforms posts during `blog sync`, before they are stored. This lets you
-filter out unwanted content or rewrite fields. The expression receives an array
-of post objects and must return an array.
-
-```bash
-# Filter out sponsored posts
-blog config set ingest_filter 'map(select(.title | test("\\[Sponsored\\]|Partner Content") | not))'
-
-# Strip tracking parameters from links
-blog config set ingest_filter 'map(.link |= (split("?utm") | first))'
-
-# Remove the filter
-blog config unset ingest_filter
-```
-
-Each post object has these fields: `title`, `date`, `link`, `raw_id`, `feed`.
-
-Requires `jq` to be installed. When no `ingest_filter` is set, all posts are
-stored as-is.
-
 ## Design philosophy
 
 I built `blogtato` around the idea of subscription detox and simplicity. I just
@@ -217,6 +173,54 @@ network access work offline.
 It is my goal to keep the feature-set and the complexity of this project down,
 so that it can be maintained with minimal effort and can be considered to be
 "done".
+
+See also: [Optional configuration](#optional-configuration).
+
+### Optional configuration
+
+**`blogtato` is designed to work out of the box without any configuration.**
+Most users should never need to change any settings. Nevertheless, a few things
+can be configured. Configuration is stored in the same git-based database as
+your feeds and posts, so settings automatically sync across all your devices.
+
+#### Custom default query
+
+By default, `blog` with no arguments shows unread posts from the last 3 months
+grouped by week. You can change this:
+
+```bash
+# Show all posts grouped by date instead
+blog config set default_query '.all /d'
+
+# Show unread posts from the last week
+blog config set default_query '.unread 1w..'
+
+# Reset to built-in default
+blog config unset default_query
+```
+
+#### Ingest filter
+
+You can configure a [jq](https://jqlang.github.io/jq/) expression that
+transforms posts during `blog sync`, before they are stored. This lets you
+filter out unwanted content or rewrite fields. The expression receives an array
+of post objects and must return an array.
+
+```bash
+# Filter out sponsored posts
+blog config set ingest_filter 'map(select(.title | test("\\[Sponsored\\]|Partner Content") | not))'
+
+# Strip tracking parameters from links
+blog config set ingest_filter 'map(.link |= (split("?utm") | first))'
+
+# Remove the filter
+blog config unset ingest_filter
+```
+
+Each post object has these fields: `title`, `date`, `link`, `raw_id`, `feed`.
+
+Requires `jq` to be installed. When no `ingest_filter` is set, all posts are
+stored as-is.
 
 ## Naming
 
