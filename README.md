@@ -228,10 +228,13 @@ your devices.
 
 ```bash
 # Filter out sponsored posts
-blog config set ingest_filter 'map(select(.title | test("\\[Sponsored\\]|Partner Content") | not))'
+blog config set ingest_filter '[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not)]'
 
 # Strip tracking parameters from links
-blog config set ingest_filter 'map(.link |= (split("?utm") | first))'
+blog config set ingest_filter '[.[] | .link |= sub("\\?utm.*"; "")]'
+
+# Combine both: filter sponsored posts and strip tracking parameters
+blog config set ingest_filter '[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not) | .link |= sub("\\?utm.*"; "")]'
 
 # Remove the filter
 blog config unset ingest_filter

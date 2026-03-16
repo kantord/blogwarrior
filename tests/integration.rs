@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use assert_cmd::Command;
 use assert_cmd::assert::Assert;
 use httpmock::prelude::*;
+use rstest::rstest;
 use tempfile::TempDir;
 
 /// Return an RFC 2822 date string `days_ago` days before now.
@@ -2564,18 +2565,46 @@ fn test_invalid_ingest_filter_returns_error_on_sync() {
     assert!(err.contains("jq"), "got: {err}");
 }
 
-#[test]
-fn test_ingest_filter_removes_sponsored_posts_during_sync() {
+/// Parametric test covering all ingest_filter examples from the README.
+/// Each case uses the same feed fixture with a real post, a sponsored post,
+/// a partner content post, and tracking parameters on all links.
+#[rstest]
+#[case::filter_sponsored(
+    r#"[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not)]"#,
+    1,
+    true,
+    false,
+    false,
+    true, // links unchanged
+)]
+#[case::strip_utm(
+    r#"[.[] | .link |= sub("\\?utm.*"; "")]"#,
+    3,
+    true,
+    true,
+    true,
+    false, // links stripped
+)]
+#[case::combined(
+    r#"[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not) | .link |= sub("\\?utm.*"; "")]"#,
+    1,
+    true,
+    false,
+    false,
+    false, // links stripped
+)]
+fn test_ingest_filter_readme_examples(
+    #[case] filter: &str,
+    #[case] expected_count: usize,
+    #[case] has_real: bool,
+    #[case] has_sponsored: bool,
+    #[case] has_partner: bool,
+    #[case] links_have_utm: bool,
+) {
     let ctx = TestContext::new();
 
-    // Configure a jq-based ingest filter to drop sponsored content
-    ctx.run(&[
-        "config",
-        "set",
-        "ingest_filter",
-        r#"map(select(.title | test("\\[Sponsored\\]|Partner Content") | not))"#,
-    ])
-    .success();
+    ctx.run(&["config", "set", "ingest_filter", filter])
+        .success();
 
     let post_date = recent_rss_date(3);
     let sponsored_date = recent_rss_date(2);
@@ -2587,19 +2616,19 @@ fn test_ingest_filter_removes_sponsored_posts_during_sync() {
                 "Linux 7.0 Released With Exciting New Features",
                 &post_date,
                 "guid-real-1",
-                "https://technews.example.com/linux-7",
+                "https://technews.example.com/linux-7?utm_source=rss",
             ),
             (
                 "[Sponsored] Try CloudDB - The Future of Databases",
                 &sponsored_date,
                 "guid-sponsored-1",
-                "https://technews.example.com/clouddb-ad",
+                "https://technews.example.com/clouddb-ad?utm_source=rss",
             ),
             (
                 "Partner Content: Why Every Dev Needs AI Insurance",
                 &partner_date,
                 "guid-partner-1",
-                "https://technews.example.com/ai-insurance",
+                "https://technews.example.com/ai-insurance?utm_source=rss",
             ),
         ],
     );
@@ -2608,26 +2637,35 @@ fn test_ingest_filter_removes_sponsored_posts_during_sync() {
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    // Only the real article should be stored
     let posts = ctx.read_posts();
     assert_eq!(
         posts.len(),
-        1,
-        "only non-sponsored post should be stored, got: {posts:?}"
+        expected_count,
+        "filter={filter}, got: {posts:?}"
     );
 
     let output = ctx.run(&[".all"]).success().stdout_str();
-    assert!(
+    assert_eq!(
         output.contains("Linux 7.0"),
-        "real article should be shown, got:\n{output}"
+        has_real,
+        "real article, filter={filter}, got:\n{output}"
     );
-    assert!(
-        !output.contains("Sponsored"),
-        "sponsored post should have been filtered at ingest, got:\n{output}"
+    assert_eq!(
+        output.contains("Sponsored"),
+        has_sponsored,
+        "sponsored, filter={filter}, got:\n{output}"
     );
-    assert!(
-        !output.contains("Partner Content"),
-        "partner content should have been filtered at ingest, got:\n{output}"
+    assert_eq!(
+        output.contains("Partner Content"),
+        has_partner,
+        "partner, filter={filter}, got:\n{output}"
+    );
+
+    let exported = ctx.run(&[".all", "export"]).success().stdout_str();
+    assert_eq!(
+        exported.contains("utm"),
+        links_have_utm,
+        "utm in links, filter={filter}, got:\n{exported}"
     );
 }
 

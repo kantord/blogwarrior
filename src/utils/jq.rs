@@ -32,12 +32,20 @@ pub(crate) fn map_through_jq<T: Serialize + DeserializeOwned>(
             }
         })?;
 
-    std::io::Write::write_all(
+    // Write to stdin and drop it to close the pipe. Ignore broken pipe errors
+    // (jq may exit early on syntax errors before reading all input).
+    let write_result = std::io::Write::write_all(
         &mut child.stdin.take().expect("stdin was piped"),
         input_json.as_bytes(),
-    )?;
+    );
 
     let output = child.wait_with_output()?;
+
+    // If jq exited successfully, propagate any write error. If jq failed,
+    // prefer its stderr message over a broken pipe error.
+    if output.status.success() {
+        write_result?;
+    }
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
