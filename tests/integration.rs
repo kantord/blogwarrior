@@ -2571,35 +2571,27 @@ fn test_invalid_ingest_filter_returns_error_on_sync() {
 #[rstest]
 #[case::filter_sponsored(
     r#"[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not)]"#,
-    1,
-    true,
-    false,
-    false,
-    true, // links unchanged
+    &["Linux 7.0"],
+    &["Sponsored", "Partner Content"],
+    &["utm"],
 )]
 #[case::strip_utm(
     r#"[.[] | .link |= sub("\\?utm.*"; "")]"#,
-    3,
-    true,
-    true,
-    true,
-    false, // links stripped
+    &["Linux 7.0", "Sponsored", "Partner Content"],
+    &["utm"],
+    &[],
 )]
 #[case::combined(
     r#"[.[] | select(.title | startswith("[Sponsored]") or contains("Partner Content") | not) | .link |= sub("\\?utm.*"; "")]"#,
-    1,
-    true,
-    false,
-    false,
-    false, // links stripped
+    &["Linux 7.0"],
+    &["Sponsored", "Partner Content", "utm"],
+    &[],
 )]
 fn test_ingest_filter_readme_examples(
     #[case] filter: &str,
-    #[case] expected_count: usize,
-    #[case] has_real: bool,
-    #[case] has_sponsored: bool,
-    #[case] has_partner: bool,
-    #[case] links_have_utm: bool,
+    #[case] expect_visible: &[&str],
+    #[case] expect_hidden: &[&str],
+    #[case] expect_in_export: &[&str],
 ) {
     let ctx = TestContext::new();
 
@@ -2637,36 +2629,34 @@ fn test_ingest_filter_readme_examples(
     ctx.write_feeds(&[&url]);
     ctx.run(&["sync"]).success();
 
-    let posts = ctx.read_posts();
-    assert_eq!(
-        posts.len(),
-        expected_count,
-        "filter={filter}, got: {posts:?}"
-    );
-
     let output = ctx.run(&[".all"]).success().stdout_str();
-    assert_eq!(
-        output.contains("Linux 7.0"),
-        has_real,
-        "real article, filter={filter}, got:\n{output}"
-    );
-    assert_eq!(
-        output.contains("Sponsored"),
-        has_sponsored,
-        "sponsored, filter={filter}, got:\n{output}"
-    );
-    assert_eq!(
-        output.contains("Partner Content"),
-        has_partner,
-        "partner, filter={filter}, got:\n{output}"
-    );
+    for s in expect_visible {
+        assert!(
+            output.contains(s),
+            "expected '{s}' visible, filter={filter}, got:\n{output}"
+        );
+    }
+    for s in expect_hidden {
+        assert!(
+            !output.contains(s),
+            "expected '{s}' hidden, filter={filter}, got:\n{output}"
+        );
+    }
 
     let exported = ctx.run(&[".all", "export"]).success().stdout_str();
-    assert_eq!(
-        exported.contains("utm"),
-        links_have_utm,
-        "utm in links, filter={filter}, got:\n{exported}"
-    );
+    for s in expect_in_export {
+        assert!(
+            exported.contains(s),
+            "expected '{s}' in export, filter={filter}, got:\n{exported}"
+        );
+    }
+    // everything in expect_hidden should also be absent from export
+    for s in expect_hidden {
+        assert!(
+            !exported.contains(s),
+            "expected '{s}' not in export, filter={filter}, got:\n{exported}"
+        );
+    }
 }
 
 /// When a feed rotates all its posts between syncs (no overlapping GUIDs),
