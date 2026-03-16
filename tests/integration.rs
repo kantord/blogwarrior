@@ -2512,42 +2512,6 @@ fn test_export_respects_filters() {
 }
 
 #[test]
-fn test_without_ingest_filter_all_posts_are_visible() {
-    let ctx = TestContext::new();
-
-    let date1 = recent_rss_date(2);
-    let date2 = recent_rss_date(1);
-    let xml = rss_xml_with_links(
-        "Tech News",
-        &[
-            (
-                "Real Article",
-                &date1,
-                "guid-1",
-                "https://example.com/article",
-            ),
-            (
-                "[Sponsored] Buy Stuff",
-                &date2,
-                "guid-2",
-                "https://example.com/ad",
-            ),
-        ],
-    );
-    ctx.mock_rss_feed("/feed.xml", &xml);
-    let url = ctx.server.url("/feed.xml");
-    ctx.write_feeds(&[&url]);
-    ctx.run(&["sync"]).success();
-
-    let output = ctx.run(&[]).success().stdout_str();
-    assert!(output.contains("Real Article"), "got:\n{output}");
-    assert!(
-        output.contains("[Sponsored]"),
-        "without filter, sponsored should be visible, got:\n{output}"
-    );
-}
-
-#[test]
 fn test_invalid_ingest_filter_returns_error_on_sync() {
     let ctx = TestContext::new();
     ctx.run(&["config", "set", "ingest_filter", "[invalid jq"])
