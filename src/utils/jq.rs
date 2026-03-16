@@ -110,17 +110,17 @@ mod tests {
 
     // --- Filtering items ---
     #[rstest]
-    #[case::filter_by_link(
+    #[case::some_items_match(
         &[("Video", "https://youtube.com/watch?v=1"), ("Short", "https://youtube.com/shorts/1")],
         r#"map(select(.link | test("/shorts/") | not))"#,
         &[("Video", "https://youtube.com/watch?v=1")]
     )]
-    #[case::filter_all(
+    #[case::all_items_match(
         &[("Short A", "https://youtube.com/shorts/1"), ("Short B", "https://youtube.com/shorts/2")],
         r#"map(select(.link | test("/shorts/") | not))"#,
         &[]
     )]
-    #[case::filter_none(
+    #[case::no_items_match(
         &[("Video A", "https://a.com"), ("Video B", "https://b.com")],
         r#"map(select(.link | test("/shorts/") | not))"#,
         &[("Video A", "https://a.com"), ("Video B", "https://b.com")]
