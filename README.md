@@ -218,15 +218,13 @@ is not bundled with `blogtato`
 JSON, which is difficult to manipulate correctly with most other shell tools,
 so users would otherwise just create shell script files that are a boilerplate
 wrapper over `jq`. `jq` is the standard tool for this purpose that most CLI
-users
+users already have installed and are familiar with.
 
 Also, calling an arbitrary binary/script file would be a runtime dependency
 that does not automatically sync to other machines, so one could easily create
 runtime errors or load inconsistent data in the database. Storing a `jq`
 expression in the synced database means it automatically carries over to all
 your devices.
-
-already have installed and are familiar with.
 
 ```bash
 # Filter out sponsored posts
