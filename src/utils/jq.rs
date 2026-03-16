@@ -3,22 +3,18 @@ use serde::de::DeserializeOwned;
 
 /// Pipe `input` through `jq` with the given filter expression.
 ///
-/// If `filter` is `None`, returns a clone of the input without invoking `jq`.
-/// Serializes `input` as JSON, runs `jq -c <filter>`, and deserializes
-/// the output back to the same type.
+/// If `filter` is `None`, returns the input as-is without invoking `jq`.
+/// Otherwise, serializes `input` as JSON, runs `jq -c <filter>`, and
+/// deserializes the output back to the same type.
 pub(crate) fn map_through_jq<T: Serialize + DeserializeOwned>(
-    input: &T,
+    input: T,
     filter: Option<&str>,
 ) -> anyhow::Result<T> {
     let Some(filter) = filter else {
-        // Re-serialize/deserialize to clone without requiring Clone bound.
-        // This path is not performance-critical since it only runs when
-        // there is no filter configured.
-        let json = serde_json::to_string(input)?;
-        return Ok(serde_json::from_str(&json)?);
+        return Ok(input);
     };
 
-    let input_json = serde_json::to_string(input)
+    let input_json = serde_json::to_string(&input)
         .map_err(|e| anyhow::anyhow!("failed to serialize jq input: {e}"))?;
 
     let mut child = std::process::Command::new("jq")
@@ -86,16 +82,18 @@ mod tests {
     #[test]
     fn test_none_filter_returns_input_unchanged() {
         let input = items(&[("Post A", "https://a.com"), ("Post B", "https://b.com")]);
-        let output: Vec<Item> = map_through_jq(&input, None).unwrap();
-        assert_eq!(output, input);
+        let expected = input.clone();
+        let output: Vec<Item> = map_through_jq(input, None).unwrap();
+        assert_eq!(output, expected);
     }
 
     // --- Identity filter ---
     #[test]
     fn test_identity_returns_input_unchanged() {
         let input = items(&[("Post A", "https://a.com"), ("Post B", "https://b.com")]);
-        let output: Vec<Item> = map_through_jq(&input, Some(".")).unwrap();
-        assert_eq!(output, input);
+        let expected = input.clone();
+        let output: Vec<Item> = map_through_jq(input, Some(".")).unwrap();
+        assert_eq!(output, expected);
     }
 
     // --- Filtering items ---
@@ -120,7 +118,7 @@ mod tests {
         #[case] filter: &str,
         #[case] expected: &[(&str, &str)],
     ) {
-        let output: Vec<Item> = map_through_jq(&items(input), Some(filter)).unwrap();
+        let output: Vec<Item> = map_through_jq(items(input), Some(filter)).unwrap();
         assert_eq!(output, items(expected));
     }
 
@@ -129,7 +127,7 @@ mod tests {
     fn test_map_modifies_fields() {
         let input = items(&[("Hello", "https://a.com")]);
         let output: Vec<Item> =
-            map_through_jq(&input, Some(r#"map(.title = "PREFIX: " + .title)"#)).unwrap();
+            map_through_jq(input, Some(r#"map(.title = "PREFIX: " + .title)"#)).unwrap();
         assert_eq!(output[0].title, "PREFIX: Hello");
         assert_eq!(output[0].link, "https://a.com");
     }
@@ -138,7 +136,7 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let input: Vec<Item> = vec![];
-        let output: Vec<Item> = map_through_jq(&input, Some(".")).unwrap();
+        let output: Vec<Item> = map_through_jq(input, Some(".")).unwrap();
         assert!(output.is_empty());
     }
 
@@ -146,7 +144,7 @@ mod tests {
     #[test]
     fn test_invalid_filter_returns_error() {
         let input = items(&[("A", "https://a.com")]);
-        let err = map_through_jq(&input, Some("[invalid")).unwrap_err();
+        let err = map_through_jq(input, Some("[invalid")).unwrap_err();
         assert!(err.to_string().contains("jq filter failed"), "got: {err}");
     }
 
@@ -155,7 +153,7 @@ mod tests {
     fn test_output_type_mismatch_returns_descriptive_error() {
         // jq outputs a string, but we expect Vec<Item>
         let input = items(&[("A", "https://a.com")]);
-        let err = map_through_jq(&input, Some(r#"[.[].title]"#)).unwrap_err();
+        let err = map_through_jq(input, Some(r#"[.[].title]"#)).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("could not parse jq output"), "got: {msg}");
     }
@@ -164,7 +162,7 @@ mod tests {
     #[test]
     fn test_missing_field_error_is_descriptive() {
         let input = items(&[("A", "https://a.com")]);
-        let err = map_through_jq(&input, Some(r#"map({title: .title})"#)).unwrap_err();
+        let err = map_through_jq(input, Some(r#"map({title: .title})"#)).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("could not parse jq output"), "got: {msg}");
         assert!(

@@ -167,7 +167,7 @@ pub(crate) fn apply_fetched(
     for (source, result) in results {
         match result {
             Ok((meta, items)) => {
-                let items = crate::utils::jq::map_through_jq(&items, ingest_filter)?;
+                let items = crate::utils::jq::map_through_jq(items, ingest_filter)?;
                 apply_feed(tx, source, meta, items);
             }
             Err(e) => pb.suspend(|| eprintln!("Error fetching {}: {}", source.url, e)),
