@@ -220,34 +220,15 @@ mod tests {
 
     // === <link rel="alternate"> tag parsing ===
 
-    #[test]
-    fn test_finds_rss_link_tag() {
-        let html = r#"<html><head>
-            <link rel="alternate" type="application/rss+xml" href="/feed.xml">
-        </head></html>"#;
-        let url = parse_url("https://example.com/blog/post");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_finds_atom_link_tag() {
-        let html = r#"<html><head>
-            <link rel="alternate" type="application/atom+xml" href="/atom.xml">
-        </head></html>"#;
+    #[rstest]
+    #[case::rss("application/rss+xml", "/feed.xml", "https://example.com/feed.xml")]
+    #[case::atom("application/atom+xml", "/atom.xml", "https://example.com/atom.xml")]
+    #[case::json("application/feed+json", "/feed.json", "https://example.com/feed.json")]
+    fn test_finds_link_tag_by_type(#[case] mime: &str, #[case] href: &str, #[case] expected: &str) {
+        let html = format!(r#"<link rel="alternate" type="{mime}" href="{href}">"#);
         let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/atom.xml"]);
-    }
-
-    #[test]
-    fn test_finds_json_feed_link_tag() {
-        let html = r#"<html><head>
-            <link rel="alternate" type="application/feed+json" href="/feed.json">
-        </head></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.json"]);
+        let result = discover_feed_urls(&html, &url);
+        assert_eq!(result, vec![expected]);
     }
 
     #[test]
@@ -267,103 +248,70 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_resolves_relative_href() {
-        let html = r#"<link rel="alternate" type="application/rss+xml" href="feed.xml">"#;
-        let url = parse_url("https://example.com/blog/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/blog/feed.xml"]);
+    #[rstest]
+    #[case::relative(
+        "https://example.com/blog/",
+        "feed.xml",
+        "https://example.com/blog/feed.xml"
+    )]
+    #[case::absolute(
+        "https://example.com/blog/post",
+        "https://example.com/feed.xml",
+        "https://example.com/feed.xml"
+    )]
+    #[case::root_relative(
+        "https://example.com/blog/post",
+        "/feed.xml",
+        "https://example.com/feed.xml"
+    )]
+    fn test_resolves_href(#[case] page_url: &str, #[case] href: &str, #[case] expected: &str) {
+        let html = format!(r#"<link rel="alternate" type="application/rss+xml" href="{href}">"#);
+        let url = parse_url(page_url);
+        let result = discover_feed_urls(&html, &url);
+        assert_eq!(result, vec![expected]);
     }
 
-    #[test]
-    fn test_resolves_absolute_href() {
-        let html = r#"<link rel="alternate" type="application/rss+xml" href="https://example.com/feed.xml">"#;
-        let url = parse_url("https://example.com/blog/post");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_ignores_non_feed_type() {
-        let html = r#"<html><head>
-            <link rel="alternate" type="text/html" href="/page">
-            <link rel="alternate" type="application/rss+xml" href="/feed.xml">
-        </head></html>"#;
+    #[rstest]
+    #[case::non_feed_type(r#"<link rel="alternate" type="text/html" href="/page">"#, "/page")]
+    #[case::non_alternate_rel(
+        r#"<link rel="stylesheet" type="application/rss+xml" href="/style.css">"#,
+        "/style.css"
+    )]
+    fn test_ignores_invalid_link_tags(#[case] html: &str, #[case] excluded_path: &str) {
         let url = parse_url("https://example.com/");
         let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_ignores_non_alternate_rel() {
-        let html = r#"<html><head>
-            <link rel="stylesheet" type="application/rss+xml" href="/style.css">
-        </head></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
+        let excluded = format!("https://example.com{excluded_path}");
         assert!(
-            !result.contains(&"https://example.com/style.css".to_string()),
-            "should not include non-alternate link"
+            !result.contains(&excluded),
+            "should not include {excluded_path}"
         );
     }
 
-    #[test]
-    fn test_ignores_link_without_href() {
-        let html = r#"<link rel="alternate" type="application/rss+xml">"#;
+    #[rstest]
+    #[case::no_href(r#"<link rel="alternate" type="application/rss+xml">"#)]
+    #[case::no_type(r#"<link rel="alternate" href="/feed.xml">"#)]
+    fn test_incomplete_link_falls_back(#[case] html: &str) {
         let url = parse_url("https://example.com/");
         let result = discover_feed_urls(html, &url);
-        // No <link> matched, so only fallback candidates should appear
-        assert!(
-            result
-                .iter()
-                .all(|u| COMMON_FEED_FILENAMES.iter().any(|f| u.ends_with(f))),
-            "should only contain fallback candidates"
-        );
-    }
-
-    #[test]
-    fn test_ignores_link_without_type() {
-        let html = r#"<link rel="alternate" href="/feed.xml">"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        // The <link> lacks a type, so it should not be picked up as a feed link.
-        // Result should be fallback candidates only (which may include /feed.xml
-        // by coincidence, but via fallback not via the <link> tag).
-        // Verify by checking that other fallback paths are also present.
         assert!(
             result.contains(&"https://example.com/rss.xml".to_string()),
-            "should fall back to common paths when <link> has no type"
+            "should fall back to common paths, got: {result:?}"
         );
     }
 
-    #[test]
-    fn test_case_insensitive_attributes() {
-        let html = r#"<LINK REL="alternate" TYPE="Application/RSS+XML" HREF="/feed.xml">"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_attributes_in_any_order() {
-        let html = r#"<link href="/feed.xml" type="application/rss+xml" rel="alternate">"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_single_quoted_attributes() {
-        let html = r#"<link rel='alternate' type='application/rss+xml' href='/feed.xml'>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_data_type_attribute_does_not_confuse_type_match() {
-        let html =
-            r#"<link data-type="foo" rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
+    #[rstest]
+    #[case::uppercase(r#"<LINK REL="alternate" TYPE="Application/RSS+XML" HREF="/feed.xml">"#)]
+    #[case::reordered(r#"<link href="/feed.xml" type="application/rss+xml" rel="alternate">"#)]
+    #[case::single_quoted(r#"<link rel='alternate' type='application/rss+xml' href='/feed.xml'>"#)]
+    #[case::data_type_attr(
+        r#"<link data-type="foo" rel="alternate" type="application/rss+xml" href="/feed.xml">"#
+    )]
+    #[case::self_closing(r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml" />"#)]
+    #[case::extra_attrs(r#"<link rel="alternate" type="application/rss+xml" title="My Blog Feed" href="/feed.xml">"#)]
+    #[case::multiline(
+        "<link\n            rel=\"alternate\"\n            type=\"application/rss+xml\"\n            href=\"/feed.xml\"\n        >"
+    )]
+    fn test_link_tag_variations(#[case] html: &str) {
         let url = parse_url("https://example.com/");
         let result = discover_feed_urls(html, &url);
         assert_eq!(result, vec!["https://example.com/feed.xml"]);
@@ -452,36 +400,43 @@ mod tests {
 
     // === <a> tag feed link discovery ===
 
-    #[test]
-    fn test_finds_feed_from_anchor_tag() {
-        let html = r#"<html><body><a href="atom/"><img src="/img/rss.png"></a></body></html>"#;
-        let url = parse_url("https://example.com/blog/");
-        let result = discover_feed_urls(html, &url);
+    #[rstest]
+    #[case::atom_relative(
+        "https://example.com/blog/",
+        r#"<a href="atom/"><img src="/img/rss.png"></a>"#,
+        "https://example.com/blog/atom/"
+    )]
+    #[case::rss_absolute(
+        "https://example.com/",
+        r#"<a href="/blog/rss/">RSS Feed</a>"#,
+        "https://example.com/blog/rss/"
+    )]
+    #[case::feed_absolute(
+        "https://example.com/",
+        r#"<a href="/blog/feed/">Subscribe</a>"#,
+        "https://example.com/blog/feed/"
+    )]
+    #[case::query_string(
+        "https://example.com/",
+        r#"<a href="/feed?format=rss">RSS</a>"#,
+        "https://example.com/feed?format=rss"
+    )]
+    #[case::fragment(
+        "https://example.com/",
+        r#"<a href="/blog/atom#latest">Feed</a>"#,
+        "https://example.com/blog/atom#latest"
+    )]
+    fn test_finds_feed_from_anchor(
+        #[case] page_url: &str,
+        #[case] anchor: &str,
+        #[case] expected: &str,
+    ) {
+        let html = format!("<html><body>{anchor}</body></html>");
+        let url = parse_url(page_url);
+        let result = discover_feed_urls(&html, &url);
         assert!(
-            result.contains(&"https://example.com/blog/atom/".to_string()),
-            "should find feed URL from <a> tag with feed-like href, got: {result:?}"
-        );
-    }
-
-    #[test]
-    fn test_finds_feed_from_anchor_with_rss_href() {
-        let html = r#"<html><body><a href="/blog/rss/">RSS Feed</a></body></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert!(
-            result.contains(&"https://example.com/blog/rss/".to_string()),
-            "should find feed URL from <a> tag with rss in href, got: {result:?}"
-        );
-    }
-
-    #[test]
-    fn test_finds_feed_from_anchor_with_feed_href() {
-        let html = r#"<html><body><a href="/blog/feed/">Subscribe</a></body></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert!(
-            result.contains(&"https://example.com/blog/feed/".to_string()),
-            "should find feed URL from <a> tag with feed in href, got: {result:?}"
+            result.contains(&expected.to_string()),
+            "should find {expected} in results, got: {result:?}"
         );
     }
 
@@ -504,34 +459,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_no_duplicate_trailing_slash_variants() {
+    #[rstest]
+    #[case::atom("https://example.com/atom")]
+    #[case::feed("https://example.com/feed")]
+    fn test_no_duplicate_trailing_slash_variants(#[case] base_url: &str) {
         let html = "<html></html>";
         let url = parse_url("https://example.com/blog/post");
         let result = discover_feed_urls(html, &url);
-        // "atom" and "atom/" at the same path should not both appear
-        let root_atom_count = result
+        let count = result
             .iter()
-            .filter(|u| {
-                let trimmed = u.trim_end_matches('/');
-                trimmed == "https://example.com/atom"
-            })
+            .filter(|u| u.trim_end_matches('/') == base_url)
             .count();
         assert!(
-            root_atom_count <= 1,
-            "should not have both /atom and /atom/ as separate candidates, got: {result:?}"
-        );
-        // Same for feed/feed/
-        let root_feed_count = result
-            .iter()
-            .filter(|u| {
-                let trimmed = u.trim_end_matches('/');
-                trimmed == "https://example.com/feed"
-            })
-            .count();
-        assert!(
-            root_feed_count <= 1,
-            "should not have both /feed and /feed/ as separate candidates, got: {result:?}"
+            count <= 1,
+            "should not have both {base_url} and {base_url}/ as separate candidates, got: {result:?}"
         );
     }
 
@@ -545,65 +486,18 @@ mod tests {
         assert_eq!(result, vec!["https://example.com/my-feed.xml"]);
     }
 
-    #[test]
-    fn test_anchor_feed_link_with_query_string() {
-        let html = r#"<html><body><a href="/feed?format=rss">RSS</a></body></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert!(
-            result.contains(&"https://example.com/feed?format=rss".to_string()),
-            "should match feed URL with query string, got: {result:?}"
-        );
-    }
-
-    #[test]
-    fn test_anchor_feed_link_with_fragment() {
-        let html = r#"<html><body><a href="/blog/atom#latest">Feed</a></body></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert!(
-            result.contains(&"https://example.com/blog/atom#latest".to_string()),
-            "should match feed URL with fragment, got: {result:?}"
-        );
-    }
-
     // === Empty / edge cases ===
 
-    #[test]
-    fn test_empty_html() {
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls("", &url);
-        assert!(
-            !result.is_empty(),
-            "empty HTML should still produce common path fallback"
-        );
-    }
-
-    #[test]
-    fn test_html_with_no_head() {
-        let html = "<html><body><p>Hello</p></body></html>";
+    #[rstest]
+    #[case::empty("")]
+    #[case::no_head("<html><body><p>Hello</p></body></html>")]
+    fn test_fallback_on_minimal_html(#[case] html: &str) {
         let url = parse_url("https://example.com/");
         let result = discover_feed_urls(html, &url);
         assert!(
             !result.is_empty(),
-            "HTML without <head> should fall back to common paths"
+            "should produce common path fallback for: {html:?}"
         );
-    }
-
-    #[test]
-    fn test_self_closing_link_tag() {
-        let html = r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml" />"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_link_tag_with_extra_attributes() {
-        let html = r#"<link rel="alternate" type="application/rss+xml" title="My Blog Feed" href="/feed.xml">"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
     }
 
     #[test]
@@ -611,18 +505,6 @@ mod tests {
         // İ (U+0130) lowercases to i + combining dot (2 bytes → 3 bytes),
         // shifting byte indices between html and html.to_lowercase()
         let html = r#"<title>İstanbul Blog</title><link rel="alternate" type="application/rss+xml" href="/feed.xml">"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/feed.xml"]);
-    }
-
-    #[test]
-    fn test_link_tag_multiline() {
-        let html = r#"<link
-            rel="alternate"
-            type="application/rss+xml"
-            href="/feed.xml"
-        >"#;
         let url = parse_url("https://example.com/");
         let result = discover_feed_urls(html, &url);
         assert_eq!(result, vec!["https://example.com/feed.xml"]);
