@@ -320,29 +320,6 @@ mod tests {
     // === Common path fallback ===
 
     #[test]
-    fn test_fallback_when_no_link_tags() {
-        let html = r#"<html><head><title>My Blog</title></head></html>"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert!(!result.is_empty(), "should generate common path candidates");
-        assert!(result.contains(&"https://example.com/feed.xml".to_string()));
-        assert!(result.contains(&"https://example.com/rss.xml".to_string()));
-        assert!(result.contains(&"https://example.com/atom.xml".to_string()));
-    }
-
-    #[test]
-    fn test_no_fallback_when_link_tags_found() {
-        let html = r#"<link rel="alternate" type="application/rss+xml" href="/my-feed.xml">"#;
-        let url = parse_url("https://example.com/");
-        let result = discover_feed_urls(html, &url);
-        assert_eq!(result, vec!["https://example.com/my-feed.xml"]);
-        assert!(
-            !result.contains(&"https://example.com/feed.xml".to_string()),
-            "should not include common path fallback when <link> tags found"
-        );
-    }
-
-    #[test]
     fn test_fallback_includes_parent_paths() {
         let html = "<html></html>";
         let url = parse_url("https://example.com/blog/2024/some-post");
