@@ -46,23 +46,41 @@ pub fn discover_feed_urls(html: &str, page_url: &url::Url) -> Vec<String> {
     urls
 }
 
-fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
+/// Scan lowercased HTML for opening tags with the given name, calling `f` for each.
+///
+/// The tag name must be lowercase. For short tag names (e.g. `"a"`), a word-boundary
+/// check ensures `<a` doesn't match `<aside>`.
+fn for_each_tag(html: &str, tag_name: &str, mut f: impl FnMut(&str)) {
     let lower = html.to_lowercase();
-    let mut urls = Vec::new();
+    let needle = format!("<{tag_name}");
+    let needle_len = needle.len();
     let mut search_from = 0;
 
-    while let Some(start) = lower[search_from..].find("<link").map(|i| i + search_from) {
-        let tag_start = start;
-        let Some(end) = lower[tag_start..].find('>').map(|i| i + tag_start + 1) else {
+    while let Some(start) = lower[search_from..].find(&needle).map(|i| i + search_from) {
+        let after = start + needle_len;
+        // Ensure the match is a real tag boundary (whitespace or '>'), not a prefix like <aside>
+        if after < lower.len() {
+            let next = lower.as_bytes()[after];
+            if !next.is_ascii_whitespace() && next != b'>' {
+                search_from = after;
+                continue;
+            }
+        }
+        let Some(end) = lower[start..].find('>').map(|i| i + start + 1) else {
             break;
         };
         search_from = end;
+        f(&lower[start..end]);
+    }
+}
 
-        let tag_lower = &lower[tag_start..end];
+fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
+    let mut urls = Vec::new();
 
-        let rel = extract_attr(tag_lower, "rel");
-        let link_type = extract_attr(tag_lower, "type");
-        let href = extract_attr(tag_lower, "href");
+    for_each_tag(html, "link", |tag| {
+        let rel = extract_attr(tag, "rel");
+        let link_type = extract_attr(tag, "type");
+        let href = extract_attr(tag, "href");
 
         let is_alternate = rel
             .as_deref()
@@ -82,54 +100,38 @@ fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
                 urls.push(absolute.to_string());
             }
         }
-    }
+    });
 
     urls
 }
 
 /// Find feed-like URLs from `<a>` tags whose href path contains a feed keyword.
 fn find_anchor_feed_links(html: &str, page_url: &url::Url) -> Vec<String> {
-    let lower = html.to_lowercase();
     let mut urls = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut search_from = 0;
 
-    while let Some(start) = lower[search_from..].find("<a").map(|i| i + search_from) {
-        let tag_start = start;
-        // Ensure `<a` is followed by whitespace or `>` (not e.g. `<aside>`)
-        let after = tag_start + 2;
-        if after < lower.len() {
-            let next = lower.as_bytes()[after];
-            if next != b' ' && next != b'\t' && next != b'\n' && next != b'\r' && next != b'>' {
-                search_from = after;
-                continue;
-            }
-        }
-        let Some(end) = lower[tag_start..].find('>').map(|i| i + tag_start + 1) else {
-            break;
+    for_each_tag(html, "a", |tag| {
+        let Some(href) = extract_attr(tag, "href") else {
+            return;
         };
-        search_from = end;
+        let href = href.trim();
 
-        let tag_lower = &lower[tag_start..end];
-        let Some(href) = extract_attr(tag_lower, "href") else {
-            continue;
-        };
-        let href = href.trim().to_string();
+        // Strip query string and fragment before matching path segments
+        let path_part = href.split(['?', '#']).next().unwrap_or(href);
 
-        // Check if any path segment matches a feed keyword
-        let is_feed_like = href.split('/').any(|seg| {
+        let is_feed_like = path_part.split('/').any(|seg| {
             FEED_PATH_KEYWORDS
                 .iter()
                 .any(|&kw| seg.eq_ignore_ascii_case(kw))
         });
 
-        if is_feed_like && let Ok(absolute) = page_url.join(&href) {
+        if is_feed_like && let Ok(absolute) = page_url.join(href) {
             let s = absolute.to_string();
             if seen.insert(s.clone()) {
                 urls.push(s);
             }
         }
-    }
+    });
 
     urls
 }
@@ -514,6 +516,38 @@ mod tests {
         assert!(
             root_feed_count <= 1,
             "should not have both /feed and /feed/ as separate candidates, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_anchor_tags_skipped_when_link_tags_present() {
+        let html = r#"<html><head>
+            <link rel="alternate" type="application/rss+xml" href="/my-feed.xml">
+        </head><body><a href="/atom/">Atom Feed</a></body></html>"#;
+        let url = parse_url("https://example.com/");
+        let result = discover_feed_urls(html, &url);
+        assert_eq!(result, vec!["https://example.com/my-feed.xml"]);
+    }
+
+    #[test]
+    fn test_anchor_feed_link_with_query_string() {
+        let html = r#"<html><body><a href="/feed?format=rss">RSS</a></body></html>"#;
+        let url = parse_url("https://example.com/");
+        let result = discover_feed_urls(html, &url);
+        assert!(
+            result.contains(&"https://example.com/feed?format=rss".to_string()),
+            "should match feed URL with query string, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_anchor_feed_link_with_fragment() {
+        let html = r#"<html><body><a href="/blog/atom#latest">Feed</a></body></html>"#;
+        let url = parse_url("https://example.com/");
+        let result = discover_feed_urls(html, &url);
+        assert!(
+            result.contains(&"https://example.com/blog/atom#latest".to_string()),
+            "should match feed URL with fragment, got: {result:?}"
         );
     }
 
