@@ -21,6 +21,35 @@ const COMMON_FEED_FILENAMES: &[&str] = &[
 /// Feed-like path segments used to identify feed URLs in `<a>` tags.
 const FEED_PATH_KEYWORDS: &[&str] = &["feed", "rss", "atom"];
 
+/// Collects unique URLs, treating trailing-slash variants as duplicates.
+struct UrlDedup {
+    urls: Vec<String>,
+    seen: std::collections::HashSet<String>,
+}
+
+impl UrlDedup {
+    fn new() -> Self {
+        Self {
+            urls: Vec::new(),
+            seen: std::collections::HashSet::new(),
+        }
+    }
+
+    fn try_insert(&mut self, url: String) -> bool {
+        let key = url.trim_end_matches('/').to_string();
+        if self.seen.insert(key) {
+            self.urls.push(url);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn into_urls(self) -> Vec<String> {
+        self.urls
+    }
+}
+
 /// Discover feed URLs from an HTML page.
 ///
 /// Returns candidate feed URLs in priority order:
@@ -32,18 +61,14 @@ pub fn discover_feed_urls(html: &str, page_url: &url::Url) -> Vec<String> {
     if !urls.is_empty() {
         return urls;
     }
-    let mut urls = find_anchor_feed_links(html, page_url);
-    let mut seen: std::collections::HashSet<String> = urls
-        .iter()
-        .map(|u| u.trim_end_matches('/').to_string())
-        .collect();
-    for u in guess_common_paths(page_url) {
-        let key = u.trim_end_matches('/').to_string();
-        if seen.insert(key) {
-            urls.push(u);
-        }
+    let mut dedup = UrlDedup::new();
+    for u in find_anchor_feed_links(html, page_url) {
+        dedup.try_insert(u);
     }
-    urls
+    for u in guess_common_paths(page_url) {
+        dedup.try_insert(u);
+    }
+    dedup.into_urls()
 }
 
 /// Scan lowercased HTML for opening tags with the given name, calling `f` for each.
@@ -107,8 +132,7 @@ fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
 
 /// Find feed-like URLs from `<a>` tags whose href path contains a feed keyword.
 fn find_anchor_feed_links(html: &str, page_url: &url::Url) -> Vec<String> {
-    let mut urls = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut dedup = UrlDedup::new();
 
     for_each_tag(html, "a", |tag| {
         let Some(href) = extract_attr(tag, "href") else {
@@ -126,14 +150,11 @@ fn find_anchor_feed_links(html: &str, page_url: &url::Url) -> Vec<String> {
         });
 
         if is_feed_like && let Ok(absolute) = page_url.join(href) {
-            let s = absolute.to_string();
-            if seen.insert(s.clone()) {
-                urls.push(s);
-            }
+            dedup.try_insert(absolute.to_string());
         }
     });
 
-    urls
+    dedup.into_urls()
 }
 
 /// Extract an attribute value from a lowercased HTML tag.
@@ -167,8 +188,7 @@ fn guess_common_paths(page_url: &url::Url) -> Vec<String> {
     let path = page_url.path();
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
-    let mut urls = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut dedup = UrlDedup::new();
 
     // From root to deepest parent (root feeds are most common)
     for depth in 0..=segments.len() {
@@ -181,16 +201,12 @@ fn guess_common_paths(page_url: &url::Url) -> Vec<String> {
         for filename in COMMON_FEED_FILENAMES {
             let candidate_path = format!("{parent}{filename}");
             if let Ok(candidate) = page_url.join(&candidate_path) {
-                let s = candidate.to_string();
-                let key = s.trim_end_matches('/').to_string();
-                if seen.insert(key) {
-                    urls.push(s);
-                }
+                dedup.try_insert(candidate.to_string());
             }
         }
     }
 
-    urls
+    dedup.into_urls()
 }
 
 #[cfg(test)]
