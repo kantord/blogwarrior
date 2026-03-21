@@ -11,22 +11,39 @@ const COMMON_FEED_FILENAMES: &[&str] = &[
     "feed",
     "feed/",
     "atom.xml",
+    "atom",
+    "atom/",
     "rss",
     "feed.rss",
     "feed.atom",
 ];
 
+/// Feed-like path segments used to identify feed URLs in `<a>` tags.
+const FEED_PATH_KEYWORDS: &[&str] = &["feed", "rss", "atom"];
+
 /// Discover feed URLs from an HTML page.
 ///
 /// Returns candidate feed URLs in priority order:
 /// 1. URLs from `<link rel="alternate">` tags with feed MIME types
-/// 2. Common feed paths relative to the page URL's parent directories and root
+/// 2. URLs from `<a>` tags whose href contains a feed-like path segment
+/// 3. Common feed paths relative to the page URL's parent directories and root
 pub fn discover_feed_urls(html: &str, page_url: &url::Url) -> Vec<String> {
     let urls = find_link_tags(html, page_url);
     if !urls.is_empty() {
         return urls;
     }
-    guess_common_paths(page_url)
+    let mut urls = find_anchor_feed_links(html, page_url);
+    let mut seen: std::collections::HashSet<String> = urls
+        .iter()
+        .map(|u| u.trim_end_matches('/').to_string())
+        .collect();
+    for u in guess_common_paths(page_url) {
+        let key = u.trim_end_matches('/').to_string();
+        if seen.insert(key) {
+            urls.push(u);
+        }
+    }
+    urls
 }
 
 fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
@@ -63,6 +80,53 @@ fn find_link_tags(html: &str, page_url: &url::Url) -> Vec<String> {
             let href = href.trim();
             if let Ok(absolute) = page_url.join(href) {
                 urls.push(absolute.to_string());
+            }
+        }
+    }
+
+    urls
+}
+
+/// Find feed-like URLs from `<a>` tags whose href path contains a feed keyword.
+fn find_anchor_feed_links(html: &str, page_url: &url::Url) -> Vec<String> {
+    let lower = html.to_lowercase();
+    let mut urls = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut search_from = 0;
+
+    while let Some(start) = lower[search_from..].find("<a").map(|i| i + search_from) {
+        let tag_start = start;
+        // Ensure `<a` is followed by whitespace or `>` (not e.g. `<aside>`)
+        let after = tag_start + 2;
+        if after < lower.len() {
+            let next = lower.as_bytes()[after];
+            if next != b' ' && next != b'\t' && next != b'\n' && next != b'\r' && next != b'>' {
+                search_from = after;
+                continue;
+            }
+        }
+        let Some(end) = lower[tag_start..].find('>').map(|i| i + tag_start + 1) else {
+            break;
+        };
+        search_from = end;
+
+        let tag_lower = &lower[tag_start..end];
+        let Some(href) = extract_attr(tag_lower, "href") else {
+            continue;
+        };
+        let href = href.trim().to_string();
+
+        // Check if any path segment matches a feed keyword
+        let is_feed_like = href.split('/').any(|seg| {
+            FEED_PATH_KEYWORDS
+                .iter()
+                .any(|&kw| seg.eq_ignore_ascii_case(kw))
+        });
+
+        if is_feed_like && let Ok(absolute) = page_url.join(&href) {
+            let s = absolute.to_string();
+            if seen.insert(s.clone()) {
+                urls.push(s);
             }
         }
     }
@@ -116,7 +180,8 @@ fn guess_common_paths(page_url: &url::Url) -> Vec<String> {
             let candidate_path = format!("{parent}{filename}");
             if let Ok(candidate) = page_url.join(&candidate_path) {
                 let s = candidate.to_string();
-                if seen.insert(s.clone()) {
+                let key = s.trim_end_matches('/').to_string();
+                if seen.insert(key) {
                     urls.push(s);
                 }
             }
@@ -364,6 +429,91 @@ mod tests {
         assert!(
             result.contains(&"https://example.com/feed.xml".to_string()),
             "should always include root /feed.xml for {page_url}"
+        );
+    }
+
+    // === <a> tag feed link discovery ===
+
+    #[test]
+    fn test_finds_feed_from_anchor_tag() {
+        let html = r#"<html><body><a href="atom/"><img src="/img/rss.png"></a></body></html>"#;
+        let url = parse_url("https://example.com/blog/");
+        let result = discover_feed_urls(html, &url);
+        assert!(
+            result.contains(&"https://example.com/blog/atom/".to_string()),
+            "should find feed URL from <a> tag with feed-like href, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_finds_feed_from_anchor_with_rss_href() {
+        let html = r#"<html><body><a href="/blog/rss/">RSS Feed</a></body></html>"#;
+        let url = parse_url("https://example.com/");
+        let result = discover_feed_urls(html, &url);
+        assert!(
+            result.contains(&"https://example.com/blog/rss/".to_string()),
+            "should find feed URL from <a> tag with rss in href, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_finds_feed_from_anchor_with_feed_href() {
+        let html = r#"<html><body><a href="/blog/feed/">Subscribe</a></body></html>"#;
+        let url = parse_url("https://example.com/");
+        let result = discover_feed_urls(html, &url);
+        assert!(
+            result.contains(&"https://example.com/blog/feed/".to_string()),
+            "should find feed URL from <a> tag with feed in href, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_anchor_feed_links_prioritized_before_guesses() {
+        let html = r#"<html><body><a href="atom/">Feed</a></body></html>"#;
+        let url = parse_url("https://example.com/blog/");
+        let result = discover_feed_urls(html, &url);
+        let anchor_pos = result
+            .iter()
+            .position(|u| u == "https://example.com/blog/atom/")
+            .expect("should contain anchor feed URL");
+        let guess_pos = result
+            .iter()
+            .position(|u| u == "https://example.com/feed.xml")
+            .expect("should contain guessed feed URL");
+        assert!(
+            anchor_pos < guess_pos,
+            "anchor-discovered feeds should come before guessed paths"
+        );
+    }
+
+    #[test]
+    fn test_no_duplicate_trailing_slash_variants() {
+        let html = "<html></html>";
+        let url = parse_url("https://example.com/blog/post");
+        let result = discover_feed_urls(html, &url);
+        // "atom" and "atom/" at the same path should not both appear
+        let root_atom_count = result
+            .iter()
+            .filter(|u| {
+                let trimmed = u.trim_end_matches('/');
+                trimmed == "https://example.com/atom"
+            })
+            .count();
+        assert!(
+            root_atom_count <= 1,
+            "should not have both /atom and /atom/ as separate candidates, got: {result:?}"
+        );
+        // Same for feed/feed/
+        let root_feed_count = result
+            .iter()
+            .filter(|u| {
+                let trimmed = u.trim_end_matches('/');
+                trimmed == "https://example.com/feed"
+            })
+            .count();
+        assert!(
+            root_feed_count <= 1,
+            "should not have both /feed and /feed/ as separate candidates, got: {result:?}"
         );
     }
 
