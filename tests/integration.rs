@@ -1131,6 +1131,141 @@ fn test_remove_nonexistent_feed() {
 }
 
 #[test]
+fn test_add_multiple_feeds() {
+    let ctx = TestContext::new();
+
+    let xml1 = rss_xml("Blog One", &[]);
+    let xml2 = rss_xml("Blog Two", &[]);
+    ctx.mock_rss_feed("/feed1.xml", &xml1);
+    ctx.mock_rss_feed("/feed2.xml", &xml2);
+
+    let url1 = ctx.server.url("/feed1.xml");
+    let url2 = ctx.server.url("/feed2.xml");
+
+    ctx.run(&["feed", "add", &url1, &url2]).success();
+
+    let feeds = ctx.read_feeds();
+    let urls: Vec<&str> = feeds.iter().map(|f| f["url"].as_str().unwrap()).collect();
+    assert!(urls.iter().any(|u| *u == url1), "feed1 should be present");
+    assert!(urls.iter().any(|u| *u == url2), "feed2 should be present");
+    assert_eq!(feeds.len(), 2);
+}
+
+#[test]
+fn test_add_multiple_feeds_stops_on_first_error() {
+    let ctx = TestContext::new();
+
+    let xml1 = rss_xml("Blog One", &[]);
+    ctx.mock_rss_feed("/feed1.xml", &xml1);
+    // /bad.xml is not mocked — will fail to resolve
+
+    let url1 = ctx.server.url("/feed1.xml");
+    let bad_url = ctx.server.url("/bad.xml");
+
+    let output = ctx.run(&["feed", "add", &url1, &bad_url]).failure();
+    let stderr = output.stderr_str();
+    assert!(
+        !stderr.is_empty(),
+        "expected an error message for unresolvable feed, got empty stderr"
+    );
+}
+
+#[test]
+fn test_remove_multiple_feeds_by_url() {
+    let ctx = TestContext::new();
+
+    insert_feed(ctx.dir.path(), "https://example.com/feed1.xml");
+    insert_feed(ctx.dir.path(), "https://example.com/feed2.xml");
+    insert_feed(ctx.dir.path(), "https://example.com/keep.xml");
+
+    ctx.run(&[
+        "feed",
+        "rm",
+        "https://example.com/feed1.xml",
+        "https://example.com/feed2.xml",
+    ])
+    .success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(
+        feeds[0]["url"].as_str().unwrap(),
+        "https://example.com/keep.xml"
+    );
+}
+
+#[test]
+fn test_remove_multiple_feeds_stops_on_first_error() {
+    let ctx = TestContext::new();
+
+    insert_feed(ctx.dir.path(), "https://example.com/feed1.xml");
+    insert_feed(ctx.dir.path(), "https://example.com/feed2.xml");
+
+    let output = ctx
+        .run(&[
+            "feed",
+            "rm",
+            "https://example.com/feed1.xml",
+            "https://example.com/nonexistent.xml",
+            "https://example.com/feed2.xml",
+        ])
+        .failure();
+    let stderr = output.stderr_str();
+    assert!(
+        stderr.contains("Feed not found"),
+        "expected 'Feed not found' on stderr, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_remove_multiple_feeds_by_shorthand() {
+    let ctx = TestContext::new();
+
+    insert_feed(ctx.dir.path(), "https://example.com/feed1.xml");
+    insert_feed(ctx.dir.path(), "https://example.com/feed2.xml");
+    insert_feed(ctx.dir.path(), "https://example.com/keep.xml");
+
+    // Retrieve shorthands from feed ls output
+    let ls_output = ctx.run(&["feed", "ls"]).success();
+    let stdout = ls_output.stdout_str();
+
+    // Parse shorthands — feed ls lines look like "  @sh  url"
+    let shorthands: Vec<(&str, &str)> = stdout
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let at_pos = trimmed.find('@')?;
+            let rest = &trimmed[at_pos + 1..];
+            let (sh, url_part) = rest.split_once(|c: char| c.is_whitespace())?;
+            let url = url_part.trim();
+            Some((sh, url))
+        })
+        .collect();
+
+    let sh1 = shorthands
+        .iter()
+        .find(|(_, u)| *u == "https://example.com/feed1.xml")
+        .map(|(s, _)| *s)
+        .expect("shorthand for feed1 not found");
+    let sh2 = shorthands
+        .iter()
+        .find(|(_, u)| *u == "https://example.com/feed2.xml")
+        .map(|(s, _)| *s)
+        .expect("shorthand for feed2 not found");
+
+    ctx.run(&["feed", "rm", &format!("@{sh1}"), &format!("@{sh2}")])
+        .success();
+
+    let feeds = ctx.read_feeds();
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(
+        feeds[0]["url"].as_str().unwrap(),
+        "https://example.com/keep.xml"
+    );
+}
+
+#[test]
 fn test_sync_continues_after_non_utf8_feed() {
     let ctx = TestContext::new();
 
