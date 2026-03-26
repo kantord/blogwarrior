@@ -136,7 +136,7 @@ enum FeedCommand {
     /// Unsubscribe from a feed by URL or @shorthand
     Rm {
         /// The feed URL or @shorthand to unsubscribe from
-        url: String,
+        urls: Vec<String>,
     },
     /// List subscribed feeds
     Ls,
@@ -249,12 +249,14 @@ fn run() -> anyhow::Result<()> {
             eprintln!("Run `blog sync` to fetch posts.");
         }
         Some(Command::Feed {
-            command: FeedCommand::Rm { ref url },
+            command: FeedCommand::Rm { ref urls },
         }) => {
             reject_filter(&filter, "feed")?;
-            store.transact(&format!("remove feed: {url}"), |tx| {
-                commands::remove::cmd_remove(tx, url)
-            })?;
+            for url in urls.iter().filter(|url| !url.is_empty()) {
+                store.transact(&format!("remove {url}"), |tx| {
+                    commands::remove::cmd_remove(tx, url)
+                })?;
+            }
         }
         Some(Command::Feed {
             command: FeedCommand::Ls,
