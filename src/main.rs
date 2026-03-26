@@ -131,7 +131,7 @@ enum FeedCommand {
     /// Subscribe to a feed by URL
     Add {
         /// The feed URL to subscribe to
-        url: String,
+        urls: Vec<String>,
     },
     /// Unsubscribe from a feed by URL or @shorthand
     Rm {
@@ -235,17 +235,19 @@ fn run() -> anyhow::Result<()> {
 
         // Commands that reject filters
         Some(Command::Feed {
-            command: FeedCommand::Add { ref url },
+            command: FeedCommand::Add { ref urls },
         }) => {
             reject_filter(&filter, "feed")?;
-            let resolved = commands::add::resolve_feed_url(url)?;
-            if resolved != *url {
-                eprintln!("Discovered feed: {resolved}");
+            for url in urls.iter().filter(|url| !url.is_empty()) {
+                let resolved = commands::add::resolve_feed_url(url)?;
+                if resolved != *url {
+                    eprintln!("Discovered feed: {resolved}");
+                }
+                store.transact(&format!("add feed: {resolved}"), |tx| {
+                    commands::add::cmd_add(tx, &resolved)
+                })?;
+                eprintln!("Added {resolved}");
             }
-            store.transact(&format!("add feed: {resolved}"), |tx| {
-                commands::add::cmd_add(tx, &resolved)
-            })?;
-            eprintln!("Added {resolved}");
             eprintln!("Run `blog sync` to fetch posts.");
         }
         Some(Command::Feed {
