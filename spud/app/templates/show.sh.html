@@ -1,0 +1,12 @@
+{% for post in lines %}
+  <article>
+    <a href="{{ post.link }}" target="_blank">
+      <strong>{{ post.title }}</strong>
+    </a>
+    <small>{{ post.feed.title }}{% if post.date %} &middot; {{ post.date[:10] }}{% endif %}</small>
+  </article>
+{% endfor %}
+
+{% if not lines %}
+  <p><em>No posts found.</em></p>
+{% endif %}
