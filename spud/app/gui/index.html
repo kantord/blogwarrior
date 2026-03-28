@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html data-theme="dark">
+<head>
+    <title>blogtato</title>
+    <link rel="stylesheet" href="/pico.min.css">
+    <script src="/htmx.min.js"></script>
+    <style>
+        article { padding: 0.5rem 1rem; margin-bottom: 0.25rem; }
+        article a { text-decoration: none; }
+        article small { display: block; margin-top: 0.25rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <h1>blogtato</h1>
+        <section hx-post="/render/show.sh" hx-trigger="load" hx-target="this">
+            <p aria-busy="true">Loading posts...</p>
+        </section>
+    </main>
+</body>
+</html>
