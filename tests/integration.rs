@@ -1391,7 +1391,8 @@ fn insert_feed(store_dir: &Path, url: &str) {
     let file_path = feeds_dir.join("items_.jsonl");
     // Replicate synctato's hash_id: SHA-256 of the key, first 11 hex chars
     // (id_length_for_capacity(50_000) == 11 for FeedSource)
-    let hash = format!("{:x}", Sha256::digest(url.as_bytes()));
+    let digest = Sha256::digest(url.as_bytes());
+    let hash: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
     let id = &hash[..11];
     let entry = serde_json::json!({
         "id": id,
@@ -2884,7 +2885,8 @@ fn insert_meta(store_dir: &Path, key: &str, value: &str) {
     let meta_dir = store_dir.join("meta");
     fs::create_dir_all(&meta_dir).unwrap();
     let file_path = meta_dir.join("items_.jsonl");
-    let hash = format!("{:x}", Sha256::digest(key.as_bytes()));
+    let digest = Sha256::digest(key.as_bytes());
+    let hash: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
     let id = &hash[..11]; // same id_length as MetaEntry (EXPECTED_CAPACITY=100 → short hash)
     let entry = serde_json::json!({
         "id": id,
