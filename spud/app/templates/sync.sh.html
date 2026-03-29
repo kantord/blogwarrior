@@ -1,21 +1,10 @@
-<div class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-bold">blogtato</h1>
-    <button class="btn btn-sm" id="sync-btn" hx-post="/render/sync.sh" hx-target="#posts" hx-disabled-elt="this"
-            hx-on::before-request="this.classList.add('loading')"
-            hx-on::after-request="this.classList.remove('loading')">Sync</button>
-</div>
-<div id="posts" class="flex flex-col gap-1">
 {% for post in lines %}
-  <div class="card bg-base-100 shadow-sm cursor-pointer hover:bg-base-300 transition-colors"
-       hx-post="/render/view.sh" hx-target="#app" hx-vals='{"link":"{{ post.link }}"}'>
-    <div class="card-body p-3">
-      <div class="font-medium">{{ post.title }}</div>
-      <div class="text-sm opacity-60">{{ post.feed_title }}{% if post.date %} &middot; {{ post.date }}{% endif %}</div>
-    </div>
+  <div class="card" hx-post="/render/view.sh" hx-target="#content" hx-vals='{"link":"{{ post.link }}"}'>
+    <div class="card-title">{{ post.title }}</div>
+    <div class="card-meta">{{ post.feed_title }}{% if post.date %} &middot; {{ post.date }}{% endif %}</div>
   </div>
 {% endfor %}
 
 {% if not lines %}
-  <p class="text-center opacity-60">No posts found.</p>
+  <p class="empty">No posts found.</p>
 {% endif %}
-</div>

@@ -7,8 +7,6 @@ RUN cargo build --release
 FROM spudkit-base
 RUN apt-get update && apt-get install -y git libgit2-1.5 curl jq && rm -rf /var/lib/apt/lists/*
 RUN git config --global user.name "blogtato" && git config --global user.email "blogtato@localhost"
-RUN curl -sL "https://cdn.jsdelivr.net/npm/daisyui@5" -o /app/gui/daisyui.css
-RUN curl -sL "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" -o /app/gui/tailwind-browser.js
 RUN curl -sL "https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" -o /app/gui/htmx.min.js
 COPY --from=builder /src/target/release/blog /usr/local/bin/blog
 COPY spud/app/ /app/
