@@ -1,4 +1,6 @@
-<button hx-post="/render/show.sh" hx-target="#app">&larr; Back</button>
-<h2>{{ title }}</h2>
-<small>{{ feed_title }}{% if date %} &middot; {{ date }}{% endif %}</small>
-<iframe src="{{ link }}" style="width:100%;height:80vh;border:none;margin-top:1rem"></iframe>
+<div class="mb-4">
+    <button class="btn btn-sm btn-ghost" hx-post="/render/show.sh" hx-target="#app">&larr; Back</button>
+</div>
+<h2 class="text-xl font-bold mb-1">{{ title }}</h2>
+<div class="text-sm opacity-60 mb-4">{{ feed_title }}{% if date %} &middot; {{ date }}{% endif %}</div>
+<iframe src="{{ link }}" class="w-full border-0 rounded-lg" style="height:80vh"></iframe>
