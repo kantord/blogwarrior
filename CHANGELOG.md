@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/kantord/blogtato/compare/v0.1.20...v0.1.21) - 2026-03-29
+
+### Added
+
+- allow removing/adding multiple feeds at once ([#99](https://github.com/kantord/blogtato/pull/99)) ([#148](https://github.com/kantord/blogtato/pull/148))
+
+### Fixed
+
+- *(deps)* update rust crate synctato to v0.1.12 ([#151](https://github.com/kantord/blogtato/pull/151))
+- *(deps)* update rust crate terminal_size to v0.4.4 ([#144](https://github.com/kantord/blogtato/pull/144))
+
+### Other
+
+- *(deps)* update rust crate sha2 to v0.11.0 ([#146](https://github.com/kantord/blogtato/pull/146))
+- *(deps)* update dtolnay/rust-toolchain digest to 29eef33 ([#150](https://github.com/kantord/blogtato/pull/150))
+- *(deps)* pin dtolnay/rust-toolchain action to 631a55b ([#149](https://github.com/kantord/blogtato/pull/149))
+
 ## [0.1.20](https://github.com/kantord/blogtato/compare/v0.1.19...v0.1.20) - 2026-03-21
 
 ### Added
