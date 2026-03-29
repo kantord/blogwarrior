@@ -13,7 +13,10 @@
 <body>
     <main class="container">
         <h1>blogtato</h1>
-        <section hx-post="/render/show.sh" hx-trigger="load" hx-target="this">
+        <button id="sync-btn" hx-post="/render/sync.sh" hx-target="#posts" hx-disabled-elt="this"
+                hx-on::before-request="this.setAttribute('aria-busy','true')"
+                hx-on::after-request="this.removeAttribute('aria-busy')">Sync</button>
+        <section id="posts" hx-post="/render/show.sh" hx-trigger="load" hx-target="this">
             <p aria-busy="true">Loading posts...</p>
         </section>
     </main>

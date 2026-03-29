@@ -1504,6 +1504,134 @@ fn test_sync_dirty_repo_fails() {
 }
 
 #[test]
+fn test_concurrent_sync_does_not_fail() {
+    let origin_dir = TempDir::new().unwrap();
+    git(origin_dir.path(), &["init", "--bare"]);
+
+    let store_dir = TempDir::new().unwrap();
+    init_git_store(store_dir.path(), origin_dir.path());
+
+    // Set up a mock server with a slow response to widen the race window
+    let server = MockServer::start();
+    let xml = rss_xml("Slow Feed", &[("Post A", &recent_rss_date(1))]);
+    server.mock(|when, then| {
+        when.method(GET).path("/feed.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .delay(std::time::Duration::from_millis(200))
+            .body(&xml);
+    });
+    let url = server.url("/feed.xml");
+
+    // Add a feed first
+    run_blog(store_dir.path(), &["feed", "add", &url]).success();
+
+    // Launch two sync processes concurrently
+    let store_path = store_dir.path().to_path_buf();
+    let store_path2 = store_path.clone();
+
+    let handle_a = std::thread::spawn(move || {
+        #[allow(deprecated)]
+        Command::cargo_bin("blog")
+            .unwrap()
+            .args(["sync"])
+            .env("RSS_STORE", &store_path)
+            .output()
+            .unwrap()
+    });
+
+    let handle_b = std::thread::spawn(move || {
+        #[allow(deprecated)]
+        Command::cargo_bin("blog")
+            .unwrap()
+            .args(["sync"])
+            .env("RSS_STORE", &store_path2)
+            .output()
+            .unwrap()
+    });
+
+    let output_a = handle_a.join().unwrap();
+    let output_b = handle_b.join().unwrap();
+
+    // Both syncs should succeed — neither should fail with "uncommitted changes"
+    let stderr_a = String::from_utf8_lossy(&output_a.stderr);
+    let stderr_b = String::from_utf8_lossy(&output_b.stderr);
+
+    assert!(
+        output_a.status.success() && output_b.status.success(),
+        "concurrent syncs should both succeed.\nSync A (exit {}): {}\nSync B (exit {}): {}",
+        output_a.status,
+        stderr_a,
+        output_b.status,
+        stderr_b,
+    );
+}
+
+/// Same as above but without a remote — isolates the local git race
+/// (ensure_clean / auto_commit outside the lock).
+#[test]
+fn test_concurrent_sync_no_remote_does_not_fail() {
+    let store_dir = TempDir::new().unwrap();
+    git(store_dir.path(), &["init"]);
+    git_config_test_user(store_dir.path());
+    fs::write(store_dir.path().join(".keep"), "").unwrap();
+    git(store_dir.path(), &["add", "."]);
+    git(store_dir.path(), &["commit", "-m", "init"]);
+
+    // Set up a mock server with a slow response to widen the race window
+    let server = MockServer::start();
+    let xml = rss_xml("Slow Feed", &[("Post A", &recent_rss_date(1))]);
+    server.mock(|when, then| {
+        when.method(GET).path("/feed.xml");
+        then.status(200)
+            .header("Content-Type", "application/rss+xml")
+            .delay(std::time::Duration::from_millis(200))
+            .body(&xml);
+    });
+    let url = server.url("/feed.xml");
+
+    run_blog(store_dir.path(), &["feed", "add", &url]).success();
+
+    let store_path = store_dir.path().to_path_buf();
+    let store_path2 = store_path.clone();
+
+    let handle_a = std::thread::spawn(move || {
+        #[allow(deprecated)]
+        Command::cargo_bin("blog")
+            .unwrap()
+            .args(["sync"])
+            .env("RSS_STORE", &store_path)
+            .output()
+            .unwrap()
+    });
+
+    let handle_b = std::thread::spawn(move || {
+        #[allow(deprecated)]
+        Command::cargo_bin("blog")
+            .unwrap()
+            .args(["sync"])
+            .env("RSS_STORE", &store_path2)
+            .output()
+            .unwrap()
+    });
+
+    let output_a = handle_a.join().unwrap();
+    let output_b = handle_b.join().unwrap();
+
+    let stderr_a = String::from_utf8_lossy(&output_a.stderr);
+    let stderr_b = String::from_utf8_lossy(&output_b.stderr);
+
+    assert!(
+        output_a.status.success() && output_b.status.success(),
+        "concurrent syncs should both succeed.\nSync A (exit {}): {}\nSync B (exit {}): {}",
+        output_a.status,
+        stderr_a,
+        output_b.status,
+        stderr_b,
+    );
+}
+
+#[test]
 fn test_sync_first_push() {
     let origin_dir = TempDir::new().unwrap();
     git(origin_dir.path(), &["init", "--bare"]);

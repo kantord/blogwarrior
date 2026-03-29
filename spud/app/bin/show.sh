@@ -1,2 +1,2 @@
 #!/bin/sh
-blog .all export 2>/dev/null
+blog .unread 2w.. export 2>/dev/null | jq -c '{title: .title, link: .link, feed_title: .feed.title, date: (.date // "" | if . != "" then .[:10] else "" end)}'
