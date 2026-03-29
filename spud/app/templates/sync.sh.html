@@ -1,8 +1,11 @@
+<h1>blogtato</h1>
+<button id="sync-btn" hx-post="/render/sync.sh" hx-target="#posts" hx-disabled-elt="this"
+        hx-on::before-request="this.setAttribute('aria-busy','true')"
+        hx-on::after-request="this.removeAttribute('aria-busy')">Sync</button>
+<section id="posts">
 {% for post in lines %}
-  <article>
-    <a href="{{ post.link }}" target="_blank">
-      <strong>{{ post.title }}</strong>
-    </a>
+  <article hx-post="/render/view.sh" hx-target="#app" hx-vals='{"link":"{{ post.link }}"}' style="cursor:pointer">
+    <strong>{{ post.title }}</strong>
     <small>{{ post.feed_title }}{% if post.date %} &middot; {{ post.date }}{% endif %}</small>
   </article>
 {% endfor %}
@@ -10,3 +13,4 @@
 {% if not lines %}
   <p><em>No posts found.</em></p>
 {% endif %}
+</section>
