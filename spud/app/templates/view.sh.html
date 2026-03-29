@@ -1,6 +1,8 @@
-<div class="mb-4">
-    <button class="btn btn-sm btn-ghost" hx-post="/render/show.sh" hx-target="#app">&larr; Back</button>
+<div class="view-header">
+    <button class="btn btn-ghost" hx-post="/render/show.sh" hx-target="#content">&larr; Back</button>
+    <div>
+        <div class="view-title">{{ title }}</div>
+        <div class="card-meta">{{ feed_title }}{% if date %} &middot; {{ date }}{% endif %}</div>
+    </div>
 </div>
-<h2 class="text-xl font-bold mb-1">{{ title }}</h2>
-<div class="text-sm opacity-60 mb-4">{{ feed_title }}{% if date %} &middot; {{ date }}{% endif %}</div>
-<iframe src="{{ link }}" class="w-full border-0 rounded-lg" style="height:80vh"></iframe>
+<iframe src="{{ link }}" class="view-iframe"></iframe>
