@@ -6,30 +6,37 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg-0: #1a1a2e;
-            --bg-1: #222244;
-            --bg-2: #2a2a4a;
+            --shell-from: #1a1025;
+            --shell-to: #0f1a2e;
+            --surface: #24243e;
+            --card: #2c2c4a;
+            --card-hover: #343458;
+            --border: rgba(255,255,255,0.08);
             --text: #e0e0e0;
             --text-dim: #888;
             --accent: #7c8cf8;
-            --radius: 6px;
+            --radius: 8px;
+            --radius-lg: 14px;
+            --shell-pad: 0.75rem;
         }
-        body { font-family: system-ui, sans-serif; background: var(--bg-0); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
-        .navbar { display: flex; align-items: center; padding: 0.6rem 1rem; background: var(--bg-1); border-bottom: 1px solid rgba(255,255,255,0.06); }
-        .navbar .title { flex: 1; font-size: 1.1rem; font-weight: 700; }
-        .btn { background: var(--bg-2); color: var(--text); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius); padding: 0.35rem 0.9rem; font-size: 0.85rem; cursor: pointer; transition: background 0.15s; }
-        .btn:hover { background: var(--accent); color: #fff; }
+        body { font-family: system-ui, sans-serif; background: linear-gradient(135deg, var(--shell-from), var(--shell-to)); color: var(--text); height: 100vh; display: flex; flex-direction: column; padding: var(--shell-pad); gap: 0.4rem; }
+        .toolbar { display: flex; align-items: center; padding: 0.2rem 0.25rem; gap: 0.5rem; flex-shrink: 0; }
+        .toolbar .title { flex: 1; font-size: 1rem; font-weight: 700; opacity: 0.7; }
+        .btn { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.35rem 0.9rem; font-size: 0.8rem; cursor: pointer; transition: background 0.15s; }
+        .btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-ghost { background: transparent; border-color: transparent; }
-        .btn-ghost:hover { background: var(--bg-2); color: var(--text); }
-        #content { flex: 1; overflow-y: auto; padding: 0.5rem; }
-        .card { background: var(--bg-1); border-radius: var(--radius); padding: 0.7rem 0.9rem; margin-bottom: 0.3rem; cursor: pointer; transition: background 0.15s; }
-        .card:hover { background: var(--bg-2); }
+        .btn-ghost:hover { background: var(--card); color: var(--text); border-color: transparent; }
+        .window { flex: 1; min-height: 0; background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); overflow-y: auto; padding: 0.5rem; }
+        .window-frame { flex: 1; min-height: 0; background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; display: flex; }
+        .window-frame iframe { flex: 1; width: 100%; border: 0; }
+        .card { background: var(--card); border-radius: var(--radius); padding: 0.7rem 0.9rem; margin-bottom: 0.3rem; cursor: pointer; transition: background 0.15s; }
+        .card:hover { background: var(--card-hover); }
         .card-title { font-weight: 500; font-size: 0.95rem; }
         .card-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.15rem; }
-        .view-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0 0.4rem; }
-        .view-title { font-size: 1.1rem; font-weight: 700; line-height: 1.3; }
-        .view-iframe { width: 100%; border: 0; border-radius: var(--radius); height: calc(100vh - 8rem); }
+        .view-bar { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; padding: 0.2rem 0.25rem; }
+        .view-bar-text { min-width: 0; }
+        .view-title { font-size: 0.9rem; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .empty { text-align: center; color: var(--text-dim); padding: 2rem; }
         .spinner { display: inline-block; width: 1.5rem; height: 1.5rem; border: 2px solid var(--text-dim); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; margin: 2rem auto; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -39,14 +46,9 @@
     </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="title">blogtato</div>
-        <button class="btn" id="sync-btn" hx-post="/render/sync.sh" hx-target="#content" hx-disabled-elt="this"
-                hx-on::before-request="this.classList.add('loading')"
-                hx-on::after-request="this.classList.remove('loading')"><span class="btn-label">Sync</span></button>
-    </nav>
-    <div id="content" hx-post="/render/show.sh" hx-trigger="load" hx-target="this">
-        <div style="display:flex;justify-content:center"><div class="spinner"></div></div>
+    <div id="app" hx-post="/_api/render/show.sh" hx-trigger="load" hx-target="this">
+        <div class="toolbar"><div class="title">blogtato</div></div>
+        <div class="window" style="display:flex;justify-content:center"><div class="spinner"></div></div>
     </div>
 </body>
 </html>
