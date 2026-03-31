@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>blogtato</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="reader">
+    <header>
+        <a href="/">&larr; back</a>
+        <span id="meta"></span>
+    </header>
+    <iframe id="frame"></iframe>
+    <script>
+        const p = new URLSearchParams(location.search);
+        document.getElementById('frame').src = p.get('url');
+        document.getElementById('meta').textContent = p.get('title') || '';
+    </script>
+</body>
+</html>
