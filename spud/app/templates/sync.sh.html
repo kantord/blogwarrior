@@ -1,17 +1,9 @@
-<div class="toolbar">
-    <div class="title">blogtato</div>
-    <button class="btn" id="sync-btn" hx-post="/_api/render/sync.sh" hx-target="#app" hx-disabled-elt="this"
-            hx-on::before-request="this.classList.add('loading')"
-            hx-on::after-request="this.classList.remove('loading')"><span class="btn-label">Sync</span></button>
-</div>
-<div class="window">
 {% for post in lines %}
-  <div class="card" hx-post="/_api/render/view.sh" hx-target="#app" hx-vals='{"link":"{{ post.link }}"}'>
-    <div class="card-title">{{ post.title }}</div>
-    <div class="card-meta">{{ post.feed_title }}{% if post.date %} &middot; {{ post.date }}{% endif %}</div>
-  </div>
+<a class="post" href="/read.html?url={{ post.link }}&title={{ post.title }}">
+  <div class="post-title">{{ post.title }}</div>
+  <div class="post-meta">{{ post.feed_title }}{% if post.date %} &middot; {{ post.date }}{% endif %}</div>
+</a>
 {% endfor %}
 {% if not lines %}
-  <p class="empty">No posts found.</p>
+<p class="empty">no posts found</p>
 {% endif %}
-</div>
