@@ -33,6 +33,17 @@ impl PostIndex {
         Ok(())
     }
 
+    fn filter_by_id(&mut self, id: &str) -> anyhow::Result<()> {
+        let before = self.items.len();
+        self.items.retain(|(item_id, _)| item_id == id);
+        if self.items.is_empty() && before > 0 {
+            anyhow::bail!("No post found with id: {id}");
+        } else if self.items.is_empty() {
+            anyhow::bail!("No posts found");
+        }
+        Ok(())
+    }
+
     fn filter_by_feed(&mut self, fi: &FeedIndex, shorthand: &str) -> anyhow::Result<()> {
         let feed_id = fi
             .id_for_shorthand(shorthand)
@@ -108,6 +119,9 @@ pub(crate) fn resolve_posts(store: &BlogData, query: &Query) -> anyhow::Result<R
     posts.filter_by_shorthands(&query.shorthands)?;
     if let Some(ref shorthand) = query.filter {
         posts.filter_by_feed(&fi, shorthand)?;
+    }
+    if let Some(ref id) = query.id_filter {
+        posts.filter_by_id(id)?;
     }
     posts.filter_by_date(query);
     posts.filter_by_read_status(query.read_filter, store);

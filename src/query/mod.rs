@@ -72,6 +72,7 @@ pub(crate) enum ReadFilter {
 pub(crate) struct Query {
     pub keys: Vec<GroupKey>,
     pub filter: Option<String>,
+    pub id_filter: Option<String>,
     pub date_filter: DateFilter,
     pub shorthands: Vec<String>,
     pub read_filter: ReadFilter,
@@ -91,6 +92,7 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
     let mut until = None;
     let mut shorthands = Vec::new();
     let mut read_filter = ReadFilter::Any;
+    let mut id_filter = None;
 
     let parser = arg_parser();
 
@@ -118,6 +120,9 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
                 Token::ReadStatus(rf) => {
                     read_filter = rf;
                 }
+                Token::IdFilter(id) => {
+                    id_filter = Some(id);
+                }
             },
             Err(errs) => {
                 let messages: Vec<String> = errs.into_iter().map(|e| e.to_string()).collect();
@@ -142,6 +147,7 @@ pub(crate) fn parse_query(args: &[String]) -> anyhow::Result<Query> {
     Ok(Query {
         keys,
         filter,
+        id_filter,
         date_filter: DateFilter { since, until },
         shorthands,
         read_filter,
@@ -353,5 +359,18 @@ mod tests {
         assert_eq!(q.read_filter, ReadFilter::Unread);
         assert_eq!(q.filter, Some("hn".to_string()));
         assert_eq!(q.keys, vec![GroupKey::Date]);
+    }
+
+    #[test]
+    fn test_id_filter() {
+        let q = parse_query(&args(&["id:abc123"])).unwrap();
+        assert_eq!(q.id_filter, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_id_filter_combined() {
+        let q = parse_query(&args(&["id:abc123", ".all"])).unwrap();
+        assert_eq!(q.id_filter, Some("abc123".to_string()));
+        assert_eq!(q.read_filter, ReadFilter::All);
     }
 }

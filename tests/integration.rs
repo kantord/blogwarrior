@@ -3122,3 +3122,179 @@ fn test_custom_default_query_groups_by_date() {
         "custom default with /d should group by date, got:\n{output}"
     );
 }
+
+#[test]
+fn test_filter_by_id_show() {
+    let ctx = TestContext::new();
+
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
+    let xml = rss_xml_with_links(
+        "ID Blog",
+        &[
+            (
+                "Post Alpha",
+                &date_a,
+                "guid-alpha",
+                "https://example.com/alpha",
+            ),
+            (
+                "Post Beta",
+                &date_b,
+                "guid-beta",
+                "https://example.com/beta",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/id.xml", &xml);
+    let url = ctx.server.url("/id.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Get the ID of Post Alpha from export
+    let export = ctx.run(&[".all", "export"]).success().stdout_str();
+    let alpha_line = export.lines().find(|l| l.contains("Post Alpha")).unwrap();
+    let alpha: serde_json::Value = serde_json::from_str(alpha_line).unwrap();
+    let alpha_id = alpha["id"].as_str().unwrap();
+
+    // Filter by id: should show only Post Alpha
+    let output = ctx
+        .run(&[&format!("id:{alpha_id}"), "show"])
+        .success()
+        .stdout_str();
+    assert!(
+        output.contains("Post Alpha"),
+        "id: filter should show Post Alpha, got:\n{output}"
+    );
+    assert!(
+        !output.contains("Post Beta"),
+        "id: filter should NOT show Post Beta, got:\n{output}"
+    );
+}
+
+#[test]
+fn test_filter_by_id_read() {
+    let ctx = TestContext::new();
+
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
+    let xml = rss_xml_with_links(
+        "ID Blog",
+        &[
+            (
+                "Post Alpha",
+                &date_a,
+                "guid-alpha",
+                "https://example.com/alpha",
+            ),
+            (
+                "Post Beta",
+                &date_b,
+                "guid-beta",
+                "https://example.com/beta",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/id.xml", &xml);
+    let url = ctx.server.url("/id.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Get the ID of Post Alpha from export
+    let export = ctx.run(&[".all", "export"]).success().stdout_str();
+    let alpha_line = export.lines().find(|l| l.contains("Post Alpha")).unwrap();
+    let alpha: serde_json::Value = serde_json::from_str(alpha_line).unwrap();
+    let alpha_id = alpha["id"].as_str().unwrap();
+
+    // Mark as read using id: filter
+    let output = ctx
+        .run(&[&format!("id:{alpha_id}"), "read"])
+        .success()
+        .stdout_str();
+    assert!(
+        output.contains("https://example.com/alpha"),
+        "id: read should print the post URL, got:\n{output}"
+    );
+
+    // Verify only Post Alpha is marked as read
+    let export2 = ctx.run(&[".all", "export"]).success().stdout_str();
+    let alpha_line2 = export2.lines().find(|l| l.contains("Post Alpha")).unwrap();
+    let alpha2: serde_json::Value = serde_json::from_str(alpha_line2).unwrap();
+    assert!(
+        alpha2.get("read_at").is_some(),
+        "Post Alpha should be marked as read"
+    );
+
+    let beta_line2 = export2.lines().find(|l| l.contains("Post Beta")).unwrap();
+    let beta2: serde_json::Value = serde_json::from_str(beta_line2).unwrap();
+    assert!(
+        beta2.get("read_at").is_none(),
+        "Post Beta should still be unread"
+    );
+}
+
+#[test]
+fn test_filter_by_id_export() {
+    let ctx = TestContext::new();
+
+    let date_a = recent_rss_date(1);
+    let date_b = recent_rss_date(2);
+    let xml = rss_xml_with_links(
+        "ID Blog",
+        &[
+            (
+                "Post Alpha",
+                &date_a,
+                "guid-alpha",
+                "https://example.com/alpha",
+            ),
+            (
+                "Post Beta",
+                &date_b,
+                "guid-beta",
+                "https://example.com/beta",
+            ),
+        ],
+    );
+    ctx.mock_rss_feed("/id.xml", &xml);
+    let url = ctx.server.url("/id.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Get the ID of Post Beta from export
+    let export = ctx.run(&[".all", "export"]).success().stdout_str();
+    let beta_line = export.lines().find(|l| l.contains("Post Beta")).unwrap();
+    let beta: serde_json::Value = serde_json::from_str(beta_line).unwrap();
+    let beta_id = beta["id"].as_str().unwrap();
+
+    // Export filtered by id: should only return Post Beta
+    let output = ctx
+        .run(&[&format!("id:{beta_id}"), "export"])
+        .success()
+        .stdout_str();
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(lines.len(), 1, "should export exactly 1 post");
+    assert!(
+        lines[0].contains("Post Beta"),
+        "exported post should be Post Beta"
+    );
+}
+
+#[test]
+fn test_filter_by_id_unknown() {
+    let ctx = TestContext::new();
+
+    let xml = rss_xml("Test Blog", &[("Post A", &recent_rss_date(1))]);
+    ctx.mock_rss_feed("/test.xml", &xml);
+    let url = ctx.server.url("/test.xml");
+    ctx.write_feeds(&[&url]);
+    ctx.run(&["sync"]).success();
+
+    // Unknown ID should fail with a "no matching" or "not found" error, not a parse error
+    let output = ctx.run(&["id:deadbeef12345678", "show"]).failure();
+    let stderr = output.stderr_str();
+    assert!(
+        stderr.contains("deadbeef12345678") && !stderr.contains("Failed to parse"),
+        "error should mention the unknown ID without being a parse error, got:\n{stderr}"
+    );
+}

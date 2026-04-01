@@ -7,6 +7,7 @@ use crate::utils::date::start_of_day;
 pub(super) enum Token {
     Group(GroupKey),
     FeedFilter(String),
+    IdFilter(String),
     Range(Option<DateTime<Utc>>, Option<DateTime<Utc>>),
     Shorthand(String),
     ReadStatus(ReadFilter),
@@ -104,6 +105,11 @@ pub(super) fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Ric
         .then_ignore(end().labelled("end of read filter"))
         .map(Token::ReadStatus);
 
+    let id_filter = just("id:")
+        .ignore_then(any().repeated().at_least(1).collect::<String>())
+        .then_ignore(end().labelled("end of id filter"))
+        .map(Token::IdFilter);
+
     let shorthand = any()
         .filter(|c: &char| c.is_alphanumeric())
         .repeated()
@@ -112,6 +118,7 @@ pub(super) fn arg_parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Ric
         .then_ignore(end())
         .map(Token::Shorthand);
 
-    choice((range, group, feed_filter, read_status, shorthand))
-        .labelled("argument (3d..1d, /d, /w, /f, @feed, .read, .unread, .all, or shorthand)")
+    choice((range, group, feed_filter, id_filter, read_status, shorthand)).labelled(
+        "argument (3d..1d, /d, /w, /f, @feed, id:<id>, .read, .unread, .all, or shorthand)",
+    )
 }
