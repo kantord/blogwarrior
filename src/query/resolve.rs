@@ -9,7 +9,7 @@ use crate::shorthand::{RESERVED_COMMANDS, index_to_shorthand};
 use super::{Query, ReadFilter};
 
 pub(crate) struct PostIndex {
-    pub items: Vec<FeedItem>,
+    pub items: Vec<(String, FeedItem)>,
     pub shorthands: HashMap<String, String>,
 }
 
@@ -25,7 +25,7 @@ impl PostIndex {
                 anyhow::bail!("Unknown shorthand: {sh}");
             }
         }
-        self.items.retain(|item| {
+        self.items.retain(|(_, item)| {
             self.shorthands
                 .get(&item.raw_id)
                 .is_some_and(|s| sh_set.contains(s.as_str()))
@@ -37,18 +37,18 @@ impl PostIndex {
         let feed_id = fi
             .id_for_shorthand(shorthand)
             .ok_or_else(|| anyhow::anyhow!("Unknown feed shorthand: @{shorthand}"))?;
-        self.items.retain(|item| item.feed == feed_id);
+        self.items.retain(|(_, item)| item.feed == feed_id);
         Ok(())
     }
 
     fn filter_by_date(&mut self, query: &Query) {
         if let Some(since) = query.date_filter.since {
             self.items
-                .retain(|item| item.date.is_some_and(|d| d >= since));
+                .retain(|(_, item)| item.date.is_some_and(|d| d >= since));
         }
         if let Some(until) = query.date_filter.until {
             self.items
-                .retain(|item| item.date.is_some_and(|d| d <= until));
+                .retain(|(_, item)| item.date.is_some_and(|d| d <= until));
         }
     }
 
@@ -62,7 +62,7 @@ impl PostIndex {
                     .collect();
                 let keep_read = matches!(filter, ReadFilter::Read);
                 self.items
-                    .retain(|item| read_ids.contains(item.raw_id.as_str()) == keep_read);
+                    .retain(|(_, item)| read_ids.contains(item.raw_id.as_str()) == keep_read);
             }
             ReadFilter::Any | ReadFilter::All => {}
         }
@@ -70,12 +70,19 @@ impl PostIndex {
 }
 
 pub(crate) fn post_index(table: &synctato::Table<FeedItem>) -> PostIndex {
-    let mut items = table.items();
-    items.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.raw_id.cmp(&b.raw_id)));
+    let mut items: Vec<(String, FeedItem)> = table
+        .iter()
+        .map(|(id, item)| (id.to_string(), item.clone()))
+        .collect();
+    items.sort_by(|a, b| {
+        b.1.date
+            .cmp(&a.1.date)
+            .then_with(|| a.1.raw_id.cmp(&b.1.raw_id))
+    });
     let mut idx = 0;
     let shorthands = items
         .iter()
-        .map(|item| {
+        .map(|(_, item)| {
             loop {
                 let sh = index_to_shorthand(idx);
                 idx += 1;
@@ -89,7 +96,7 @@ pub(crate) fn post_index(table: &synctato::Table<FeedItem>) -> PostIndex {
 }
 
 pub(crate) struct ResolvedPosts {
-    pub items: Vec<FeedItem>,
+    pub items: Vec<(String, FeedItem)>,
     pub shorthands: HashMap<String, String>,
     pub feed_labels: HashMap<String, String>,
 }

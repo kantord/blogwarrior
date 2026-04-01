@@ -6,7 +6,7 @@ use quick_xml::events::{BytesDecl, BytesStart, BytesText, Event};
 use crate::data::BlogData;
 
 pub(crate) fn cmd_feed_export(store: &BlogData) -> anyhow::Result<()> {
-    let feeds = store.feeds().items();
+    let feeds: Vec<_> = store.feeds().iter().map(|(_, f)| f).collect();
     anyhow::ensure!(!feeds.is_empty(), "No feeds to export");
 
     let mut buf = Cursor::new(Vec::new());

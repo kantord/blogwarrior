@@ -2576,8 +2576,13 @@ fn test_export_outputs_jsonl() {
     let lines: Vec<&str> = output.lines().collect();
     assert_eq!(lines.len(), 2, "expected 2 JSONL lines, got:\n{output}");
 
-    // Each line should be valid JSON with an expanded feed object
+    // Each line should be valid JSON with id and expanded feed object
     let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+    assert!(parsed.get("id").is_some(), "export should include id field");
+    assert!(
+        parsed["id"].as_str().unwrap().len() > 0,
+        "id should be non-empty"
+    );
     assert!(parsed.get("title").is_some());
     assert!(parsed.get("date").is_some());
     let feed = parsed.get("feed").expect("feed field should exist");

@@ -39,9 +39,9 @@ mod tests {
         table.save().unwrap();
 
         let loaded = Table::<ReadMark>::load(dir.path()).unwrap();
-        let items = loaded.items();
+        let items: Vec<_> = loaded.iter().collect();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].post_id, "some-post-id");
+        assert_eq!(items[0].1.post_id, "some-post-id");
     }
 
     #[test]
@@ -60,7 +60,7 @@ mod tests {
         table.save().unwrap();
 
         let loaded = Table::<ReadMark>::load(dir.path()).unwrap();
-        assert_eq!(loaded.items().len(), 2);
+        assert_eq!(loaded.iter().count(), 2);
     }
 
     #[test]
@@ -77,6 +77,6 @@ mod tests {
             read_at: Utc::now(),
         });
 
-        assert_eq!(table.items().len(), 1);
+        assert_eq!(table.iter().count(), 1);
     }
 }

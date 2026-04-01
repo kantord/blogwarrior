@@ -83,7 +83,7 @@ pub(crate) fn cmd_sync(store: &mut BlogData) -> anyhow::Result<()> {
     );
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let sources = store.feeds().items();
+    let sources: Vec<_> = store.feeds().iter().map(|(_, f)| f.clone()).collect();
     let results = fetch_feeds(&sources, &pb);
     pb.finish_and_clear();
 
