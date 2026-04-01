@@ -21,7 +21,7 @@ pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
 
     let color = std::io::stdout().is_terminal();
     let max_width = terminal_size::terminal_size().map(|(w, _)| w.0 as usize);
-    let refs: Vec<&FeedItem> = resolved.items.iter().collect();
+    let refs: Vec<&FeedItem> = resolved.items.iter().map(|(_, item)| item).collect();
     let ctx = RenderCtx {
         all_keys: &query.keys,
         shorthands: &resolved.shorthands,

@@ -12,10 +12,9 @@ impl Transaction<'_> {
     pub(crate) fn delete_posts_where(&mut self, pred: impl Fn(&schema::FeedItem) -> bool) {
         let post_ids: Vec<String> = self
             .posts
-            .items()
             .iter()
-            .filter(|p| pred(p))
-            .map(|p| p.raw_id.clone())
+            .filter(|(_, p)| pred(p))
+            .map(|(_, p)| p.raw_id.clone())
             .collect();
         self.posts.delete_where(pred);
         self.reads.delete_where(|r| post_ids.contains(&r.post_id));
@@ -30,9 +29,9 @@ pub(crate) const SCHEMA_VERSION: u32 = 1;
 pub(crate) fn check_schema_version(store: &mut BlogData) -> anyhow::Result<()> {
     let existing = store
         .meta()
-        .items()
-        .into_iter()
-        .find(|e| e.key == "schema_version");
+        .iter()
+        .find(|(_, e)| e.key == "schema_version")
+        .map(|(_, e)| e.clone());
 
     match existing {
         Some(entry) => {
@@ -67,8 +66,7 @@ pub(crate) fn get_config_value(store: &BlogData, key: &str) -> Option<String> {
     let full_key = format!("config.{key}");
     store
         .meta()
-        .items()
-        .into_iter()
-        .find(|e| e.key == full_key)
-        .map(|e| e.value)
+        .iter()
+        .find(|(_, e)| e.key == full_key)
+        .map(|(_, e)| e.value.clone())
 }

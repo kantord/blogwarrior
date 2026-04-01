@@ -10,6 +10,7 @@ use crate::query::resolve::resolve_posts;
 
 #[derive(Serialize)]
 struct ExportItem<'a> {
+    id: &'a str,
     title: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<&'a DateTime<Utc>>,
@@ -34,9 +35,10 @@ pub(crate) fn cmd_export(store: &BlogData, query: &Query) -> anyhow::Result<()> 
         .map(|(_, r)| (r.post_id.clone(), r.read_at))
         .collect();
 
-    for item in &resolved.items {
+    for (id, item) in &resolved.items {
         if let Some(&feed) = feeds_by_id.get(&item.feed) {
             let export = ExportItem {
+                id,
                 title: &item.title,
                 date: item.date.as_ref(),
                 feed,

@@ -23,7 +23,7 @@ pub(crate) fn cmd_config_get(store: &BlogData, key: &str) -> anyhow::Result<()> 
 
 pub(crate) fn cmd_config_unset(store: &mut BlogData, key: &str) -> anyhow::Result<()> {
     let full_key = format!("{CONFIG_PREFIX}{key}");
-    let exists = store.meta().items().into_iter().any(|e| e.key == full_key);
+    let exists = store.meta().iter().any(|(_, e)| e.key == full_key);
     anyhow::ensure!(exists, "No value set for '{key}'");
     store.transact(&format!("config unset {key}"), |tx| {
         tx.meta.delete(&full_key);
