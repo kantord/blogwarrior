@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/kantord/blogtato/compare/v0.1.21...v0.1.22) - 2026-04-02
+
+### Added
+
+- allow filtering by db id ([#156](https://github.com/kantord/blogtato/pull/156))
+- include db id in export results ([#153](https://github.com/kantord/blogtato/pull/153))
+
+### Other
+
+- *(deps)* update rust crate libc to v0.2.184 ([#155](https://github.com/kantord/blogtato/pull/155))
+
 ## [0.1.21](https://github.com/kantord/blogtato/compare/v0.1.20...v0.1.21) - 2026-03-29
 
 ### Added
