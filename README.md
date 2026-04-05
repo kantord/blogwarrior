@@ -185,6 +185,20 @@ of the synced database for storing the configuration would be convenient.
 Configuration is stored in the same git-based database as your feeds and posts,
 so settings automatically sync across all your devices.
 
+### Custom store location
+
+By default, `blogtato` stores data in the platform-specific data directory:
+
+- macOS: `~/Library/Application Support/blogtato/stores/default`
+- Linux: `$XDG_DATA_HOME/blogtato/stores/default` (typically
+  `~/.local/share/blogtato/stores/default`)
+
+You can override this location by setting `RSS_STORE` env:
+
+```bash
+export RSS_STORE=/path/to/another/store
+```
+
 ### Custom default query
 
 By default, `blog` with no arguments shows unread posts from the last 3 months
