@@ -79,7 +79,11 @@ enum Command {
         command: FeedCommand,
     },
     /// Fetch feeds and sync with remote
-    Sync,
+    Sync {
+        /// Repeat to sync only selected feeds by @shorthand
+        #[arg(long = "feed", value_name = "SHORTHAND")]
+        feeds: Vec<String>,
+    },
     /// Mark a post as unread
     Unread,
     /// Export matching posts as JSONL
@@ -279,9 +283,9 @@ fn run() -> anyhow::Result<()> {
             commands::import::cmd_import(&mut store, path)?;
         }
 
-        Some(Command::Sync) => {
+        Some(Command::Sync { ref feeds }) => {
             reject_filter(&filter, "sync")?;
-            commands::sync::cmd_sync(&mut store)?;
+            commands::sync::cmd_sync(&mut store, feeds)?;
         }
         Some(Command::Git { ref args }) => {
             reject_filter(&filter, "git")?;
@@ -340,6 +344,13 @@ mod tests {
     }
 
     #[test]
+    fn test_split_at_command_sync_with_feed_flags() {
+        let (filter, cmd) = split_at_command(args(&["blog", "sync", "--feed", "@df"]));
+        assert_eq!(filter, Vec::<String>::new());
+        assert_eq!(cmd, args(&["blog", "sync", "--feed", "@df"]));
+    }
+
+    #[test]
     fn test_split_at_command_no_command() {
         let (filter, cmd) = split_at_command(args(&["blog", "/d", "@hn"]));
         assert_eq!(filter, args(&["/d", "@hn"]));
@@ -387,5 +398,32 @@ mod tests {
             clap_names, reserved,
             "RESERVED_COMMANDS must match clap subcommands"
         );
+    }
+
+    #[test]
+    fn test_parse_sync_without_feed_selectors() {
+        let args = Args::parse_from(args(&["blog", "sync"]));
+        let Some(Command::Sync { feeds }) = args.command else {
+            panic!("expected sync command");
+        };
+        assert!(feeds.is_empty());
+    }
+
+    #[test]
+    fn test_parse_sync_with_one_feed_selector() {
+        let args = Args::parse_from(args(&["blog", "sync", "--feed", "@df"]));
+        let Some(Command::Sync { feeds }) = args.command else {
+            panic!("expected sync command");
+        };
+        assert_eq!(feeds, vec!["@df"]);
+    }
+
+    #[test]
+    fn test_parse_sync_with_multiple_feed_selectors() {
+        let args = Args::parse_from(args(&["blog", "sync", "--feed", "@df", "--feed", "@dg"]));
+        let Some(Command::Sync { feeds }) = args.command else {
+            panic!("expected sync command");
+        };
+        assert_eq!(feeds, vec!["@df", "@dg"]);
     }
 }

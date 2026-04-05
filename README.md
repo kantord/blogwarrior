@@ -97,6 +97,9 @@ blog feed add https://news.ycombinator.com/rss
 # Fetch new posts and sync with git remote
 blog sync
 
+# Sync only selected feeds by @shorthand from `blog feed ls`
+blog sync --feed @df --feed @dg
+
 # Show posts (defaults to unread posts from the last 3 months, grouped by week)
 blog
 

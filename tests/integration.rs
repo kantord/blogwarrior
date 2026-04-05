@@ -213,6 +213,16 @@ fn atom_xml(title: &str, feed_id: &str, entries: &[(&str, &str, &str)]) -> Strin
     )
 }
 
+fn feed_shorthand_for_url(ctx: &TestContext, url: &str) -> String {
+    let output = ctx.run(&["feed", "ls"]).success();
+    output
+        .stdout_str()
+        .lines()
+        .find(|line| line.contains(url))
+        .map(|line| line.chars().take_while(|c| *c != ' ').collect())
+        .expect("should find url in feed ls output")
+}
+
 #[test]
 fn test_sync_creates_posts_file() {
     let ctx = TestContext::new();
@@ -270,6 +280,120 @@ fn test_sync_multiple_feeds() {
     let titles: Vec<&str> = posts.iter().map(|p| p["title"].as_str().unwrap()).collect();
     assert!(titles.contains(&"RSS Post"));
     assert!(titles.contains(&"Atom Post"));
+}
+
+#[test]
+fn test_sync_selected_feed_by_shorthand() {
+    let ctx = TestContext::new();
+
+    let alpha = rss_xml_with_guids(
+        "Alpha Blog",
+        &[(
+            "Alpha Post",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-alpha",
+        )],
+    );
+    ctx.mock_rss_feed("/alpha.xml", &alpha);
+
+    let beta = rss_xml_with_guids(
+        "Beta Blog",
+        &[("Beta Post", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-beta")],
+    );
+    ctx.mock_rss_feed("/beta.xml", &beta);
+
+    let alpha_url = ctx.server.url("/alpha.xml");
+    let beta_url = ctx.server.url("/beta.xml");
+    ctx.write_feeds(&[&alpha_url, &beta_url]);
+
+    let alpha_shorthand = feed_shorthand_for_url(&ctx, &alpha_url);
+    ctx.run(&["sync", "--feed", &alpha_shorthand]).success();
+
+    let posts = ctx.read_posts();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["title"].as_str().unwrap(), "Alpha Post");
+}
+
+#[test]
+fn test_sync_multiple_selected_feeds_by_shorthand() {
+    let ctx = TestContext::new();
+
+    let alpha = rss_xml_with_guids(
+        "Alpha Blog",
+        &[(
+            "Alpha Post",
+            "Mon, 01 Jan 2024 00:00:00 +0000",
+            "guid-alpha",
+        )],
+    );
+    ctx.mock_rss_feed("/alpha.xml", &alpha);
+
+    let beta = rss_xml_with_guids(
+        "Beta Blog",
+        &[("Beta Post", "Tue, 02 Jan 2024 00:00:00 +0000", "guid-beta")],
+    );
+    ctx.mock_rss_feed("/beta.xml", &beta);
+
+    let gamma = rss_xml_with_guids(
+        "Gamma Blog",
+        &[(
+            "Gamma Post",
+            "Wed, 03 Jan 2024 00:00:00 +0000",
+            "guid-gamma",
+        )],
+    );
+    ctx.mock_rss_feed("/gamma.xml", &gamma);
+
+    let alpha_url = ctx.server.url("/alpha.xml");
+    let beta_url = ctx.server.url("/beta.xml");
+    let gamma_url = ctx.server.url("/gamma.xml");
+    ctx.write_feeds(&[&alpha_url, &beta_url, &gamma_url]);
+
+    let alpha_shorthand = feed_shorthand_for_url(&ctx, &alpha_url);
+    let gamma_shorthand = feed_shorthand_for_url(&ctx, &gamma_url);
+    ctx.run(&[
+        "sync",
+        "--feed",
+        &alpha_shorthand,
+        "--feed",
+        &gamma_shorthand,
+    ])
+    .success();
+
+    let posts = ctx.read_posts();
+    let titles: Vec<&str> = posts.iter().map(|p| p["title"].as_str().unwrap()).collect();
+    assert_eq!(posts.len(), 2);
+    assert!(titles.contains(&"Alpha Post"));
+    assert!(titles.contains(&"Gamma Post"));
+    assert!(!titles.contains(&"Beta Post"));
+}
+
+#[test]
+fn test_sync_selected_feed_requires_at_prefix() {
+    let ctx = TestContext::new();
+    insert_feed(ctx.dir.path(), "https://example.com/feed.xml");
+
+    let output = ctx.run(&["sync", "--feed", "df"]).failure();
+    let stderr = output.stderr_str();
+    assert!(
+        stderr.contains("Invalid feed selector: df (expected @shorthand)"),
+        "expected invalid selector error, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_sync_selected_feed_rejects_unknown_shorthand() {
+    let ctx = TestContext::new();
+    insert_feed(ctx.dir.path(), "https://example.com/feed.xml");
+
+    let output = ctx.run(&["sync", "--feed", "@dg"]).failure();
+    let stderr = output.stderr_str();
+    assert!(
+        stderr.contains("Unknown feed shorthand: @dg"),
+        "expected unknown shorthand error, got: {}",
+        stderr
+    );
 }
 
 #[test]
