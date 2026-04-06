@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23](https://github.com/kantord/blogtato/compare/v0.1.22...v0.1.23) - 2026-04-06
+
+### Added
+
+- add sync only selected feeds
+
+### Other
+
+- add Custom store location description with RSS_STORE env ([#157](https://github.com/kantord/blogtato/pull/157))
+
 ## [0.1.22](https://github.com/kantord/blogtato/compare/v0.1.21...v0.1.22) - 2026-04-02
 
 ### Added
