@@ -1,5 +1,7 @@
 {% for post in lines %}
-<a class="post" href="/read.html?url={{ post.link }}&title={{ post.title }}">
+<a class="post" href="/read.html?url={{ post.link }}&title={{ post.title }}"
+   hx-get="/_api/render/mark_read.sh?id={{ post.id }}" hx-target="closest a" hx-swap="outerHTML"
+   hx-on::after-request="window.location.href=this.getAttribute('href')">
   <div class="post-title">{{ post.title }}</div>
   <div class="post-meta">{{ post.feed_title }}{% if post.date %} &middot; {{ post.date }}{% endif %}</div>
 </a>
