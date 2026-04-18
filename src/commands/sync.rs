@@ -168,6 +168,7 @@ mod tests {
             site_url: String::new(),
             description: String::new(),
             is_fetched: false,
+            command: None,
         }
     }
 
