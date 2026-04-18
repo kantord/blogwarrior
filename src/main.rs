@@ -17,6 +17,10 @@ use shorthand::RESERVED_COMMANDS;
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
+
+    /// Use compact output (less whitespace between groups)
+    #[arg(long)]
+    compact: bool,
 }
 
 const QUERY_HELP: &str = "\
@@ -208,12 +212,16 @@ fn run() -> anyhow::Result<()> {
     let mut store = data::BlogData::open(&store_dir)?;
     data::check_schema_version(&mut store)?;
 
+    let show_opts = commands::show::ShowOpts {
+        compact: args.compact || data::get_config_value(&store, "compact") == Some("true".to_string()),
+    };
+
     match args.command {
         // Commands that accept a query/filter
         Some(Command::Show { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
             let q = parse_query_or_default(&all_args, &store)?;
-            commands::show::cmd_show(&store, &q)?;
+            commands::show::cmd_show(&store, &q, &show_opts)?;
         }
         Some(Command::Export { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
@@ -234,7 +242,7 @@ fn run() -> anyhow::Result<()> {
         }
         None => {
             let q = parse_query_or_default(&filter, &store)?;
-            commands::show::cmd_show(&store, &q)?;
+            commands::show::cmd_show(&store, &q, &show_opts)?;
         }
 
         // Commands that reject filters
