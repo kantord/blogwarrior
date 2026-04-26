@@ -179,12 +179,14 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
-fn parse_query_or_default(args: &[String], store: &data::BlogData) -> anyhow::Result<query::Query> {
+fn parse_query_or_default(args: &[String], store: &data::BlogData) -> anyhow::Result<(query::Query, String)> {
     if args.is_empty() {
         let default = data::get_config_value(store, "default_query");
-        query::parse_query_str(default.as_deref().unwrap_or(query::DEFAULT_QUERY))
+        let text = default.as_deref().unwrap_or(query::DEFAULT_QUERY);
+        Ok((query::parse_query_str(text)?, text.to_string()))
     } else {
-        query::parse_query(args)
+        let text = args.join(" ");
+        Ok((query::parse_query(args)?, text))
     }
 }
 
@@ -212,12 +214,12 @@ fn run() -> anyhow::Result<()> {
         // Commands that accept a query/filter
         Some(Command::Show { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = parse_query_or_default(&all_args, &store)?;
-            commands::show::cmd_show(&store, &q)?;
+            let (q, query_text) = parse_query_or_default(&all_args, &store)?;
+            commands::show::cmd_show(&store, &q, &query_text)?;
         }
         Some(Command::Export { ref args }) => {
             let all_args: Vec<String> = filter.into_iter().chain(args.iter().cloned()).collect();
-            let q = parse_query_or_default(&all_args, &store)?;
+            let (q, _) = parse_query_or_default(&all_args, &store)?;
             commands::export::cmd_export(&store, &q)?;
         }
         Some(Command::Open) => {
@@ -233,8 +235,8 @@ fn run() -> anyhow::Result<()> {
             commands::open::cmd_unread(&mut store, &q)?;
         }
         None => {
-            let q = parse_query_or_default(&filter, &store)?;
-            commands::show::cmd_show(&store, &q)?;
+            let (q, query_text) = parse_query_or_default(&filter, &store)?;
+            commands::show::cmd_show(&store, &q, &query_text)?;
         }
 
         // Commands that reject filters
