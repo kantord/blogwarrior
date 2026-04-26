@@ -3422,3 +3422,22 @@ fn test_filter_by_id_unknown() {
         "error should mention the unknown ID without being a parse error, got:\n{stderr}"
     );
 }
+
+#[test]
+fn test_show_includes_summary_footer() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Post A","date":"2024-01-15T00:00:00Z","feed":"feed1"}
+{"id":"2","title":"Post B","date":"2024-01-14T00:00:00Z","feed":"feed2"}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    let output = ctx.run(&["show", "2020-01-01.."]).success();
+    let stderr = output.stderr_str();
+
+    // Summary footer goes to stderr with post/feed counts and the query
+    assert!(
+        stderr.contains("Post(s)") && stderr.contains("Feed(s)") && stderr.contains("2020-01-01.."),
+        "stderr should contain summary footer with counts and query, got:\n{stderr}"
+    );
+}
