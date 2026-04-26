@@ -9,7 +9,11 @@ use crate::display::{RenderCtx, render_grouped};
 use crate::query::Query;
 use crate::query::resolve::resolve_posts;
 
-pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
+pub(crate) struct ShowOpts {
+    pub compact: bool,
+}
+
+pub(crate) fn cmd_show(store: &BlogData, query: &Query, opts: &ShowOpts) -> anyhow::Result<()> {
     let resolved = resolve_posts(store, query)?;
     ensure!(!resolved.items.is_empty(), "No matching posts");
 
@@ -30,6 +34,7 @@ pub(crate) fn cmd_show(store: &BlogData, query: &Query) -> anyhow::Result<()> {
         color,
         shorthand_width: RenderCtx::shorthand_width_from(&refs, &resolved.shorthands),
         max_width,
+        compact: opts.compact,
     };
     print!("{}", render_grouped(&refs, &ctx));
     Ok(())

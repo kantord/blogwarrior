@@ -3422,3 +3422,56 @@ fn test_filter_by_id_unknown() {
         "error should mention the unknown ID without being a parse error, got:\n{stderr}"
     );
 }
+
+
+#[test]
+fn test_compact_flag() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Post A","date":"2024-01-15T00:00:00Z","feed":"Alice"}
+{"id":"2","title":"Post B","date":"2024-01-15T00:00:00Z","feed":"Bob"}
+{"id":"3","title":"Post C","date":"2024-01-14T00:00:00Z","feed":"Alice"}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    let output = ctx.run(&["--compact", "show", "/d", "2020-01-01.."]).success();
+    let stdout = output.stdout_str();
+
+    // In compact mode, there should be no blank lines between group header and items
+    let lines: Vec<&str> = stdout.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if line.contains("===") && i + 1 < lines.len() {
+            assert!(
+                !lines[i + 1].trim().is_empty(),
+                "compact mode should not have blank line after group header at line {i}: {line}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_compact_config() {
+    let ctx = TestContext::new();
+
+    let posts = r#"{"id":"1","title":"Post A","date":"2024-01-15T00:00:00Z","feed":"Alice"}
+{"id":"2","title":"Post B","date":"2024-01-14T00:00:00Z","feed":"Bob"}"#;
+    fs::create_dir_all(ctx.dir.path().join("posts")).unwrap();
+    fs::write(ctx.dir.path().join("posts").join("items_.jsonl"), posts).unwrap();
+
+    // Set compact via config
+    ctx.run(&["config", "set", "compact", "true"]).success();
+
+    let output = ctx.run(&["show", "/d", "2020-01-01.."]).success();
+    let stdout = output.stdout_str();
+
+    // In compact mode, there should be no blank lines between group header and items
+    let lines: Vec<&str> = stdout.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if line.contains("===") && i + 1 < lines.len() {
+            assert!(
+                !lines[i + 1].trim().is_empty(),
+                "compact config should not have blank line after group header at line {i}: {line}"
+            );
+        }
+    }
+}
