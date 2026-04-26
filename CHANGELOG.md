@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24](https://github.com/kantord/blogtato/compare/v0.1.23...v0.1.24) - 2026-04-26
+
+### Fixed
+
+- *(deps)* update rust crate clap to v4.6.1 ([#164](https://github.com/kantord/blogtato/pull/164))
+- *(deps)* update rust crate rayon to v1.12.0 ([#162](https://github.com/kantord/blogtato/pull/162))
+
+### Other
+
+- fix clippy error ([#170](https://github.com/kantord/blogtato/pull/170))
+- *(deps)* update rust crate libc to v0.2.185 ([#161](https://github.com/kantord/blogtato/pull/161))
+
 ## [0.1.23](https://github.com/kantord/blogtato/compare/v0.1.22...v0.1.23) - 2026-04-06
 
 ### Added
