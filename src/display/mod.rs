@@ -22,7 +22,7 @@ pub(crate) fn build_feed_labels(fi: &FeedIndex) -> HashMap<String, String> {
         .collect()
 }
 
-pub(super) struct Style {
+pub(crate) struct Style {
     pub bold: &'static str,
     pub dim: &'static str,
     pub italic: &'static str,
