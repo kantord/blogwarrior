@@ -179,7 +179,10 @@ fn store_dir() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("could not determine data directory; set RSS_STORE"))
 }
 
-fn parse_query_or_default(args: &[String], store: &data::BlogData) -> anyhow::Result<(query::Query, String)> {
+fn parse_query_or_default(
+    args: &[String],
+    store: &data::BlogData,
+) -> anyhow::Result<(query::Query, String)> {
     if args.is_empty() {
         let default = data::get_config_value(store, "default_query");
         let text = default.as_deref().unwrap_or(query::DEFAULT_QUERY);

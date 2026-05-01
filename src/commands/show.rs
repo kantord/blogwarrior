@@ -39,11 +39,7 @@ pub(crate) fn cmd_show(store: &BlogData, query: &Query, query_text: &str) -> any
     Ok(())
 }
 
-pub(crate) fn format_summary(
-    items: &[&FeedItem],
-    query_text: &str,
-    color: bool,
-) -> String {
+pub(crate) fn format_summary(items: &[&FeedItem], query_text: &str, color: bool) -> String {
     let count = items.len();
     let feed_count = {
         let mut feeds: Vec<&str> = items.iter().map(|i| i.feed.as_str()).collect();
