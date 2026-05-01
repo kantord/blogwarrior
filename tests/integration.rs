@@ -88,9 +88,7 @@ impl TestContext {
     }
 
     fn run(&self, args: &[&str]) -> assert_cmd::assert::Assert {
-        #[allow(deprecated)]
-        Command::cargo_bin("blog")
-            .unwrap()
+        blog_cmd()
             .args(args)
             .env("RSS_STORE", self.dir.path())
             .assert()
@@ -786,9 +784,7 @@ fn test_remove_feed_cleans_up_read_marks() {
     ctx.run(&["sync"]).success();
 
     // Mark the post as read by opening it
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
+    blog_cmd()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
@@ -1146,9 +1142,7 @@ fn test_open_valid_shorthand() {
 
     // Running `open a` should resolve the shorthand without error.
     // Use BROWSER=true to prevent actually opening a browser.
-    #[allow(deprecated)]
-    let output = Command::cargo_bin("blog")
-        .unwrap()
+    let output = blog_cmd()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
@@ -1206,9 +1200,7 @@ fn test_open_marks_post_as_read() {
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Open first post (shorthand "a")
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
+    blog_cmd()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
@@ -1475,8 +1467,36 @@ fn test_atom_feed_with_rss_in_content_is_parsed_as_atom() {
 // --- Sync integration tests ---
 
 /// Helper to run a git command in a directory.
+/// Git env vars injected by git when running hooks. Any subprocess that does
+/// git operations must clear these or it will accidentally operate on the host
+/// repo's index instead of its own temp directory.
+const GIT_HOOK_VARS: &[&str] = &[
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+];
+
+fn git_cmd() -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    for var in GIT_HOOK_VARS {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
+#[allow(deprecated)]
+fn blog_cmd() -> assert_cmd::Command {
+    let mut cmd = Command::cargo_bin("blog").unwrap();
+    for var in GIT_HOOK_VARS {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
 fn git(dir: &Path, args: &[&str]) {
-    let output = std::process::Command::new("git")
+    let output = git_cmd()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -1535,7 +1555,7 @@ fn insert_feed(store_dir: &Path, url: &str) {
         writeln!(file, "{}", entry).unwrap();
     } // file is dropped/flushed here before git add
 
-    let git_check = std::process::Command::new("git")
+    let git_check = git_cmd()
         .args(["-C", &store_dir.to_string_lossy(), "rev-parse", "--git-dir"])
         .output();
     if let Ok(output) = git_check {
@@ -1564,7 +1584,7 @@ fn init_git_store(store_dir: &Path, origin_dir: &Path) {
 /// Clone from a bare origin into a new temp dir, return its path.
 fn clone_store(origin_dir: &Path) -> (TempDir, std::path::PathBuf) {
     let dir = TempDir::new().unwrap();
-    let output = std::process::Command::new("git")
+    let output = git_cmd()
         .args([
             "clone",
             &path_to_file_url(origin_dir),
@@ -1583,12 +1603,7 @@ fn clone_store(origin_dir: &Path) -> (TempDir, std::path::PathBuf) {
 }
 
 fn run_blog(store_dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
-        .args(args)
-        .env("RSS_STORE", store_dir)
-        .assert()
+    blog_cmd().args(args).env("RSS_STORE", store_dir).assert()
 }
 
 #[test]
@@ -1812,7 +1827,7 @@ fn test_git_remote_add() {
     .success();
 
     // Verify remote was added
-    let output = std::process::Command::new("git")
+    let output = git_cmd()
         .args([
             "-C",
             &dir.path().to_string_lossy(),
@@ -1851,7 +1866,7 @@ fn test_transact_auto_commits_with_existing_repo() {
     run_blog(dir.path(), &["feed", "add", &url]).success();
 
     // Check that a commit was made
-    let output = std::process::Command::new("git")
+    let output = git_cmd()
         .args([
             "-C",
             &dir.path().to_string_lossy(),
@@ -1923,7 +1938,7 @@ fn test_transact_dirty_repo_fails() {
 }
 
 fn commit_count(dir: &Path) -> usize {
-    let output = std::process::Command::new("git")
+    let output = git_cmd()
         .args(["-C", &dir.to_string_lossy(), "rev-list", "--count", "HEAD"])
         .output()
         .unwrap();
@@ -1984,7 +1999,7 @@ fn test_sync_local_ahead_pushes_without_merge() {
     run_blog(store_dir.path(), &["sync"]).success();
 
     // Verify no merge commits (all commits should have at most 1 parent)
-    let output = std::process::Command::new("git")
+    let output = git_cmd()
         .args([
             "-C",
             &store_dir.path().to_string_lossy(),
@@ -2223,7 +2238,7 @@ fn test_add_html_page_caps_candidate_validation() {
 fn test_clone_into_empty_dir() {
     // Set up a bare origin repo with some feed data
     let origin_dir = TempDir::new().unwrap();
-    std::process::Command::new("git")
+    git_cmd()
         .args(["init", "--bare"])
         .arg(origin_dir.path())
         .output()
@@ -2231,7 +2246,7 @@ fn test_clone_into_empty_dir() {
 
     // Create a temporary working repo, add data, push to origin
     let work_dir = TempDir::new().unwrap();
-    std::process::Command::new("git")
+    git_cmd()
         .args(["clone", &path_to_file_url(origin_dir.path())])
         .arg(work_dir.path())
         .output()
@@ -2246,9 +2261,7 @@ fn test_clone_into_empty_dir() {
     let store_dir = TempDir::new().unwrap();
     let target = store_dir.path().join("store");
 
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
+    blog_cmd()
         .args(["clone", &path_to_file_url(origin_dir.path())])
         .env("RSS_STORE", &target)
         .assert()
@@ -2429,9 +2442,7 @@ fn test_unread_command() {
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Open first post (shorthand "a") to mark it read
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
+    blog_cmd()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
@@ -2481,9 +2492,7 @@ fn test_target_first_open() {
     assert_eq!(before.lines().filter(|l| l.starts_with('*')).count(), 2);
 
     // Use target-first syntax: `a open` instead of `open a`
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
+    blog_cmd()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
@@ -2544,9 +2553,7 @@ fn test_target_first_unread() {
     ctx.run(&["sync"]).success();
 
     // Mark as read first via target-first open
-    #[allow(deprecated)]
-    Command::cargo_bin("blog")
-        .unwrap()
+    blog_cmd()
         .args(["a", "open"])
         .env("RSS_STORE", ctx.dir.path())
         .env("BROWSER", "true")
