@@ -183,14 +183,15 @@ fn parse_query_or_default(
     args: &[String],
     store: &data::BlogData,
 ) -> anyhow::Result<(query::Query, String)> {
-    if args.is_empty() {
+    let query = if args.is_empty() {
         let default = data::get_config_value(store, "default_query");
         let text = default.as_deref().unwrap_or(query::DEFAULT_QUERY);
-        Ok((query::parse_query_str(text)?, text.to_string()))
+        query::parse_query_str(text)?
     } else {
-        let text = args.join(" ");
-        Ok((query::parse_query(args)?, text))
-    }
+        query::parse_query(args)?
+    };
+    let text = query.to_string();
+    Ok((query, text))
 }
 
 fn reject_filter(filter: &[String], command: &str) -> anyhow::Result<()> {
