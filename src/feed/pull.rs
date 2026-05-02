@@ -55,11 +55,11 @@ pub(crate) fn initial_read_ids(items: &[FeedItem], now: DateTime<Utc>) -> Vec<St
         .iter()
         .filter(|i| matches!(i.date, Some(d) if d >= two_months_ago))
         .collect();
-    recent.sort_by(|a, b| b.date.cmp(&a.date));
+    recent.sort_by_key(|b| std::cmp::Reverse(b.date));
 
     let unread_ids: std::collections::HashSet<&str> = if recent.is_empty() {
         // All posts are old or dateless — keep the single most recent unread
-        let newest = items.iter().max_by(|a, b| a.date.cmp(&b.date)).unwrap();
+        let newest = items.iter().max_by_key(|i| i.date).unwrap();
         std::iter::once(newest.raw_id.as_str()).collect()
     } else {
         recent
