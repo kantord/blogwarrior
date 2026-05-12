@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 
 use crate::data::BlogData;
@@ -55,7 +56,9 @@ fn extract_xml_url(
         .attributes()
         .flatten()
         .find(|a| a.key.as_ref() == b"xmlUrl")?;
-    let value = attr.decode_and_unescape_value(decoder).ok()?;
+    let value = attr
+        .decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
+        .ok()?;
     let url = value.trim().to_string();
     (!url.is_empty()).then_some(url)
 }
