@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.25](https://github.com/kantord/blogtato/compare/v0.1.24...v0.1.25) - 2026-05-12
+
+### Fixed
+
+- *(deps)* update rust crate quick-xml to v0.40.0
+- *(deps)* update rust crate rss to v2.0.13
+- *(deps)* update rust crate open to v5.3.5
+- *(deps)* update rust crate atom_syndication to v0.12.8
+- *(deps)* update rust crate quick-xml to v0.39.4
+- *(deps)* update rust crate chumsky to v0.13.0
+- *(deps)* update rust crate quick-xml to v0.39.3
+
+### Other
+
+- merge
+- *(deps)* update release-plz/action digest to 064f4d1
+- *(deps)* update rust crate assert_cmd to v2.2.2
+
 ## [0.1.24](https://github.com/kantord/blogtato/compare/v0.1.23...v0.1.24) - 2026-05-02
 
 ### Added
