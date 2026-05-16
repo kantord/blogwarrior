@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.26](https://github.com/kantord/blogtato/compare/v0.1.25...v0.1.26) - 2026-05-16
+
+### Fixed
+
+- *(deps)* update rust crate quick-xml to v0.40.1 ([#188](https://github.com/kantord/blogtato/pull/188))
+
 ## [0.1.25](https://github.com/kantord/blogtato/compare/v0.1.24...v0.1.25) - 2026-05-12
 
 ### Fixed
